@@ -56,7 +56,9 @@ V1 和 V2 看起来都在讲「sidecar 能不能用」，但它们失败的方�
 - **V6** `NSFilePromiseProvider` 拖出到 Finder
 - **V7** `QLPreviewPanel` 在 SwiftUI 窗口里的表现
 
-> 这三项来自本机 SDK 实测的结论：SwiftUI **没有** `NSBrowser` 对应物、**没有** `quickLookPreview`（全 SDK 的 framework 模块均未命中）、拖出懒加载需要 AppKit 的 `NSFilePromiseProvider`。它们是「SwiftUI 能不能做到原生手感」的答案所在，但不影响「ADB 层能不能复用」这个 Go/No-Go。
+> 这三项来自本机 SDK 实测的结论：SwiftUI **没有** `NSBrowser` 对应物、
+> ~~**没有** `quickLookPreview`（全 SDK 的 framework 模块均未命中）~~ → **这条是错的，已更正，见 §11**、
+> 拖出懒加载需要 AppKit 的 `NSFilePromiseProvider`。它们是「SwiftUI 能不能做到原生手感」的答案所在，但不影响「ADB 层能不能复用」这个 Go/No-Go。
 
 ---
 
@@ -219,8 +221,9 @@ SDK=$(xcrun --show-sdk-path)
 grep -n 'MenuBarExtra\|struct Table\|NSViewRepresentable' \
   "$SDK/System/Library/Frameworks/SwiftUI.framework/Modules/SwiftUI.swiftmodule/arm64e-apple-macos.swiftinterface"
 
-# SwiftUI 是否白送 Quick Look（结论：否）
+# SwiftUI 是否白送 Quick Look（原结论写的是「否」，**已证伪，见 §11**）
 grep -rl 'quickLookPreview' "$SDK/System/Library/Frameworks" --include='*.swiftinterface'
+# ↑ 这条命令**能命中**：_QuickLook_SwiftUI.framework 里的 quickLookPreview，macOS 11+
 
 # 原生替代 lsof 的 API
 grep -n 'proc_pidpath' "$SDK/usr/include/libproc.h"
@@ -434,5 +437,89 @@ lipo -archs DroidBerth.app/Contents/MacOS/adb           → x86_64 arm64
 
 - **App Translocation**（V1 场景 2）仍未跑。原因比 §9.5 更具体：触发它需要 `com.apple.quarantine` 属性，而带该属性的**未公证** app 会被 Gatekeeper 直接拒绝启动 —— 在不降低系统安全设置（`spctl --master-disable`）的前提下无法构造这个场景。**要验它，得先有一个已公证的产物。**
 - **V5–V7**（`NSBrowser` 分栏 / `NSFilePromiseProvider` 拖出 / `QLPreviewPanel`）未做。
+
+---
+
+## 11. 更正：SwiftUI **有** `quickLookPreview`（2026-09-26 追加）
+
+> 本节修正 §2 与 §8 里的一条**错误结论**。不覆盖 §9/§10 的任何其它内容。
+
+### 11.1 错在哪
+
+§2 次要项写的是：
+
+> SwiftUI **没有** `quickLookPreview`（全 SDK 的 framework 模块均未命中）
+
+**这条是错的。** SwiftUI 从 **macOS 11.0** 起就有 `quickLookPreview`，声明在
+`_QuickLook_SwiftUI.framework`（SwiftUI 对 QuickLook 的 **cross-import overlay**）里：
+
+```swift
+@available(iOS 14.0, macOS 11.0, *)
+extension SwiftUICore::View {
+  nonisolated public func quickLookPreview(_ item: Binding<URL?>) -> some View
+  nonisolated public func quickLookPreview<Items>(
+      _ selection: Binding<Items.Element?>, in items: Items
+  ) -> some View where Items : RandomAccessCollection, Items.Element == URL
+}
+```
+
+### 11.2 为什么会错（可复现）
+
+§8 里记的命令是**搜整个 `Frameworks` 目录**：
+
+```bash
+grep -rl 'quickLookPreview' "$SDK/System/Library/Frameworks" --include='*.swiftinterface'
+# → 2 个命中，全部在 _QuickLook_SwiftUI.framework
+```
+
+**这条命令本身是对的，而且能命中。** 但把它限定在 `SwiftUI.framework` 目录内，命中数为 **0**：
+
+```bash
+grep -rl 'quickLookPreview' "$SDK/System/Library/Frameworks/SwiftUI.framework" --include='*.swiftinterface'
+# → 0
+```
+
+`_QuickLook_SwiftUI.framework` 的目录时间戳是 **Sep 19 10:31**，早于本轮验证 ——
+所以不是 SDK 后来新增的，是当初搜索范围窄于文档所写的范围。
+
+**这是一类会反复出现的形状**：SwiftUI 的不少能力放在 **cross-import overlay**
+（`_<Framework>_SwiftUI.framework`，下划线前缀）里，而不是 `SwiftUI.framework` 本身。
+本机 SDK 上共有 **25 个**这样的 overlay：
+
+```
+_ARKit  _AVKit  _AppIntents  _AuthenticationServices  _CompositorServices
+_DeviceActivity  _FoundationModels  _LocalAuthentication  _ManagedAppDistribution
+_MapKit  _MusicKit  _PassKit  _PermissionKit  _PhotosUI  _QuickLook  _RealityKit
+_SceneKit  _ScreenCaptureKit  _SpatialPreview  _SpriteKit  _StoreKit
+_SwiftData  _Translation  _WebKit  _WorkoutKit
+```
+
+**规则**：这些 API 只有在**同时 import 两个框架**时才自动可见
+（例如 `import SwiftUI` + `import QuickLook`）。搜 API 时必须搜整个 `Frameworks` 目录，
+**不能只搜 `SwiftUI.framework`**。
+
+### 11.3 对结论的影响
+
+| 项 | 原结论 | 更正后 |
+|---|---|---|
+| V7 的定位 | 「SwiftUI 窗口里的 `QLPreviewPanel` 表现」—— 暗示要手写 AppKit 桥接 | **不需要**。`quickLookPreview` 直接可用，`QLPreviewPanel` 只在需要更细控制时才用 |
+| 分栏视图 | SwiftUI 没有 `NSBrowser` 对应物 | **仍然成立**。25 个 overlay 里没有 AppKit overlay，`NSBrowser` 无对应物 |
+| 拖出 | 需要 `NSFilePromiseProvider` | **仍然成立** |
+
+**另外**：`_AVKit_SwiftUI` 提供 `VideoPlayer<VideoOverlay>`（macOS 11+），
+即 SwiftUI 里可直接内嵌视频播放器，无需 AppKit 桥接：
+
+```swift
+VideoPlayer(player: AVPlayer(url: localURL))
+```
+
+### 11.4 教训
+
+**「搜不到」和「不存在」是两件事。** 记录一条否定性结论时，必须同时记录**搜索范围**，
+并且范围要写成**可直接复制执行的命令**——否则无法判断结论是否只是范围不够。
+本条的错误正是「文档里写的命令能命中，而结论说没命中」。
+
+> 同类形状参见 `docs/risk-validation-report.md` §3.6：
+> 受控实验的结论不能外推到它没覆盖的条件。
 
 

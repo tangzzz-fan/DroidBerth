@@ -10,5 +10,8 @@ sidecar/*/target/
 vendor/
 reports/
 .workbuddy-ai/
+macos/Sidecar/
+macos/*.xcodeproj
+macos/build/
 *.log
 .DS_Store

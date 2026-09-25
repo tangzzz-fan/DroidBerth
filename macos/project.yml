@@ -1,0 +1,79 @@
+name: DroidBerth
+
+options:
+  bundleIdPrefix: dev.tango
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ALWAYS_SEARCH_USER_PATHS: NO
+    DEAD_CODE_STRIPPING: YES
+
+schemes:
+  DroidBerth:
+    build:
+      targets:
+        DroidBerth: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+
+targets:
+  DroidBerth:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/DroidBerth
+      - path: Sidecar/droidberth-adb
+        buildPhase:
+          copyFiles:
+            destination: executables
+        attributes:
+          - CodeSignOnCopy
+      - path: Sidecar/adb
+        buildPhase:
+          copyFiles:
+            destination: executables
+        attributes:
+          - CodeSignOnCopy
+    settings:
+      base:
+        PRODUCT_NAME: DroidBerth
+        PRODUCT_BUNDLE_IDENTIFIER: dev.tango.droidberth
+        INFOPLIST_FILE: Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: Resources/DroidBerth.entitlements
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "Developer ID Application"
+        DEVELOPMENT_TEAM: UKXWZ3FS84
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+        OTHER_CODE_SIGN_FLAGS: "--timestamp"
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        COMBINE_HIDPI_IMAGES: YES
+        SWIFT_STRICT_CONCURRENCY: complete
+        SWIFT_UPCOMING_FEATURE_EXISTENTIAL_ANY: NO
+        ARCHS: arm64
+        ONLY_ACTIVE_ARCH: NO
+    preBuildScripts:
+      - name: Verify staged sidecar
+        basedOnDependencyAnalysis: false
+        script: |
+          set -euo pipefail
+          for f in droidberth-adb adb; do
+            p="$SRCROOT/Sidecar/$f"
+            if [ ! -x "$p" ]; then
+              echo "error: $p 不存在或不可执行" >&2
+              echo "error: 先运行 macos/Scripts/build-sidecar.sh" >&2
+              exit 1
+            fi
+          done
+          "$SRCROOT/Sidecar/droidberth-adb" version

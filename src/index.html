@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DroidDock - Tauri + ADB Sidecar Risk Validation</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Droid<span>Dock</span> <span class="muted small">risk validation demo</span></h1>
+    <div class="spacer"></div>
+    <div class="badge" id="sidecar-badge">sidecar: resolving...</div>
+    <button id="btn-doctor" class="primary">Run doctor</button>
+    <button id="btn-export" class="ghost">Export report</button>
+  </header>
+
+  <nav>
+    <button data-tab="bundle" class="active">Bundle &amp; Signing</button>
+    <button data-tab="toolchain">ADB Toolchain</button>
+    <button data-tab="wireless">Wireless Debug</button>
+    <button data-tab="console">Console</button>
+  </nav>
+
+  <main>
+    <section id="tab-bundle" class="active">
+      <div class="card" style="margin-bottom:14px">
+        <h2>Verdict <span class="hint">module 1 (sidecar notarization) + module 2 (macOS 15 deep validation)</span></h2>
+        <div class="summary">
+          <div class="verdict" id="verdict">not run</div>
+          <div class="tally" id="tally">Press "Run doctor" to inspect the bundle this sidecar lives in.</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px">
+        <h2>Risk checklist</h2>
+        <table id="checks"><tbody><tr><td class="muted">No data yet.</td></tr></tbody></table>
+      </div>
+
+      <div class="grid two" style="margin-bottom:14px">
+        <div class="card">
+          <h2>Host</h2>
+          <dl class="kv" id="host-kv"><dt>--</dt><dd></dd></dl>
+        </div>
+        <div class="card">
+          <h2>Bundle</h2>
+          <dl class="kv" id="bundle-kv"><dt>--</dt><dd></dd></dl>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px">
+        <h2>Nested Mach-O signatures <span class="hint">macOS 15 deep-validates every one of these</span></h2>
+        <table id="nested"><tbody><tr><td class="muted">No data yet.</td></tr></tbody></table>
+      </div>
+
+      <div class="grid two">
+        <div class="card">
+          <h2>Gatekeeper (spctl)</h2>
+          <pre id="spctl">not run</pre>
+        </div>
+        <div class="card">
+          <h2>Raw doctor JSON</h2>
+          <pre id="doctor-raw">not run</pre>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-toolchain">
+      <div class="card" style="margin-bottom:14px">
+        <h2>ADB resolution <span class="hint">module 3 (static linking) + module 5 (dylib packaging)</span></h2>
+        <div class="row">
+          <button id="btn-resolve">Resolve adb</button>
+          <button id="btn-adb-inspect" class="ghost">Inspect linked libraries</button>
+          <span class="muted small">Search order: DROIDDOCK_ADB, bundled Contents/MacOS, Contents/Resources, PATH, Android SDK.</span>
+        </div>
+      </div>
+
+      <div class="grid side" style="margin-bottom:14px">
+        <div class="card">
+          <h2>Resolved binary</h2>
+          <dl class="kv" id="adb-kv"><dt>--</dt><dd></dd></dl>
+        </div>
+        <div class="card">
+          <h2>otool -L</h2>
+          <pre id="adb-deps">not run</pre>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Resolution probes</h2>
+        <table id="adb-probes"><tbody><tr><td class="muted">No data yet.</td></tr></tbody></table>
+      </div>
+    </section>
+
+    <section id="tab-wireless">
+      <div class="card" style="margin-bottom:14px">
+        <h2>Target <span class="hint">module 4 - ADB over WiFi reliability</span></h2>
+        <div class="row">
+          <label class="field">Device IP
+            <input type="text" id="wifi-host" placeholder="192.168.1.42" style="width:170px" />
+          </label>
+          <label class="field">Port
+            <input type="number" id="wifi-port" value="5555" style="width:90px" />
+          </label>
+          <label class="field">Pairing code
+            <input type="text" id="wifi-code" placeholder="123456" style="width:110px" />
+          </label>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button id="btn-devices">adb devices</button>
+          <button id="btn-tcpip">adb tcpip 5555</button>
+          <button id="btn-connect">adb connect</button>
+          <button id="btn-pair" class="ghost">adb pair</button>
+          <button id="btn-disconnect" class="ghost">adb disconnect</button>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button id="btn-probe" class="primary">Reconnect probe (3 attempts)</button>
+          <span class="muted small">Retries <span class="mono-sm">adb connect</span> up to 3 times and verifies with <span class="mono-sm">adb devices</span>.</span>
+        </div>
+      </div>
+
+      <div class="grid side" style="margin-bottom:14px">
+        <div class="card">
+          <h2>Devices</h2>
+          <pre id="devices">not run</pre>
+        </div>
+        <div class="card">
+          <h2>Probe result</h2>
+          <table id="probe"><tbody><tr><td class="muted">No probe yet.</td></tr></tbody></table>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px">
+        <h2>Reconnect matrix <span class="hint">run each scenario by hand, then press Probe to record the outcome</span></h2>
+        <table class="matrix">
+          <thead>
+            <tr><th style="width:30%">Scenario</th><th style="width:32%">Expected</th><th style="width:14%">Outcome</th><th>Note</th></tr>
+          </thead>
+          <tbody id="matrix-body"></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h2>Activity log</h2>
+        <div class="log" id="wifi-log"></div>
+      </div>
+    </section>
+
+    <section id="tab-console">
+      <div class="card" style="margin-bottom:14px">
+        <h2>Raw adb console <span class="hint">args are passed straight through to the resolved adb</span></h2>
+        <div class="row">
+          <input type="text" id="console-args" placeholder="shell getprop ro.build.version.release" style="flex:1" />
+          <button id="btn-run-adb" class="primary">Run</button>
+          <button id="btn-run-sidecar" class="ghost">Run sidecar command</button>
+        </div>
+        <div class="row small muted" style="margin-top:8px">
+          Sidecar commands: <span class="mono-sm">version</span>, <span class="mono-sm">resolve</span>, <span class="mono-sm">doctor</span>, <span class="mono-sm">exec -- &lt;adb args&gt;</span>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Output</h2>
+        <pre id="console-out">not run</pre>
+      </div>
+    </section>
+  </main>
+</div>
+<script src="main.js"></script>
+</body>
+</html>

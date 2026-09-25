@@ -1,0 +1,16 @@
+{
+  "name": "droidock",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Tauri + ADB sidecar risk validation demo",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "sidecars": "./scripts/build-sidecars.sh",
+    "checklist": "./scripts/checklist.sh"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.9.0"
+  }
+}

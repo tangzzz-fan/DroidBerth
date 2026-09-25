@@ -1,0 +1,14 @@
+node_modules/
+.env
+.env.*
+src-tauri/target/
+src-tauri/gen/
+src-tauri/binaries/*
+!src-tauri/binaries/.gitkeep
+src-tauri/icons/icon.iconset/
+sidecar/*/target/
+vendor/
+reports/
+.workbuddy-ai/
+*.log
+.DS_Store

@@ -183,7 +183,7 @@ async function resolveAdb() {
 
 $('btn-resolve').addEventListener('click', async () => {
   const r = await resolveAdb();
-  if (!r.found) logWifi('adb not found - bundle one at Contents/Resources/adb or set DROIDDOCK_ADB', 'warn');
+  if (!r.found) logWifi('adb not found - bundle one at Contents/Resources/adb or set DROIDBERTH_ADB', 'warn');
 });
 
 $('btn-adb-inspect').addEventListener('click', async () => {

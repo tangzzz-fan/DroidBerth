@@ -3,5 +3,5 @@
 version = 3
 
 [[package]]
-name = "droidock-adb"
+name = "droidberth-adb"
 version = "0.1.0"

@@ -24,7 +24,7 @@ load_env_file() {
 
 load_env_file "$ROOT/.env"
 
-RUST_ROOT="${DROIDDOCK_RUST_ROOT:-$HOME/.workbuddy-ai/binaries/rust}"
+RUST_ROOT="${DROIDBERTH_RUST_ROOT:-$HOME/.workbuddy-ai/binaries/rust}"
 if [ -d "$RUST_ROOT/cargo/bin" ]; then
   export RUSTUP_HOME="$RUST_ROOT/rustup"
   export CARGO_HOME="$RUST_ROOT/cargo"
@@ -38,8 +38,8 @@ export TARGET_ARM="aarch64-apple-darwin"
 export TARGET_INTEL="x86_64-apple-darwin"
 export TARGET_UNIVERSAL="universal-apple-darwin"
 
-export SIDECAR_NAME="droidock-adb"
-export APP_NAME="DroidDock"
+export SIDECAR_NAME="droidberth-adb"
+export APP_NAME="DroidBerth"
 
 detect_bundle_dir() {
   if [ -n "${TARGET_TRIPLE:-}" ]; then
@@ -110,7 +110,7 @@ make_signed_dmg() {
 
 require_rust() {
   if ! command -v cargo >/dev/null 2>&1; then
-    echo "cargo not found. Set DROIDDOCK_RUST_ROOT or install rustup." >&2
+    echo "cargo not found. Set DROIDBERTH_RUST_ROOT or install rustup." >&2
     exit 1
   fi
 }

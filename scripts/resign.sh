@@ -5,7 +5,7 @@ source "$(cd "$(dirname "$0")" && pwd)/env.sh"
 APP="${1:-$APP_PATH}"
 SIDECAR_ENTITLEMENTS="$ROOT/src-tauri/entitlements.sidecar.plist"
 APP_ENTITLEMENTS="$ROOT/src-tauri/entitlements.plist"
-ENTITLEMENTS="${DROIDDOCK_SIDECAR_ENTITLEMENTS:-$SIDECAR_ENTITLEMENTS}"
+ENTITLEMENTS="${DROIDBERTH_SIDECAR_ENTITLEMENTS:-$SIDECAR_ENTITLEMENTS}"
 
 if [ ! -d "$APP" ]; then
   echo "no app bundle at $APP" >&2

@@ -64,10 +64,10 @@ pub fn resolve() -> Resolution {
 
     let mut hit: Option<(PathBuf, &'static str)> = None;
 
-    if let Some(env_path) = std::env::var_os("DROIDDOCK_ADB") {
+    if let Some(env_path) = std::env::var_os("DROIDBERTH_ADB") {
         let p = PathBuf::from(env_path);
-        if let Some(found) = push(p, "env:DROIDDOCK_ADB", &mut probes) {
-            hit = Some((found, "env:DROIDDOCK_ADB"));
+        if let Some(found) = push(p, "env:DROIDBERTH_ADB", &mut probes) {
+            hit = Some((found, "env:DROIDBERTH_ADB"));
         }
     }
 

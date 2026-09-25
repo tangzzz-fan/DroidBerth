@@ -90,13 +90,13 @@ fn read_text(path: String) -> Result<String, String> {
 #[tauri::command]
 fn save_report(contents: String) -> Result<String, String> {
     let home = std::env::var("HOME").map_err(|_| "HOME is not set".to_string())?;
-    let dir: PathBuf = PathBuf::from(home).join("DroidDock-reports");
+    let dir: PathBuf = PathBuf::from(home).join("DroidBerth-reports");
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let path = dir.join(format!("droidock-report-{stamp}.json"));
+    let path = dir.join(format!("droidberth-report-{stamp}.json"));
     std::fs::write(&path, contents).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(path.to_string_lossy().into_owned())
 }
@@ -114,5 +114,5 @@ pub fn run() {
             save_report
         ])
         .run(tauri::generate_context!())
-        .expect("error while running DroidDock");
+        .expect("error while running DroidBerth");
 }

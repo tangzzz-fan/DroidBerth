@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "DroidDock",
+  "productName": "DroidBerth",
   "version": "0.1.0",
-  "identifier": "dev.tango.droidock",
+  "identifier": "dev.tango.droidberth",
   "build": {
     "frontendDist": "../src"
   },
@@ -11,7 +11,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "DroidDock - Tauri + ADB Sidecar Risk Validation",
+        "title": "DroidBerth - Tauri + ADB Sidecar Risk Validation",
         "width": 1280,
         "height": 880,
         "minWidth": 980,
@@ -24,14 +24,14 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg"],
+    "targets": ["app"],
     "category": "DeveloperTool",
     "shortDescription": "Tauri + ADB sidecar notarization and wireless-debug validation demo",
     "icon": ["icons/icon.icns", "icons/icon.png"],
-    "externalBin": ["binaries/droidock-adb"],
+    "externalBin": ["binaries/droidberth-adb"],
     "macOS": {
       "hardenedRuntime": true,
-      "minimumSystemVersion": "13.0",
+      "minimumSystemVersion": "14.0",
       "entitlements": "entitlements.plist",
       "dmg": {
         "windowSize": {

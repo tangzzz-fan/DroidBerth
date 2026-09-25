@@ -209,7 +209,7 @@ team_id_from_cert() {
     | sed -n 's/.*OU *= *\([A-Z0-9]\{10\}\).*/\1/p' | head -1
 }
 
-banner "DroidDock · Developer ID + notarization setup"
+banner "DroidBerth · Developer ID + notarization setup"
 
 # ── Stage 1: current state ────────────────────────────────────────────────
 stage "Current state"
@@ -321,7 +321,7 @@ printf '\n'
 open_url "https://account.apple.com"
 step "Sign in, then go to 'Sign-In and Security' → 'App-Specific Passwords'."
 step "Click the '+' (or 'Generate an App-Specific Password')."
-step "Name it something recognisable, e.g. 'droidock-notarytool'."
+step "Name it something recognisable, e.g. 'droidberth-notarytool'."
 step "Copy the generated password — it looks like abcd-efgh-ijkl-mnop."
 printf '\n'
 ask APPLE_ID "Your Apple ID (email):"
@@ -336,7 +336,7 @@ stage "Store and verify notarytool credentials"
 say "Saving the credentials into the login keychain as a reusable profile, so"
 say "scripts/notarize.sh never needs the password on its command line."
 printf '\n'
-PROFILE="${NOTARY_PROFILE:-droidock}"
+PROFILE="${NOTARY_PROFILE:-droidberth}"
 case "$APPLE_PASSWORD" in
   *-*-*-*) note "password shape looks right (abcd-efgh-ijkl-mnop)" ;;
   *)

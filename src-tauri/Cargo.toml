@@ -1,12 +1,12 @@
 [package]
-name = "droidock"
+name = "droidberth"
 version = "0.1.0"
 description = "Tauri + ADB sidecar risk validation demo"
 edition = "2021"
 rust-version = "1.77"
 
 [lib]
-name = "droidock_lib"
+name = "droidberth_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

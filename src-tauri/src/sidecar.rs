@@ -30,22 +30,22 @@ fn exe_dir() -> Option<PathBuf> {
 
 pub fn candidates() -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = Vec::new();
-    if let Some(v) = std::env::var_os("DROIDDOCK_SIDECAR") {
+    if let Some(v) = std::env::var_os("DROIDBERTH_SIDECAR") {
         out.push(PathBuf::from(v));
     }
     if let Some(dir) = exe_dir() {
-        out.push(dir.join("droidock-adb"));
-        out.push(dir.join(format!("droidock-adb-{}", host_triple())));
+        out.push(dir.join("droidberth-adb"));
+        out.push(dir.join(format!("droidberth-adb-{}", host_triple())));
     }
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     out.push(
         manifest
             .join("binaries")
-            .join(format!("droidock-adb-{}", host_triple())),
+            .join(format!("droidberth-adb-{}", host_triple())),
     );
     out.push(
         manifest
-            .join("../sidecar/droidock-adb/target/release/droidock-adb"),
+            .join("../sidecar/droidberth-adb/target/release/droidberth-adb"),
     );
     out
 }

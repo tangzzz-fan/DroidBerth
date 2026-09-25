@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Core permissions for the DroidDock validation window",
+  "description": "Core permissions for the DroidBerth validation window",
   "windows": ["main"],
   "permissions": ["core:default"]
 }

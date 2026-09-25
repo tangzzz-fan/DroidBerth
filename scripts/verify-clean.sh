@@ -16,7 +16,7 @@ for arg in "$@"; do
 done
 
 if [ -z "$DMG" ] || [ ! -f "$DMG" ]; then
-  echo "usage: verify-clean.sh /path/to/DroidDock.dmg [--apply] [--replace] [--quarantine]" >&2
+  echo "usage: verify-clean.sh /path/to/DroidBerth.dmg [--apply] [--replace] [--quarantine]" >&2
   echo >&2
   echo "  Run this on a macOS 15 machine or fresh VM that has never run the app." >&2
   echo "  Without --apply it only inspects the DMG and the mounted copy." >&2
@@ -78,7 +78,7 @@ echo "==> 4/6 install into /Applications"
 rm -rf "$DEST"
 cp -R "$SOURCE_APP" "$DEST"
 if [ "$QUARANTINE" = "1" ]; then
-  xattr -w com.apple.quarantine "0081;$(printf '%x' "$(date +%s)");DroidDock;" "$DEST"
+  xattr -w com.apple.quarantine "0081;$(printf '%x' "$(date +%s)");DroidBerth;" "$DEST"
   echo "    stamped com.apple.quarantine"
 fi
 hdiutil detach "$MOUNT" -quiet

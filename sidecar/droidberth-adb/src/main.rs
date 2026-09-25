@@ -13,10 +13,10 @@ const SIZE_BUDGET_MB: f64 = 40.0;
 const MAX_NESTED_INSPECT: usize = 80;
 
 const USAGE: &str = "\
-droidock-adb — ADB sidecar + macOS bundle risk validator
+droidberth-adb — ADB sidecar + macOS bundle risk validator
 
 USAGE:
-    droidock-adb <COMMAND> [ARGS]
+    droidberth-adb <COMMAND> [ARGS]
 
 COMMANDS:
     version                 Print sidecar version and build info
@@ -68,7 +68,7 @@ fn main() {
     match command {
         "version" | "--version" | "-V" => {
             println!(
-                "droidock-adb {VERSION} ({} {})",
+                "droidberth-adb {VERSION} ({} {})",
                 std::env::consts::ARCH,
                 std::env::consts::OS
             );
@@ -119,20 +119,20 @@ fn main() {
             let rest: Vec<String> = args[1..].to_vec();
             let resolution = adb::resolve();
             let Some(adb) = resolution.path else {
-                eprintln!("droidock-adb: adb binary not found");
+                eprintln!("droidberth-adb: adb binary not found");
                 std::process::exit(127);
             };
             let status = SysCommand::new(&adb).args(&rest).status();
             std::process::exit(match status {
                 Ok(s) => s.code().unwrap_or(1),
                 Err(e) => {
-                    eprintln!("droidock-adb: failed to run {}: {e}", adb.display());
+                    eprintln!("droidberth-adb: failed to run {}: {e}", adb.display());
                     126
                 }
             });
         }
         other => {
-            eprintln!("droidock-adb: unknown command `{other}`\n");
+            eprintln!("droidberth-adb: unknown command `{other}`\n");
             print!("{USAGE}");
             std::process::exit(1);
         }
@@ -140,7 +140,7 @@ fn main() {
 }
 
 fn current_exe() -> PathBuf {
-    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("droidock-adb"));
+    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("droidberth-adb"));
     std::fs::canonicalize(&exe).unwrap_or(exe)
 }
 
@@ -337,7 +337,7 @@ fn doctor_report(table: bool) -> J {
             "fail"
         },
         match &adb_report {
-            None => "No adb binary resolved. Bundle one, or set DROIDDOCK_ADB to a build worth inspecting.".into(),
+            None => "No adb binary resolved. Bundle one, or set DROIDBERTH_ADB to a build worth inspecting.".into(),
             Some(_) if adb_foreign.is_empty() => {
                 "otool -L shows only /usr/lib and /System/Library entries.".into()
             }
@@ -635,7 +635,7 @@ fn doctor_report(table: bool) -> J {
     }
 
     J::obj([
-        ("tool", J::s(format!("droidock-adb {VERSION}"))),
+        ("tool", J::s(format!("droidberth-adb {VERSION}"))),
         ("host", host.to_json()),
         ("bundle", J::obj([
             (
@@ -783,7 +783,7 @@ fn print_table(
 ) {
     let width = 100usize;
     let rule = "-".repeat(width);
-    println!("DroidDock bundle risk report");
+    println!("DroidBerth bundle risk report");
     println!("{rule}");
     println!(
         "  host      macOS {} ({}) {}",

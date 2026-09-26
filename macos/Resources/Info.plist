@@ -36,5 +36,29 @@
 	<string>DroidBerth 需要访问下载文件夹，以便浏览和传输其中的文件。</string>
 	<key>NSRemovableVolumesUsageDescription</key>
 	<string>DroidBerth 需要访问可移动卷，以便浏览和传输外接存储上的文件。</string>
+	<key>NSServices</key>
+	<array>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>发送到 DroidBerth</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>sendToDevice</string>
+			<key>NSPortName</key>
+			<string>DroidBerth</string>
+			<key>NSSendFileTypes</key>
+			<array>
+				<string>public.item</string>
+			</array>
+			<key>NSRequiredContext</key>
+			<dict/>
+			<key>NSRestricted</key>
+			<false/>
+			<key>NSServiceDescription</key>
+			<string>把 Finder 中选中的文件或文件夹推送到已连接的 Android 设备</string>
+		</dict>
+	</array>
 </dict>
 </plist>

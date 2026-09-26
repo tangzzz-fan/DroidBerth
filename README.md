@@ -35,8 +35,8 @@ ADB 二进制内嵌在 app 内 —— 用户不需要装 Android SDK、不需要
 ```
 macos/                    Swift 原生外壳（当前路线）
   project.yml               xcodegen 工程定义
-  Sources/DroidBerth/       36 个 Swift 文件 / 4611 行
-  Resources/                Info.plist + entitlements
+  Sources/DroidBerth/       37 个 Swift 文件 / 4787 行
+  Resources/                Info.plist（含 NSServices 声明）+ entitlements
   Scripts/build-sidecar.sh  编译 Rust sidecar 并暂存
 sidecar/droidberth-adb/   Rust sidecar（1787 行 / 5 文件）
                           version / doctor / resolve / exec / raw 五个子命令
@@ -99,6 +99,30 @@ XcodeGen 会报 `Couldn't find current username` 且**静默不生成工程**。
 | `⇧⌘S` | 下载选中项到 Mac |
 | `⇧⌘N` | 在设备端新建文件夹 |
 
+### Finder 集成（服务菜单）
+
+在 Finder 中选中文件或文件夹 → 右键 → **服务** → **发送到 DroidBerth**，即可直接推送到设备。
+App 未运行时会由系统自动拉起，并等待设备就绪后再开始传输（最长 20 秒）。
+
+落点规则与 App 内一致：优先「上次使用的目录」，否则按文件类型分流
+（图片 → `/sdcard/DCIM`，视频 → `/sdcard/Movies`，其它 → `/sdcard/Download`）。
+
+> **必须把 App 放在 `/Applications`**（或其子目录）。Apple 对服务的要求是：
+> *"To build an application that offers a service, use the extension `.app` and install it in the
+> `Applications` folder (or a subfolder)."* 放在构建目录里不会被系统登记。
+>
+> 安装后若服务没出现，执行一次 `/System/Library/CoreServices/pbs -update` 触发重扫
+> （`pbs` 在 macOS 27 上的参数已变，**不是**老文档里的 `-dump_pboard`）。
+> 仍不出现时可注销重新登录 —— 服务列表在登录时构建。
+
+自检服务是否被系统登记：
+
+```bash
+/System/Library/CoreServices/pbs -dump | grep -A8 -i droidberth
+```
+
+应能看到 `NSBundlePath = "/Applications/DroidBerth.app"`、`NSMessage = sendToDevice` 等条目。
+
 ### 验证面板
 
 把技术验证的判据逐条重跑（不依赖 UI）：
@@ -128,6 +152,9 @@ build/dd/Build/Products/Release/DroidBerth.app/Contents/MacOS/DroidBerth --spike
 - **下载**：文件夹递归层级与内容正确
 - **进度上报**：60 MB 上传观察到 17 个不同百分比，峰值 30 MB/s
 - **图片上传 + 系统相册入库**：MediaStore 的 `images/media` 表出现对应行
+- **Finder 服务**（`NSServices`）：`pbs -dump` 确认已登记；程序化调用 `NSPerformService`
+  验证两条路径均通过 —— App 已在运行、以及 **App 未运行时由服务拉起**（含等待设备就绪），
+  设备端落点与 SHA-256 均一致
 
 ### 未验证
 
@@ -137,6 +164,8 @@ build/dd/Build/Products/Release/DroidBerth.app/Contents/MacOS/DroidBerth --spike
 | 照片图库作为素材来源 | 需要人工在授权弹窗点「允许」 |
 | App Translocation | 需要先有一个**已公证**的产物才能构造该场景 |
 | 分栏视图 / 拖出到 Finder / Quick Look | 未做 |
+| Finder 服务「无设备」分支的提示文案 | 需断开设备才能构造，且提示只能肉眼确认 |
+| Finder 服务在**真实 Finder 菜单**里的出现 | 只能人工右键确认（登记与派发已程序化验证） |
 | 性能基线（相对裸 `adb push` 的开销） | 未测量 |
 | 干净 VM 上的安装验证 | 需要另一台机器 |
 

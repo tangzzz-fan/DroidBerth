@@ -84,6 +84,9 @@ final class AppModel {
         AppPaths.clearStaging()
         photos.refreshAccess()
         wireless.attach(monitor: monitor)
+        FinderServiceProvider.shared.install { [weak self] urls in
+            self?.handleFinderService(urls)
+        }
         monitor.start()
         navigateLocal(to: localDirectory, resetHistory: true)
         Task { await bootstrapRemote() }
@@ -361,6 +364,116 @@ final class AppModel {
         } else {
             await loadRemote()
         }
+    }
+
+    // MARK: - Finder 服务
+
+    func handleFinderService(_ urls: [URL]) {
+        NSApp.activate()
+        Task { await uploadFromFinderService(urls) }
+    }
+
+    private func uploadFromFinderService(_ urls: [URL]) async {
+        let existing = urls.filter { FileManager.default.fileExists(atPath: $0.path) }
+        guard !existing.isEmpty else {
+            banner = Banner(
+                level: .warning,
+                title: "Finder 传来的项目已不存在",
+                detail: "\(urls.count) 个项目都无法读取"
+            )
+            return
+        }
+
+        let device: AndroidDevice
+        if let current = monitor.activeDevice, current.state.isUsable {
+            device = current
+        } else {
+            banner = Banner(
+                level: .info,
+                title: "正在等待设备",
+                detail: "已从 Finder 收到 \(existing.count) 个项目，正在识别 Android 设备…"
+            )
+            guard let waited = await waitForUsableDevice() else {
+                banner = Banner(
+                    level: .warning,
+                    title: "没有可用的设备",
+                    detail: "已从 Finder 收到 \(existing.count) 个项目，但没有等到可用的 Android 设备。连接设备后请重新执行一次。"
+                )
+                return
+            }
+            device = waited
+        }
+
+        guard let shell = monitor.shell(for: device) else {
+            banner = Banner(level: .error, title: "未找到 adb", detail: "请确认 app 包内的 adb 完整")
+            return
+        }
+
+        let destination = finderServiceDestination(for: device, urls: existing)
+        let serial = device.serial
+        let policy = settings.conflictPolicy
+
+        let expansion = await Task.detached(priority: .userInitiated) {
+            TransferPlanner.upload(
+                localURLs: existing,
+                remoteDirectory: destination.path,
+                serial: serial,
+                shell: shell,
+                policy: policy
+            )
+        }.value
+
+        if let error = expansion.blockingError {
+            banner = Banner(level: .error, title: "无法开始上传", detail: error)
+            return
+        }
+        guard !expansion.plans.isEmpty else {
+            banner = Banner(level: .info, title: "没有可上传的文件", detail: expansion.notes.joined(separator: "；"))
+            return
+        }
+
+        var notes = expansion.notes
+        notes.insert("来源：Finder 服务（\(existing.count) 个项目）", at: 0)
+        notes.insert("落点：\(destination.path)（\(destination.reason)）", at: 0)
+        queue.enqueue(plans: expansion.plans, notes: notes)
+        settings.rememberDestination(destination.path, for: serial)
+
+        if destination.path != remoteDirectory {
+            await navigateRemote(to: destination.path)
+        } else {
+            await loadRemote()
+        }
+    }
+
+    private func finderServiceDestination(
+        for device: AndroidDevice,
+        urls: [URL]
+    ) -> (path: String, reason: String) {
+        if let remembered = settings.destination(for: device.serial) {
+            return (remembered, "上次使用的目录")
+        }
+        if remoteDirectory != "/sdcard" {
+            return (remoteDirectory, "设备窗格当前目录")
+        }
+        guard settings.routingEnabled else {
+            return ("/sdcard/Download", "默认落点")
+        }
+        let names = urls.map(\.lastPathComponent)
+        if names.contains(where: { $0.isVideoFile }) { return ("/sdcard/Movies", "按文件类型分流") }
+        if names.contains(where: { $0.isImageFile }) { return ("/sdcard/DCIM", "按文件类型分流") }
+        return ("/sdcard/Download", "按文件类型分流")
+    }
+
+    private func waitForUsableDevice(timeout: TimeInterval = 20) async -> AndroidDevice? {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            await monitor.refresh()
+            if let device = monitor.activeDevice, device.state.isUsable {
+                return device
+            }
+            try? await Task.sleep(for: .milliseconds(500))
+        }
+        return nil
     }
 
     private func exportPhotos(_ items: [PhotoItem]) async -> [URL] {

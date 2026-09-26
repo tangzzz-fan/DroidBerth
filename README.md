@@ -152,7 +152,7 @@ build/dd/Build/Products/Release/DroidBerth.app/Contents/MacOS/DroidBerth --spike
 - **下载**：文件夹递归层级与内容正确
 - **进度上报**：60 MB 上传观察到 17 个不同百分比，峰值 30 MB/s
 - **图片上传 + 系统相册入库**：MediaStore 的 `images/media` 表出现对应行
-- **Finder 服务**（`NSServices`）：`pbs -dump` 确认已登记；程序化调用 `NSPerformService`
+- **Finder 服务**（`NSServices`）：`/System/Library/CoreServices/pbs -dump` 确认已登记；程序化调用 `NSPerformService`
   验证两条路径均通过 —— App 已在运行、以及 **App 未运行时由服务拉起**（含等待设备就绪），
   设备端落点与 SHA-256 均一致
 

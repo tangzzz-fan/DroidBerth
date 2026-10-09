@@ -548,4 +548,69 @@ final class AppModel {
         result.insert(("/", "/"), at: 0)
         return result
     }
+
+    // MARK: - 聚焦与键盘导航
+
+    /// Tab 在窗格之间循环。
+    ///
+    /// PRD §22 要求的是「Mac 窗格 → 设备窗格 → 传输面板」三段循环，但传输面板
+    /// 目前还没有键盘可交互的内容，把焦点移进去是无意义的。三段循环留到
+    /// Phase 2.3（传输面板改造）时补齐。
+    func cycleFocus(backwards: Bool = false) {
+        focus = focus == .mac ? .device : .mac
+    }
+
+    var canGoBack: Bool {
+        switch focus {
+        case .mac: canGoLocalBack
+        case .device: canGoRemoteBack
+        }
+    }
+
+    var canGoForward: Bool {
+        switch focus {
+        case .mac: canGoLocalForward
+        case .device: canGoRemoteForward
+        }
+    }
+
+    func goBack() {
+        switch focus {
+        case .mac: localGoBack()
+        case .device: Task { await remoteGoBack() }
+        }
+    }
+
+    func goForward() {
+        switch focus {
+        case .mac: localGoForward()
+        case .device: Task { await remoteGoForward() }
+        }
+    }
+
+    func goUp() {
+        switch focus {
+        case .mac: localGoUp()
+        case .device: Task { await remoteGoUp() }
+        }
+    }
+
+    func refreshFocusedPane() {
+        switch focus {
+        case .mac:
+            if macSource == .files {
+                reloadLocal()
+            } else {
+                Task { await photos.loadItems() }
+            }
+        case .device:
+            Task { await loadRemote() }
+        }
+    }
+
+    /// ⌘⌫ 目前只作用于设备端。Mac 端的删除要走 Finder 的「移到废纸篓」语义，
+    /// 涉及不可逆风险，不在 Phase 1 范围内（见改造方案 Phase 4）。
+    var canDeleteSelection: Bool {
+        focus == .device && !remoteSelection.isEmpty && activeDevice != nil
+    }
 }

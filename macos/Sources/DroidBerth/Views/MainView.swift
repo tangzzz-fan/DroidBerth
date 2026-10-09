@@ -7,6 +7,7 @@ struct MainView: View {
     @State private var showNewFolder = false
     @State private var newFolderName = ""
     @State private var showDeleteConfirm = false
+    @State private var tabMonitor: PaneCycleKeyMonitor?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,10 +29,22 @@ struct MainView: View {
         .task {
             AppearanceController.apply(model.settings.appearance)
             model.start()
+            if tabMonitor == nil {
+                let monitor = PaneCycleKeyMonitor { backwards in
+                    model.cycleFocus(backwards: backwards)
+                }
+                monitor.start()
+                tabMonitor = monitor
+            }
         }
+        .onDisappear { tabMonitor?.stop() }
         .onReceive(NotificationCenter.default.publisher(for: .droidBerthNewFolder)) { _ in
             guard model.activeDevice != nil else { return }
             showNewFolder = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .droidBerthDeleteSelection)) { _ in
+            guard model.canDeleteSelection else { return }
+            showDeleteConfirm = true
         }
         .onChange(of: model.monitor.selectedSerial) { _, _ in
             Task { await model.deviceDidChange() }
@@ -114,7 +127,7 @@ struct MainView: View {
                 PhotoSourceView(model: model)
             }
         }
-        .background(model.focus == .mac ? Color.accentColor.opacity(0.06) : Color.clear)
+        .modifier(PaneFocusStyle(isFocused: model.focus == .mac))
     }
 
     private var fileNavigationBar: some View {
@@ -257,7 +270,7 @@ struct MainView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
         }
-        .background(model.focus == .device ? Color.accentColor.opacity(0.06) : Color.clear)
+        .modifier(PaneFocusStyle(isFocused: model.focus == .device))
     }
 
     // MARK: - 设备菜单
@@ -441,6 +454,24 @@ struct MainView: View {
         if panel.runModal() == .OK, let url = panel.url {
             model.navigateLocal(to: url, resetHistory: true)
         }
+    }
+}
+
+/// 聚焦窗格的视觉标识。
+///
+/// PRD §25 要求「聚焦态不能只靠颜色区分」，因此这里同时给出**形状变化**
+/// （系统色描边）与**文字加重**（由 `PaneHeader` 负责），以适配色觉障碍。
+private struct PaneFocusStyle: ViewModifier {
+    let isFocused: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .background(isFocused ? Color.accentColor.opacity(0.06) : Color.clear)
+            .overlay {
+                Rectangle()
+                    .strokeBorder(isFocused ? Color.accentColor : Color.clear, lineWidth: 2)
+                    .allowsHitTesting(false)
+            }
     }
 }
 

@@ -46,17 +46,40 @@ enum AppPaths {
         return directory.appendingPathComponent(name)
     }
 
+    /// 网格缩略图的临时落地目录（PRD §13.3）。
+    ///
+    /// 与预览同理放在 `$TMPDIR` 下而不是 Application Support：远端缩略图要先落成
+    /// 文件才能交给 `QLThumbnailGenerator`，这些文件是一次性的，交给系统按临时目录
+    /// 规则回收最省心。
+    static var thumbnailDirectory: URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("DroidBerth", isDirectory: true)
+            .appendingPathComponent("thumbnails", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    /// 为一张远端缩略图分配落地文件。
+    ///
+    /// 用**扁平**的 UUID 文件名 + 原扩展名，而不是每张一个子目录：缩略图数量可能
+    /// 成百上千，一个子目录一个文件会让目录项数量翻倍。UUID 前缀避免同名覆盖，
+    /// 扩展名必须保留 —— `QLThumbnailGenerator` 靠它挑解码器。
+    static func makeThumbnailScratchFile(named name: String) -> URL {
+        let ext = (name as NSString).pathExtension
+        let stem = UUID().uuidString
+        let filename = ext.isEmpty ? stem : "\(stem).\(ext)"
+        return thumbnailDirectory.appendingPathComponent(filename)
+    }
+
+    /// 清空缩略图缓存目录。启动时调一次。
+    static func clearThumbnails() {
+        clear(directory: thumbnailDirectory)
+    }
+
     /// 清空预览缓存。启动时调一次，之后每次新预览前（面板已关时）再调一次，
     /// 避免临时目录在一次会话里无限增长。
     static func clearPreviews() {
-        let fileManager = FileManager.default
-        guard let items = try? fileManager.contentsOfDirectory(
-            at: previewDirectory,
-            includingPropertiesForKeys: nil
-        ) else { return }
-        for item in items {
-            try? fileManager.removeItem(at: item)
-        }
+        clear(directory: previewDirectory)
     }
 
     static func makeStagingItem(named name: String) -> URL {
@@ -72,9 +95,14 @@ enum AppPaths {
     }
 
     static func clearStaging() {
+        clear(directory: stagingDirectory)
+    }
+
+    /// 清空一个目录下的**直接子项**。预览 / 暂存 / 缩略图三处的清理逻辑本是一份。
+    private static func clear(directory: URL) {
         let fileManager = FileManager.default
         guard let items = try? fileManager.contentsOfDirectory(
-            at: stagingDirectory,
+            at: directory,
             includingPropertiesForKeys: nil
         ) else { return }
         for item in items {

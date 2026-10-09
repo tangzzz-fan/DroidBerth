@@ -12,6 +12,30 @@ enum ConflictPolicy: String, CaseIterable, Sendable {
     }
 }
 
+/// 窗格的浏览形态（PRD §13）。
+///
+/// 刻意只有 `list` / `grid`：`column`（分栏，§13.2）尚未实现，先在分段控件里
+/// 摆一个按不动的段是**假可用**，比没有更糟 —— 与 §3.6 拒绝「先摆视图切换控件」
+/// 是同一条判据。分栏落地时再补第三段。
+enum ViewMode: String, CaseIterable, Sendable {
+    case list
+    case grid
+
+    var label: String {
+        switch self {
+        case .list: "列表"
+        case .grid: "网格"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .list: "list.bullet"
+        case .grid: "square.grid.2x2"
+        }
+    }
+}
+
 enum AppearanceMode: String, CaseIterable, Sendable {
     case system
     case light
@@ -72,6 +96,37 @@ final class AppSettings {
         didSet { defaults.set(panesSwapped, forKey: Key.panesSwapped) }
     }
 
+    /// Mac 窗格的浏览形态（PRD §13.3）。按窗格独立：双栏两侧的形态互不牵连。
+    var macViewMode: ViewMode {
+        didSet { defaults.set(macViewMode.rawValue, forKey: Key.macViewMode) }
+    }
+
+    /// 设备窗格的浏览形态（PRD §13.3）。
+    var deviceViewMode: ViewMode {
+        didSet { defaults.set(deviceViewMode.rawValue, forKey: Key.deviceViewMode) }
+    }
+
+    /// 网格图标边长（pt），PRD §13.3 的 ⌘+ / ⌘- 调整对象。
+    var gridIconSize: Double {
+        didSet { defaults.set(gridIconSize, forKey: Key.gridIconSize) }
+    }
+
+    /// 图标尺寸的上下限与步进。
+    ///
+    /// 下限 72 保证文件名还能读；上限 240 是「一屏正好铺 8～10 个」的素材浏览档位。
+    /// 再大只会让每行只剩两三个，失去俯视整卷的意义。
+    static let gridIconSizeRange: ClosedRange<Double> = 72...240
+    static let gridIconSizeStep: Double = 24
+
+    func adjustGridIconSize(by delta: Double) {
+        let range = Self.gridIconSizeRange
+        let clamped = min(max(gridIconSize + delta, range.lowerBound), range.upperBound)
+        if clamped != gridIconSize { gridIconSize = clamped }
+    }
+
+    var canEnlargeGridIcons: Bool { gridIconSize < Self.gridIconSizeRange.upperBound }
+    var canShrinkGridIcons: Bool { gridIconSize > Self.gridIconSizeRange.lowerBound }
+
     /// 最近打开过的 Mac 文件夹（新→旧），供「位置」弹窗用。
     private(set) var recentLocalFolders: [String] {
         didSet { defaults.set(recentLocalFolders, forKey: Key.recentLocalFolders) }
@@ -113,6 +168,10 @@ final class AppSettings {
         transferPanelPinned = defaults.object(forKey: Key.transferPanelPinned) as? Bool ?? false
         foldersFirst = defaults.object(forKey: Key.foldersFirst) as? Bool ?? true
         panesSwapped = defaults.object(forKey: Key.panesSwapped) as? Bool ?? false
+        macViewMode = ViewMode(rawValue: defaults.string(forKey: Key.macViewMode) ?? "") ?? .list
+        deviceViewMode = ViewMode(rawValue: defaults.string(forKey: Key.deviceViewMode) ?? "") ?? .list
+        let storedIconSize = defaults.double(forKey: Key.gridIconSize)
+        gridIconSize = storedIconSize > 0 ? storedIconSize : 112
         recentLocalFolders = defaults.stringArray(forKey: Key.recentLocalFolders) ?? []
         lastDestination = defaults.dictionary(forKey: Key.lastDestination) as? [String: String] ?? [:]
         wirelessAddress = defaults.dictionary(forKey: Key.wirelessAddress) as? [String: String] ?? [:]
@@ -153,6 +212,9 @@ final class AppSettings {
         static let transferPanelPinned = "ui.transferPanelPinned"
         static let foldersFirst = "list.foldersFirst"
         static let panesSwapped = "ui.panesSwapped"
+        static let macViewMode = "view.mac"
+        static let deviceViewMode = "view.device"
+        static let gridIconSize = "view.gridIconSize"
         static let recentLocalFolders = "list.recentLocalFolders"
         static let lastDestination = "device.lastDestination"
         static let wirelessAddress = "device.wirelessAddress"

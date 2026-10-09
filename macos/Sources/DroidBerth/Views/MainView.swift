@@ -141,27 +141,34 @@ struct MainView: View {
             if model.macSource == .files {
                 fileNavigationBar
                 Divider()
-                EntryTable(
-                    entries: macEntries,
-                    selection: $model.localSelection,
-                    emptyMessage: macEmptyMessage,
-                    onOpen: { entry in
-                        guard let local = model.localEntries.first(where: { $0.id == entry.id }) else { return }
-                        if local.isDirectory {
-                            model.navigateLocal(to: local.url)
-                        } else {
-                            model.openLocalEntry(local)
-                        }
-                    },
-                    onReveal: { entry in
-                        guard let local = model.localEntries.first(where: { $0.id == entry.id }) else { return }
-                        model.revealInFinder(local)
-                    },
-                    onUpload: { Task { await model.uploadSelection() } },
-                    onRefresh: { model.reloadLocal() },
-                    dragSide: .local,
-                    foldersFirst: model.settings.foldersFirst
-                )
+                switch model.viewMode(for: .mac) {
+                case .list:
+                    EntryTable(
+                        entries: macEntries,
+                        selection: $model.localSelection,
+                        emptyMessage: macEmptyMessage,
+                        onOpen: openMacEntry,
+                        onReveal: revealMacEntry,
+                        onUpload: { Task { await model.uploadSelection() } },
+                        onRefresh: { model.reloadLocal() },
+                        dragSide: .local,
+                        foldersFirst: model.settings.foldersFirst
+                    )
+                case .grid:
+                    EntryGrid(
+                        entries: macEntries,
+                        selection: $model.localSelection,
+                        emptyMessage: macEmptyMessage,
+                        iconSize: model.settings.gridIconSize,
+                        thumbnails: model.thumbnails,
+                        onOpen: openMacEntry,
+                        onReveal: revealMacEntry,
+                        onUpload: uploadLocalEntries,
+                        onRefresh: { model.reloadLocal() },
+                        dragSide: .local,
+                        foldersFirst: model.settings.foldersFirst
+                    )
+                }
                 localStatusBar
             } else {
                 PhotoSourceView(model: model)
@@ -310,23 +317,36 @@ struct MainView: View {
 
             Divider()
 
-            EntryTable(
-                entries: model.visibleRemoteEntries.map(BrowserEntry.init(remote:)),
-                selection: $model.remoteSelection,
-                emptyMessage: deviceEmptyMessage,
-                onOpen: { entry in
-                    guard let remote = model.remoteEntries.first(where: { $0.id == entry.id }) else { return }
-                    if remote.isDirectory {
-                        Task { await model.navigateRemote(to: remote.path) }
-                    }
-                },
-                onDelete: { showDeleteConfirm = true },
-                onDownload: { Task { await model.downloadSelection() } },
-                onNewFolder: { showNewFolder = true },
-                onRefresh: { Task { await model.loadRemote() } },
-                dragSide: .remote,
-                foldersFirst: model.settings.foldersFirst
-            )
+            switch model.viewMode(for: .device) {
+            case .list:
+                EntryTable(
+                    entries: model.visibleRemoteEntries.map(BrowserEntry.init(remote:)),
+                    selection: $model.remoteSelection,
+                    emptyMessage: deviceEmptyMessage,
+                    onOpen: openRemoteEntry,
+                    onDelete: { showDeleteConfirm = true },
+                    onDownload: { Task { await model.downloadSelection() } },
+                    onNewFolder: { showNewFolder = true },
+                    onRefresh: { Task { await model.loadRemote() } },
+                    dragSide: .remote,
+                    foldersFirst: model.settings.foldersFirst
+                )
+            case .grid:
+                EntryGrid(
+                    entries: model.visibleRemoteEntries.map(BrowserEntry.init(remote:)),
+                    selection: $model.remoteSelection,
+                    emptyMessage: deviceEmptyMessage,
+                    iconSize: model.settings.gridIconSize,
+                    thumbnails: model.thumbnails,
+                    onOpen: openRemoteEntry,
+                    onDownload: downloadRemoteEntries,
+                    onDelete: confirmDeleteRemoteEntries,
+                    onNewFolder: { showNewFolder = true },
+                    onRefresh: { Task { await model.loadRemote() } },
+                    dragSide: .remote,
+                    foldersFirst: model.settings.foldersFirst
+                )
+            }
 
             HStack {
                 Text("\(model.remoteEntries.count) 个项目")
@@ -443,6 +463,23 @@ struct MainView: View {
             deviceMenu
         }
 
+        // PRD §10：工具栏左＝视图切换，作用于**聚焦窗格**。
+        // 只有「列表 / 网格」两段 —— 分栏（§13.2）尚未实现，先摆一个按不动的段
+        // 属于假可用，比没有更糟（与 §3.6 拒绝「先摆视图切换控件」同一条判据）。
+        ToolbarItem(placement: .navigation) {
+            Picker("浏览形态", selection: viewModeBinding) {
+                ForEach(ViewMode.allCases, id: \.self) { mode in
+                    Image(systemName: mode.systemImage)
+                        .tag(mode)
+                        .accessibilityLabel(mode.label)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 78)
+            .help("切换聚焦窗格的浏览形态（⌘1 列表 / ⌘3 网格）")
+        }
+
         // PRD §10 要求 ⇄ 居中。放在两栏之间语义上也对 —— 它交换的正是这两栏。
         ToolbarItem(placement: .principal) {
             Button {
@@ -514,6 +551,13 @@ struct MainView: View {
 
     private var searchBinding: Binding<String> {
         Binding(get: { model.searchQuery }, set: { model.setSearchQuery($0) })
+    }
+
+    private var viewModeBinding: Binding<ViewMode> {
+        Binding(
+            get: { model.focusedViewMode },
+            set: { model.setViewMode($0, for: model.focus) }
+        )
     }
 
     private var moreMenu: some View {
@@ -596,6 +640,58 @@ struct MainView: View {
             let action: () -> Void = { Task { await model.navigateRemote(to: path) } }
             return (item.0, action)
         }
+    }
+
+    // MARK: - 窗格动作（列表与网格共用）
+
+    /// 下面这几个把 `BrowserEntry` 映射回 `AppModel` 的类型。
+    ///
+    /// 列表与网格的**零参**回调各自不同（列表靠系统帮它选中右键行，网格靠显式目标），
+    /// 但「打开 / 在 Finder 显示 / 上传 / 下载」的映射逻辑是同一份，抽在这里避免两份漂移。
+
+    private func openMacEntry(_ entry: BrowserEntry) {
+        guard let local = model.localEntries.first(where: { $0.id == entry.id }) else { return }
+        if local.isDirectory {
+            model.navigateLocal(to: local.url)
+        } else {
+            model.openLocalEntry(local)
+        }
+    }
+
+    private func revealMacEntry(_ entry: BrowserEntry) {
+        guard let local = model.localEntries.first(where: { $0.id == entry.id }) else { return }
+        model.revealInFinder(local)
+    }
+
+    private func openRemoteEntry(_ entry: BrowserEntry) {
+        guard let remote = model.remoteEntries.first(where: { $0.id == entry.id }), remote.isDirectory else { return }
+        Task { await model.navigateRemote(to: remote.path) }
+    }
+
+    private func downloadRemoteEntries(_ entries: [BrowserEntry]) {
+        let targets = entries.compactMap { entry in
+            model.remoteEntries.first { $0.path == entry.path }
+        }
+        guard !targets.isEmpty else { return }
+        Task { await model.downloadEntries(targets, toDirectory: model.localDirectory) }
+    }
+
+    /// 网格里「上传到设备」的显式目标版本。
+    ///
+    /// 只取 `.local`：照片图库条目的 `path` 是 `localIdentifier`，当文件路径用会指错。
+    private func uploadLocalEntries(_ entries: [BrowserEntry]) {
+        let urls = entries.filter { $0.origin == .local }.map { URL(fileURLWithPath: $0.path) }
+        guard !urls.isEmpty else { return }
+        Task { await model.uploadFiles(urls, toRemotePath: model.remoteDirectory) }
+    }
+
+    /// 网格里删除前先把选择对齐到右键的那一项，再走既有的确认弹窗。
+    ///
+    /// 复用确认弹窗（它读 `model.remoteSelection`）而不是另做一套，顺带让被右键的
+    /// 项拿到选中高亮 —— 与 Finder 右键的行为一致。
+    private func confirmDeleteRemoteEntries(_ entries: [BrowserEntry]) {
+        model.remoteSelection = Set(entries.map(\.id))
+        showDeleteConfirm = true
     }
 
     private func chooseLocalFolder() {

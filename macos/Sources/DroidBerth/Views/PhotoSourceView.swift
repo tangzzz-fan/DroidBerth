@@ -30,14 +30,38 @@ struct PhotoSourceView: View {
                     .frame(width: 168)
                 Divider()
                 VStack(spacing: 0) {
-                    EntryTable(
-                        entries: model.photos.items.map(\.asBrowserEntry),
-                        selection: $model.photoSelection,
-                        emptyMessage: model.photos.loadError ?? (model.photos.loadingItems ? "正在载入…" : "这个相簿是空的"),
-                        onOpen: { _ in },
-                        onUpload: { Task { await model.uploadSelection() } },
-                        onRefresh: { Task { await model.photos.loadItems() } }
-                    )
+                    // 照片图库沿用 Mac 窗格的浏览形态设置（PRD §13「两侧各自支持
+                    // 列表/网格视图」）。**缩略图暂缺**：图库条目的 path 是
+                    // localIdentifier，缩略图要走 PhotoKit 的 PHImageManager，
+                    // 不在本轮范围内 —— 网格里先回退类型图标，见改造方案 §4.1。
+                    switch model.viewMode(for: .mac) {
+                    case .list:
+                        EntryTable(
+                            entries: model.photos.items.map(\.asBrowserEntry),
+                            selection: $model.photoSelection,
+                            emptyMessage: photosEmptyMessage,
+                            onOpen: { _ in },
+                            onUpload: { Task { await model.uploadSelection() } },
+                            onRefresh: { Task { await model.photos.loadItems() } }
+                        )
+                    case .grid:
+                        EntryGrid(
+                            entries: model.photos.items.map(\.asBrowserEntry),
+                            selection: $model.photoSelection,
+                            emptyMessage: photosEmptyMessage,
+                            iconSize: model.settings.gridIconSize,
+                            thumbnails: model.thumbnails,
+                            onOpen: { _ in },
+                            onUpload: { entries in
+                                // 网格右键上传：先把选择对齐到目标，再走既有的
+                                // 「导出 → 推送」链路，不另写一套照片导出。
+                                model.photoSelection = Set(entries.map(\.id))
+                                Task { await model.uploadSelection() }
+                            },
+                            onRefresh: { Task { await model.photos.loadItems() } },
+                            foldersFirst: false
+                        )
+                    }
                     statusBar
                 }
             }
@@ -178,6 +202,10 @@ struct PhotoSourceView: View {
     }
 
     // MARK: - 动作
+
+    private var photosEmptyMessage: String {
+        model.photos.loadError ?? (model.photos.loadingItems ? "正在载入…" : "这个相簿是空的")
+    }
 
     private func openPrivacySettings() {
         let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Photos")

@@ -122,6 +122,25 @@ struct DroidBerthApp: App {
 
                 Button("交换两侧") { model.swapPanes() }
                     .keyboardShortcut("x", modifiers: [.command, .shift])
+
+                Divider()
+
+                // PRD §11 View 菜单：列表 ⌘1 / 分栏 ⌘2 / 网格 ⌘3。
+                // **⌘2 刻意缺席** —— 分栏视图（§13.2）尚未实现，挂一个什么都不做的
+                // 菜单项属于假可用（与工具栏只放两段是同一条判据）。
+                Button("列表视图") { model.setViewMode(.list, for: model.focus) }
+                    .keyboardShortcut("1", modifiers: .command)
+                Button("网格视图") { model.setViewMode(.grid, for: model.focus) }
+                    .keyboardShortcut("3", modifiers: .command)
+
+                Divider()
+
+                Button("放大图标") { model.enlargeGridIcons() }
+                    .keyboardShortcut("+", modifiers: .command)
+                    .disabled(!model.canEnlargeGridIcons)
+                Button("缩小图标") { model.shrinkGridIcons() }
+                    .keyboardShortcut("-", modifiers: .command)
+                    .disabled(!model.canShrinkGridIcons)
             }
 
             // ⌘, 打开设置。工具栏不再放齿轮 —— 设置属于 app 菜单，放两处只会让人犹豫。

@@ -51,6 +51,8 @@ final class AppModel {
     let wireless = WirelessManager()
     let photos = PhotoLibraryModel()
     let queue = TransferQueue()
+    /// 网格视图的缩略图缓存（PRD §13.3）。
+    let thumbnails = ThumbnailStore()
 
     var focus: Pane = .mac
     var macSource: MacSource = .files
@@ -100,6 +102,7 @@ final class AppModel {
     func start() {
         AppPaths.clearStaging()
         AppPaths.clearPreviews()
+        AppPaths.clearThumbnails()
         photos.refreshAccess()
         wireless.attach(monitor: monitor)
         monitor.start()
@@ -220,6 +223,7 @@ final class AppModel {
             remoteEntries = []
             remoteError = nil
             remoteAvailableBytes = nil
+            thumbnails.updateDevice(shell: nil, serial: nil)
             return
         }
         guard let shell = monitor.shell(for: device) else {
@@ -227,6 +231,9 @@ final class AppModel {
             remoteError = "未找到可用的 adb 可执行文件"
             return
         }
+
+        // 缩略图要先知道「往哪台设备、用什么 adb 取头」。换设备时 store 会自行清空缓存。
+        thumbnails.updateDevice(shell: shell, serial: device.serial)
 
         remoteLoading = true
         let path = remoteDirectory
@@ -871,13 +878,22 @@ final class AppModel {
 
     func deleteRemoteSelection() async {
         let entries = remoteEntries.filter { remoteSelection.contains($0.id) }
+        await deleteRemoteEntries(entries)
+    }
+
+    /// 删除给定的设备端条目。
+    ///
+    /// 抽成「显式目标」版本，是因为网格视图的右键菜单无法依赖系统帮忙选中
+    /// （`LazyVGrid` 没有 `contextMenu(forSelectionType:)`），必须能对右键的那一项
+    /// 直接动作，见 `EntryGrid.menu(for:)`。
+    func deleteRemoteEntries(_ entries: [RemoteEntry]) async {
         guard !entries.isEmpty else { return }
         guard let device = monitor.activeDevice, let shell = monitor.shell(for: device) else { return }
 
         let paths = entries.map(\.path)
         let result = await Task.detached(priority: .userInitiated) { shell.remove(paths) }.value
         if result.ok {
-            remoteSelection = []
+            remoteSelection.subtract(paths)
             await loadRemote()
         } else {
             banner = Banner(level: .error, title: "删除失败", detail: result.failureMessage)
@@ -986,6 +1002,34 @@ final class AppModel {
     func swapPanes() {
         panesSwapped.toggle()
     }
+
+    // MARK: - 浏览形态（PRD §13）
+
+    /// 视图形态**按窗格独立**（PRD §13「两侧各自支持列表/网格视图」）。
+    ///
+    /// 存进设置而不是内存：这是明确的浏览偏好，每次启动都要重选一遍会很烦。
+    func viewMode(for pane: Pane) -> ViewMode {
+        pane == .mac ? settings.macViewMode : settings.deviceViewMode
+    }
+
+    func setViewMode(_ mode: ViewMode, for pane: Pane) {
+        switch pane {
+        case .mac: settings.macViewMode = mode
+        case .device: settings.deviceViewMode = mode
+        }
+    }
+
+    /// 工具栏分段控件绑的是**聚焦窗格**的形态（PRD §10）。
+    var focusedViewMode: ViewMode {
+        get { viewMode(for: focus) }
+        set { setViewMode(newValue, for: focus) }
+    }
+
+    /// ⌘+ / ⌘- （PRD §13.3）。尺寸是全局偏好 —— 两栏用同一个图标大小才不显得碎。
+    func enlargeGridIcons() { settings.adjustGridIconSize(by: AppSettings.gridIconSizeStep) }
+    func shrinkGridIcons() { settings.adjustGridIconSize(by: -AppSettings.gridIconSizeStep) }
+    var canEnlargeGridIcons: Bool { settings.canEnlargeGridIcons }
+    var canShrinkGridIcons: Bool { settings.canShrinkGridIcons }
 
     /// ⌘⌥← / ⌘⌥→ 按**视觉位置**聚焦，而不是按 Mac / 设备 —— 交换之后不能反直觉。
     func focusLeftPane() { focus = leftPane }

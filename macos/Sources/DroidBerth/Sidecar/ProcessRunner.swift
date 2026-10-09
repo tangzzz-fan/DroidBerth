@@ -13,6 +13,23 @@ struct ProcessResult: Sendable {
     }
 }
 
+/// 与 `ProcessResult` 同构，但 stdout 保持**原始字节**。
+///
+/// 缩略图只拉远端文件头（PRD §13.3），而图片 / 视频头是二进制：走 `run(_:_:timeout:)`
+/// 会被 `String(decoding:as:UTF8.self)` 替换掉非法字节，头就废了。
+struct ProcessBinaryResult: Sendable {
+    let exitCode: Int32?
+    let stdout: Data
+    let stderr: String
+    let timedOut: Bool
+    let durationMs: Int
+    let spawnError: String?
+
+    var ok: Bool {
+        spawnError == nil && !timedOut && exitCode == 0
+    }
+}
+
 private final class OutputDrain: @unchecked Sendable {
     private let outHandle: FileHandle
     private let errHandle: FileHandle
@@ -39,6 +56,13 @@ private final class OutputDrain: @unchecked Sendable {
 
     var stdout: String { text(outData) }
     var stderr: String { text(errData) }
+
+    /// 原始字节。调用方需要在 UTF-8 解码之前拿到它（例如远端图片头）。
+    var stdoutData: Data {
+        lock.lock()
+        defer { lock.unlock() }
+        return outData
+    }
 
     private func text(_ data: Data) -> String {
         lock.lock()
@@ -70,6 +94,36 @@ private final class OutputDrain: @unchecked Sendable {
 
 enum ProcessRunner {
     static func run(_ executable: URL, _ arguments: [String], timeout: TimeInterval) -> ProcessResult {
+        let outcome = runCore(executable, arguments, timeout: timeout)
+        return ProcessResult(
+            exitCode: outcome.exitCode,
+            stdout: String(decoding: outcome.stdout, as: UTF8.self),
+            stderr: outcome.stderr,
+            timedOut: outcome.timedOut,
+            durationMs: outcome.durationMs,
+            spawnError: outcome.spawnError
+        )
+    }
+
+    /// 保留二进制 stdout 的变体（远端文件头，PRD §13.3）。
+    static func runBinary(_ executable: URL, _ arguments: [String], timeout: TimeInterval) -> ProcessBinaryResult {
+        let outcome = runCore(executable, arguments, timeout: timeout)
+        return ProcessBinaryResult(
+            exitCode: outcome.exitCode,
+            stdout: outcome.stdout,
+            stderr: outcome.stderr,
+            timedOut: outcome.timedOut,
+            durationMs: outcome.durationMs,
+            spawnError: outcome.spawnError
+        )
+    }
+
+    /// 两个公开入口共用的执行体：stdout 保持 `Data`，解码只在 `run` 那一侧发生。
+    private static func runCore(
+        _ executable: URL,
+        _ arguments: [String],
+        timeout: TimeInterval
+    ) -> (exitCode: Int32?, stdout: Data, stderr: String, timedOut: Bool, durationMs: Int, spawnError: String?) {
         let started = Date()
         let process = Process()
         process.executableURL = executable
@@ -85,9 +139,9 @@ enum ProcessRunner {
         do {
             try process.run()
         } catch {
-            return ProcessResult(
+            return (
                 exitCode: nil,
-                stdout: "",
+                stdout: Data(),
                 stderr: "",
                 timedOut: false,
                 durationMs: elapsed(since: started),
@@ -123,9 +177,9 @@ enum ProcessRunner {
         process.waitUntilExit()
         drain.waitForFinish(3)
 
-        return ProcessResult(
+        return (
             exitCode: process.terminationStatus,
-            stdout: drain.stdout,
+            stdout: drain.stdoutData,
             stderr: drain.stderr,
             timedOut: timedOut,
             durationMs: elapsed(since: started),

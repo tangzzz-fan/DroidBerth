@@ -70,6 +70,28 @@ struct DeviceShell: Sendable {
         shell("ls -d \(Self.quote(path)) 2>/dev/null").ok
     }
 
+    /// 只拉取远端文件的**前若干字节**，用于网格缩略图（PRD §13.3「缩略图只拉文件头」）。
+    ///
+    /// 两个刻意的选择：
+    /// - 用 `exec-out` 而**不是** `shell`。`adb shell` 的 stdout 走 pty，二进制的
+    ///   `\n` 会被翻译成 `\r\n`，图片 / 视频头当场损坏。`exec-out` 出的是原始字节流。
+    /// - 设备侧用 `dd` 而**不是** `head -c`：部分旧版 toybox 的 `head` 不支持 `-c`。
+    ///
+    /// 失败（无 dd、路径不可读、超时）统一返回 nil，由调用方回退类型图标 ——
+    /// 缩略图拿不到不是错误，不该往界面上抛。
+    func fetchHeader(_ path: String, maxBytes: Int, timeout: TimeInterval = 20) -> Data? {
+        guard maxBytes > 0 else { return nil }
+        let kilobytes = max(1, (maxBytes + 1023) / 1024)
+        let command = "dd if=\(Self.quote(path)) bs=1024 count=\(kilobytes) 2>/dev/null"
+        let result = ProcessRunner.runBinary(
+            adb,
+            ["-s", serial, "exec-out", command],
+            timeout: timeout
+        )
+        guard result.ok, !result.stdout.isEmpty else { return nil }
+        return result.stdout.count > maxBytes ? Data(result.stdout.prefix(maxBytes)) : result.stdout
+    }
+
     func makeDirectory(_ path: String) -> ShellResult {
         shell("mkdir -p \(Self.quote(path))")
     }

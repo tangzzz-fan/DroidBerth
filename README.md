@@ -36,7 +36,7 @@ ADB 二进制内嵌在 app 内 —— 用户不需要装 Android SDK、不需要
 | 产品定义 | 完成（`docs/0926_01_PRD.md`，**v2.1**） |
 | 技术路线验证 | **完成，判 Go**（`docs/0926_02_swift-native-spike-plan.md`） |
 | Swift 原生外壳 MVP | **已实现，核心链路真机验证通过**（`docs/0926_03_swift-native-mvp-implementation.md`） |
-| 视觉与交互 | **部分**：视觉基调已定（系统控件 + 原生材质）；**Phase 1 交互骨架 + Phase 2 工具栏/列表/传输面板已完成**（聚焦态描边 / Tab 循环 / 四向拖拽 / ⌘C⌘V 跨栏 / 空格 Quick Look / 列头排序 / 搜索 / 失败重试 / 位置弹窗 + 最近使用），**运行时行为待人工验收**。仍缺网格与分栏视图、无障碍，方案见 `docs/1009_01_uiux-revamp-plan.md` |
+| 视觉与交互 | **部分**：视觉基调已定（系统控件 + 原生材质）；**Phase 1 交互骨架 + Phase 2 工具栏/列表/传输面板 + Phase 3.1 网格视图已完成**（聚焦态描边 / Tab 循环 / 四向拖拽 / ⌘C⌘V 跨栏 / 空格 Quick Look / 列头排序 / 搜索 / 失败重试 / 位置弹窗 + 最近使用 / 网格 + 缩略图 + ⌘± 图标尺寸），**运行时行为待人工验收**。仍缺分栏视图、无障碍、照片图库缩略图，方案见 `docs/1009_01_uiux-revamp-plan.md` |
 | 公证与分发 | **未做**（架构范围已决策：**arm64-only**，放弃 Intel，见 PRD §5.1） |
 
 ---
@@ -46,7 +46,7 @@ ADB 二进制内嵌在 app 内 —— 用户不需要装 Android SDK、不需要
 ```
 macos/                    Swift 原生外壳（唯一应用工程）
   project.yml               xcodegen 工程定义
-  Sources/DroidBerth/       39 个 Swift 文件 / 5989 行
+  Sources/DroidBerth/       41 个 Swift 文件 / 6855 行
   Resources/                Info.plist + entitlements
   Scripts/build-sidecar.sh  编译 Rust sidecar 并暂存到 macos/Sidecar/
 sidecar/droidberth-adb/   Rust sidecar（1788 行 / 5 文件，零第三方依赖）
@@ -130,6 +130,8 @@ XcodeGen 会报 `Couldn't find current username` 且**静默不生成工程**。
 | `Space` | Quick Look 就地预览（远端文件先拉到 `$TMPDIR/DroidBerth/preview/`） |
 | `⌘F` | 聚焦搜索框（筛选作用于聚焦窗格，作用域在编辑查询时锁定） |
 | `⇧⌘X` | 交换左右窗格 |
+| `⌘1` / `⌘3` | 聚焦窗格切到列表 / 网格视图（`⌘2` 分栏未实现，**刻意不挂**） |
+| `⌘+` / `⌘-` | 放大 / 缩小网格图标（72–240 pt） |
 | `⇧⌘.` | 显示 / 隐藏隐藏文件 |
 | `Tab` / `⇧Tab` | 在左右窗格之间循环聚焦 |
 | `⌘⌥←` / `⌘⌥→` | 聚焦**屏幕上的**左 / 右窗格（⇄ 交换后仍按视觉位置走） |
@@ -143,7 +145,7 @@ XcodeGen 会报 `Couldn't find current username` 且**静默不生成工程**。
 > 因此输入框里的空格与 Tab 保持系统默认语义。**菜单里刻意不给它们挂快捷键**——无修饰键的菜单
 > 快捷键会先于文本框拿到事件。
 >
-> **未实现**：`⌘1` / `⌘2` / `⌘3`（视图切换，随分栏/网格一起做）、`⇧⌘P`（预览窗格）。
+> **未实现**：`⌘2`（分栏视图，随 Phase 3.2）、`⇧⌘P`（预览窗格）。
 
 ### 编译验证（无需 Rust 工具链 / adb）
 
@@ -193,12 +195,15 @@ build/dd/Build/Products/Release/DroidBerth.app/Contents/MacOS/DroidBerth --spike
 
 | 项 | 原因 |
 |---|---|
-| 视觉与交互验收（双击、拖拽、布局、Quick Look、跨栏粘贴、排序、搜索） | 开发环境无法截图 / 无法模拟点击，**需要人工操作**。双击 / 右键打开已人工确认可用；**Phase 1 / 2 新增的交互仍未验收** |
+| 视觉与交互验收（双击、拖拽、布局、Quick Look、跨栏粘贴、排序、搜索、网格选择） | 开发环境无法截图 / 无法模拟点击，**需要人工操作**。双击 / 右键打开已人工确认可用；**Phase 1 / 2 / 3.1 新增的交互仍未验收** |
+| **网格缩略图的远端成品率** | 只拉 64 KB 文件头再交给 `QLThumbnailGenerator`。**截断数据能否解码没有真机验证**：JPEG 通常可解出部分图像，HEIC / `moov` 在文件尾的 MP4 很可能解不出 ⇒ 回退类型图标。「一律拉完整文件」已被 PRD §23 明确拒绝 |
+| 网格「点空白处取消选择」与「单击选中」的延迟手感 | 单击与双击手势共存时 SwiftUI 会让单击等一个双击间隔；是否能接受需运行时确认 |
 | 照片图库作为素材来源 | 需要人工在授权弹窗点「允许」 |
 | App Translocation | 需要先有一个**已公证**的产物才能构造该场景 |
 | 设备窗格 → Finder 拖出 | **未实现**（需 `NSFilePromiseProvider`），见 `docs/1009_01_uiux-revamp-plan.md` §2.6 |
 | 设备端重命名 / 移动、⌘X 剪切 | **未实现**（需设备端 `mv`），属 Phase 4 |
-| 网格视图、分栏视图、无障碍标签 | **未实现**，属 Phase 3 |
+| 分栏视图、无障碍标签 | **未实现**，属 Phase 3.2 / 3.4（网格视图已在 Phase 3.1 落地） |
+| 照片图库网格的缩略图 | **未实现**：图库条目的 `path` 是 `localIdentifier`，缩略图要走 PhotoKit 的 `PHImageManager`；当前照片网格退类型图标 |
 | 工具栏搜索框的 `⌘F` 焦点行为 | `@FocusState` 在 `ToolbarItem` 里的行为**需运行时确认**；失败时降级为「点一下即可输入」，功能不受影响 |
 | 性能基线（相对裸 `adb push` 的开销） | 未测量 |
 | 干净 VM 上的安装验证 | 需要另一台机器 |

@@ -5,7 +5,7 @@
 | 分支 | `spike/swift-native-adb`（从 `494a95e` 分出） |
 | 日期 | 2026-09-26 |
 | 目的 | 回答一个 Go/No-Go 问题：**Swift 原生外壳 + 复用已验证的 Rust ADB 层**，这条组合是否成立 |
-| 依据 | `docs/0926_01_PRD.md`（产品定义）、`docs/risk-validation-report.md`（已验证结论）、本机 `MacOSX.sdk` 实测 |
+| 依据 | `docs/0926_01_PRD.md`（产品定义）、本机 `MacOSX.sdk` 实测 |
 
 > **阅读约定**：本方案区分「已实测」「推断」「未知」。第 7 节列出写方案时就承认的未知项 —— 它们不藏在正文里。
 
@@ -13,7 +13,7 @@
 
 ## 1. 要回答的问题
 
-**一句话**：把外壳从 Tauri/WKWebView 换成 SwiftUI/AppKit，ADB 层继续用已验证的 Rust sidecar，这条路能否成立？
+**一句话**：应用外壳用 SwiftUI / AppKit 原生实现，ADB 层继续用已验证的 Rust sidecar，这条组合能否成立？
 
 拆成四个**必须独立回答**的命题：
 
@@ -82,7 +82,7 @@ V1 和 V2 看起来都在讲「sidecar 能不能用」，但它们失败的方�
 
 **已知风险**
 
-- translocation 副本是只读的（文档 §6 已在 Tauri 结构上验过，但那是**另一个** bundle 结构，不能外推）
+- translocation 副本是只读的（该现象在**另一个** bundle 结构上验过，不能外推，必须在本工程的产物上重验）
 - 定位失败时的报错必须**列出试过哪些路径** —— 沿用 Rust 侧 `probes` 的思路。只说「没找到」是低效的
 
 ### V2 — Xcode 签名链（最高价值）
@@ -101,7 +101,7 @@ V1 和 V2 看起来都在讲「sidecar 能不能用」，但它们失败的方�
 | `Timestamp=` | 存在 |
 | `TeamIdentifier=` | 与 app 主二进制一致 |
 
-**要特别盯的一点**：`codesign` 不给 `--timestamp` 时走「系统默认」，而该默认**依赖证书类型**（Developer ID 自动加）。这条结论是在 **Tauri** 上测出来的，**Xcode 是另一个调用者，必须重测**。这正是文档 §3.6 的教训：受控实验的结论不能外推到它没覆盖的条件。
+**要特别盯的一点**：`codesign` 不给 `--timestamp` 时走「系统默认」，而该默认**依赖证书类型**（Developer ID 自动加）。这条结论是在**别的调用者**上测出来的，**Xcode 是另一个调用者，必须重测**。教训是通用的：受控实验的结论不能外推到它没覆盖的条件。
 
 **若判据不成立**
 
@@ -195,8 +195,8 @@ spike 的 UI **不追求好看**，只要求把 V1–V4 的每一条**判据与�
 | V1–V4 全过 | **Go** | 换栈成立；回 PRD 把第 2 轮的架构决定改为 Swift |
 | V1–V3 过、V4 无设备 | **条件 Go** | 补设备后复测 V4 |
 | V2 失败但有 workaround | **条件 Go** | 把 workaround 写进分发方案 |
-| V2 失败且无 workaround | **重新评估** | 说明 Swift 的分发成本高于 Tauri，与「保留已验证链路」的初衷相悖 |
-| V1 或 V3 失败 | **No-Go** | 记结论，回 Tauri 路线 |
+| V2 失败且无 workaround | **重新评估** | 说明原生外壳的分发成本高于预期，与「保留已验证链路」的初衷相悖 |
+| V1 或 V3 失败 | **No-Go** | 记结论，重新评估外壳方案 |
 
 ---
 
@@ -268,7 +268,7 @@ codesign --force --sign <hash> --timestamp -o runtime \
 三个要点：
 
 1. **`ENABLE_HARDENED_RUNTIME=YES` 会传播到「被拷贝进来的文件」** —— `-o runtime` 出现在 CodeSignOnCopy 步骤上。方案里的「已知未知 #3」据此关闭。
-2. **`--timestamp` 是显式的**，但它来自 `OTHER_CODE_SIGN_FLAGS`，**不是 Xcode 的默认行为**。这与 Tauri 不同：Tauri 靠「Developer ID 证书下 codesign 默认加时间戳」，Xcode 靠显式传参。**两者结果相同，机制不同** —— 这条差异值得记住。
+2. **`--timestamp` 是显式的**，但它来自 `OTHER_CODE_SIGN_FLAGS`，**不是 Xcode 的默认行为**——Xcode 在不设它时是**显式传 `--timestamp=none`**（见 §10.1）。所以「Developer ID 证书下 codesign 会自动加时间戳」这条规则**不适用于 Xcode 这条路**，必须显式传参。
 3. **`--preserve-metadata=identifier,entitlements,flags`** 会保留被拷贝文件原有的 identifier 与 entitlements。对 `adb` 这种第三方二进制，实测它的 `Identifier=adb` 被保留了下来。
 
 ### 9.3 方案里两个「已知未知」的答案
@@ -325,7 +325,7 @@ open build/Release/DroidBerth.app
 
 ### 10.1 `--timestamp` 的真实机制（修正 §9.2 第 2 点）
 
-§9.2 说「Tauri 靠证书默认，Xcode 靠显式传参 —— 两者结果相同，机制不同」。**前半句对，后半句不准确。**
+§9.2 把这个差异记成「两者结果相同，机制不同」。**前半句对，后半句不准确。**
 
 读 Xcode 在**不设** `OTHER_CODE_SIGN_FLAGS` 时实际拼的 argv：
 
@@ -341,7 +341,7 @@ codesign --force --sign <hash> -o runtime --requirements '=designated => ...' \
 
 | 调用方式 | 结果 | 来源 |
 |---|---|---|
-| 完全不传 `--timestamp` | 走系统默认 → Developer ID 证书**自动加** | 上一轮在 Tauri 上实测 |
+| 完全不传 `--timestamp` | 走系统默认 → Developer ID 证书**自动加** | 另一轮实测（非 Xcode 调用者） |
 | `--timestamp` | 有 | 本轮 A/B |
 | `--timestamp=none` | **无**（`Signed Time=`） | 本轮 A/B，Xcode 的默认行为 |
 
@@ -412,7 +412,7 @@ Xcode 对 Copy Files 进来的文件用 `--preserve-metadata=identifier,entitlem
 | `droidberth-adb` | **无** |
 | `adb` | **无** |
 
-**这与 Tauri 的行为相反** —— Tauri 会把外层 app 的 entitlements 传给每个 SignTarget。
+**这与「签名方会把外层 app 的 entitlements 转发给每个签名目标」的常见预期相反** —— Xcode 不会。
 
 **实测影响**：无 entitlements 的两个 sidecar 仍然完成了 V4 全链路（`push` 退出码 0、`ls -l` 复核落地）。**本场景不需要给 sidecar 补 entitlements。**
 
@@ -519,7 +519,6 @@ VideoPlayer(player: AVPlayer(url: localURL))
 并且范围要写成**可直接复制执行的命令**——否则无法判断结论是否只是范围不够。
 本条的错误正是「文档里写的命令能命中，而结论说没命中」。
 
-> 同类形状参见 `docs/risk-validation-report.md` §3.6：
-> 受控实验的结论不能外推到它没覆盖的条件。
+> 同类形状的教训：**受控实验的结论不能外推到它没覆盖的条件。**
 
 

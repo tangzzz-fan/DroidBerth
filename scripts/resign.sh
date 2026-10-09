@@ -3,9 +3,9 @@ set -euo pipefail
 source "$(cd "$(dirname "$0")" && pwd)/env.sh"
 
 APP="${1:-$APP_PATH}"
-SIDECAR_ENTITLEMENTS="$ROOT/src-tauri/entitlements.sidecar.plist"
-APP_ENTITLEMENTS="$ROOT/src-tauri/entitlements.plist"
-ENTITLEMENTS="${DROIDBERTH_SIDECAR_ENTITLEMENTS:-$SIDECAR_ENTITLEMENTS}"
+# Swift 路线：sidecar 不需要额外 entitlements（见 0926_02 §10），
+# 外层 app 用 Xcode 工程里同一份 entitlements，避免「脚本与工程各签一份」的分叉。
+APP_ENTITLEMENTS="$ROOT/macos/Resources/DroidBerth.entitlements"
 
 if [ ! -d "$APP" ]; then
   echo "no app bundle at $APP" >&2
@@ -14,8 +14,8 @@ fi
 
 IDENTITY="$(detect_identity)"
 export APPLE_SIGNING_IDENTITY="$IDENTITY"
-echo "identity             : $IDENTITY"
-echo "sidecar entitlements : $ENTITLEMENTS"
+echo "identity     : $IDENTITY"
+echo "entitlements : $APP_ENTITLEMENTS"
 echo
 
 sign() {
@@ -43,10 +43,7 @@ COUNT=0
 echo "==> re-signing nested Mach-O files, deepest first"
 while IFS= read -r f; do
   [ -n "$f" ] || continue
-  case "$f" in
-    "$APP/Contents/MacOS/$SIDECAR_NAME"*) sign "$f" "$ENTITLEMENTS" ;;
-    *) sign "$f" ;;
-  esac
+  sign "$f"
   COUNT=$((COUNT + 1))
   printf '  %s\n' "${f#"$APP"/}"
 done < "$WORK/macho"

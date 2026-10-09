@@ -5,7 +5,7 @@ source "$(cd "$(dirname "$0")" && pwd)/env.sh"
 CANDIDATES=(
   "${1:-}"
   "$APP_PATH/Contents/MacOS/$SIDECAR_NAME"
-  "$ROOT/src-tauri/binaries/$SIDECAR_NAME-$TARGET_ARM"
+  "$ROOT/macos/Sidecar/$SIDECAR_NAME"
   "$ROOT/sidecar/$SIDECAR_NAME/target/release/$SIDECAR_NAME"
 )
 
@@ -27,6 +27,7 @@ echo
 
 "$SIDECAR" doctor --table
 STATUS=$?
+set +e
 
 echo
 if [ -d "$APP_PATH" ]; then

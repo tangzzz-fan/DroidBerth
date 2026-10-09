@@ -16,7 +16,7 @@
 
 PRD §10–§25 定义了一整套 Finder 级交互（拖拽、跨栏传输、三种视图、Quick Look、全键盘导航），但 MVP 只落地了「列表 + 右键菜单 + 深色模式」三块。当前形态更接近**一个能传文件的表格页**，而不是文件管理器。
 
-同时，**PRD 自身的 UX 章节已经过时**：它写于 2026-09-26，当时判断继续走 Tauri；此后技术路线切到 Swift 原生（`docs/0926_02`、`0926_03`），PRD 里所有**实现约束**都指向 WKWebView，成为失效判据。
+同时，**PRD 自身的 UX 章节当时也已过时**：它写于 2026-09-26，其**实现约束**停留在抽象口号与 Web 渲染的假设上，落不到 SwiftUI 的控件层，成为失效判据。
 
 因此改造顺序必须是：**先修 PRD（Phase 0）→ 再修 UX（Phase 1+）**。若不先修，后续每次交互评审都会拿错尺子。
 
@@ -27,22 +27,22 @@ PRD §10–§25 定义了一整套 Finder 级交互（拖拽、跨栏传输、�
 ### 1.1 为什么必须前置
 
 PRD 的产品意图（双栏、拖拽、⌘C/⌘V 跨栏、三视图）**全部仍然有效**，不需要推翻。
-需要改的是**实现约束**——它们描述的是 Tauri/WKWebView 的能力边界，对 SwiftUI 不成立，继续留在文档里会误导实现者。
+需要改的是**实现约束**——它们描述的是抽象的渲染能力边界，落不到 SwiftUI / AppKit 的真实控件上，继续留在文档里会误导实现者。
 
 ### 1.2 精确改动清单
 
 | PRD 章节 | 现内容 | 问题 | 改法 |
 |---|---|---|---|
 | §8 原则一 | 「照 HIG 自绘，并承认这是自绘」 | SwiftUI 系统控件本就是原生的，无需自绘 | 改为「优先系统控件（SwiftUI / AppKit），不自造系统已有之物」 |
-| §8 原则二 | `titleBarStyle: "Overlay"` + 78px 交通灯预留 | Tauri 专有属性 | 删除。SwiftUI 走 `.toolbar` + `ToolbarItem` + `.windowStyle(.hiddenTitleBar)`（按需） |
+| §8 原则二 | 「自绘标题栏 + 78px 交通灯预留区」 | 与系统窗口装饰冲突 | 删除。SwiftUI 走 `.toolbar` + `ToolbarItem`（`.windowStyle(.hiddenTitleBar)` 按需） |
 | §8 原则三 | 材质只能用 `backdrop-filter` 近似，且「不做比硬仿好」 | 前提消失：SwiftUI 有原生 `.regularMaterial` / `.bar` | 改为「材质用原生 Material API；导航层可用，内容区不用」 |
 | §10 窗口与工具栏 | 同 §8，含交通灯预留区 | 同上 | 重写为 `NSToolbar` / SwiftUI `toolbar` 布局，保留控件清单 |
-| §21 外观 | 「在 Tauri 里必须 Rust 侧设 `NSApp.appearance`」 | 结论正确、路径过时（`AppearanceController` 已实现） | 保留结论，更新为「经 `NSApplication.shared.appearance` 驱动」 |
-| §23 Quick Look | `tauri-plugin-quicklook` 包装 `QLPreviewPanel`，`qlmanage -p` 兜底 | 方案过时 | 改为 SwiftUI `.quickLookPreview(_:)`（macOS 14+）；保留远端文件需先落地的约束 |
+| §21 外观 | 「外观必须由底层（非 UI 层）驱动 `NSApp.appearance`」 | 结论正确、措辞过时（`AppearanceController` 已实现） | 保留结论，更新为「经 `NSApplication.shared.appearance` 驱动」 |
+| §23 Quick Look | 「插件包装 `QLPreviewPanel`，`qlmanage -p` 兜底」 | 方案过时 | 改为 SwiftUI `.quickLookPreview(_:)`（**须同时 `import QuickLook`**）；保留远端文件需先落地的约束 |
 | §13.2 分栏视图 | 「`NSBrowser` 的自绘复刻」 | 措辞过时 | 改为「`NSViewRepresentable` 包装 `NSBrowser`」或明确自绘范围 |
-| §5 非功能需求 | 内存 ≤150 MB 标注为「Tauri + WebView 基线」 | 基线过时 | 按 Swift 原生重设目标并实测 |
-| §0 变更表 #3 / #4 | 以 Tauri 为理由 | 历史记录 | 加注「技术路线已于 0926 切至 Swift 原生，本行理由仅存历史」 |
-| §6.2 / §7 | 含 Tauri 相关约束与路线 | 部分过时 | 逐条复核，标注「Tauri 路线，仅存对照」 |
+| §5 非功能需求 | 内存 ≤150 MB 标注为「WebView 时期基线」 | 基线过时 | 按 Swift 原生重设目标并实测 |
+| §0 变更表 #3 / #4 | 理由写在抽象渲染假设上 | 理由过时 | 改为按产品形态与控件层表述（已改） |
+| §6.2 / §7 | 含与具体外壳实现绑定的约束 | 部分过时 | 逐条复核，改写为 `macos/` 工程的实际约束 |
 
 ### 1.3 产出
 
@@ -51,7 +51,7 @@ PRD 的产品意图（双栏、拖拽、⌘C/⌘V 跨栏、三视图）**全部�
 
 ### 1.4 验收点
 
-PRD 内不再出现任何作为**实现依据**的 Tauri/WKWebView/CSS 约束；所有 UX 章节的约束在 SwiftUI 下可执行。
+PRD 内不再出现任何作为**实现依据**的抽象渲染约束；所有 UX 章节的约束在 SwiftUI 下可执行。
 
 ---
 
@@ -254,7 +254,7 @@ Phase 0（PRD 对齐）                                    ✅ 已完成
 
 ## 8. 总验收清单
 
-- [x] PRD 升版 v2.1，UX 章节无 Tauri 实现约束
+- [x] PRD 升版 v2.1，UX 章节无过时的实现约束
 - [x] 四向拖拽可用，不可写目录有禁止反馈（设备 → Finder 除外，见 §2.6）
 - [x] ⌘C/⌘V 跨栏传输可用，文本框内恢复文本语义
 - [x] 空格 Quick Look 可用（本地就地、远端先落地）

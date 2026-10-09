@@ -1,6 +1,8 @@
 #!/bin/bash
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# 取自 BASH_SOURCE；但交互式 zsh 里 `source scripts/env.sh` 时 BASH_SOURCE 为空，
+# 会静默把 ROOT 算到仓库外一层。zsh 的 source 会把 $0 设为被 source 的文件，故回退到 $0。
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
 export ROOT
 
 load_env_file() {
@@ -34,38 +36,26 @@ if [ -d "$RUST_ROOT/cargo/bin" ]; then
   esac
 fi
 
+# 架构范围：v1 只发 Apple Silicon（PRD §5.1 已决策放弃 Intel）。
+# 因此不再产出 x86_64 / universal 变体，也没有对应的 TARGET_* 变量。
 export TARGET_ARM="aarch64-apple-darwin"
-export TARGET_INTEL="x86_64-apple-darwin"
-export TARGET_UNIVERSAL="universal-apple-darwin"
 
 export SIDECAR_NAME="droidberth-adb"
 export APP_NAME="DroidBerth"
 
+# Swift 原生路线的产物位置：xcodegen 生成工程，xcodebuild 用固定 derivedDataPath。
+export SWIFT_DIR="$ROOT/macos"
+export CONFIGURATION="${CONFIGURATION:-Release}"
+
 detect_bundle_dir() {
-  if [ -n "${TARGET_TRIPLE:-}" ]; then
-    printf '%s' "$ROOT/src-tauri/target/$TARGET_TRIPLE/release/bundle"
-    return 0
-  fi
-  local candidates=(
-    "$ROOT/src-tauri/target/aarch64-apple-darwin/release/bundle"
-    "$ROOT/src-tauri/target/universal-apple-darwin/release/bundle"
-    "$ROOT/src-tauri/target/x86_64-apple-darwin/release/bundle"
-    "$ROOT/src-tauri/target/release/bundle"
-  )
-  local c
-  for c in "${candidates[@]}"; do
-    if [ -d "$c" ]; then
-      printf '%s' "$c"
-      return 0
-    fi
-  done
-  printf '%s' "$ROOT/src-tauri/target/aarch64-apple-darwin/release/bundle"
+  local derived_data="${DROIDBERTH_DERIVED_DATA:-$SWIFT_DIR/build/dd}"
+  printf '%s' "$derived_data/Build/Products/$CONFIGURATION"
 }
 
 export_bundle_paths() {
   export BUNDLE_DIR="$(detect_bundle_dir)"
-  export APP_PATH="$BUNDLE_DIR/macos/$APP_NAME.app"
-  export DMG_DIR="$BUNDLE_DIR/dmg"
+  export APP_PATH="$BUNDLE_DIR/$APP_NAME.app"
+  export DMG_DIR="$SWIFT_DIR/build/dmg"
 }
 
 export_bundle_paths

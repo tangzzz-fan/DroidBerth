@@ -9,41 +9,37 @@ ADB 二进制内嵌在 app 内 —— 用户不需要装 Android SDK、不需要
 
 > **它不是**设备管理器，不是开发者工具，不是备份工具。范围刻意收窄。
 
+**技术路线：Swift 原生（SwiftUI + AppKit），复用 Rust sidecar。** 全仓库单一实现路线，不存在并行的第二套外壳；`macos/` 是唯一的应用工程，`sidecar/` 是唯一的 ADB 定位 / 诊断组件。
+
 ---
 
 ## 当前状态
 
-**这是一个处于风险验证 + MVP 阶段的仓库，不是可发布的产品。** 请按下面的「验证状态」理解它的成熟度。
+**这是一个处于 MVP 阶段的仓库，不是可发布的产品。** 请按下面的「验证状态」理解它的成熟度。
 
 | 层 | 状态 |
 |---|---|
-| 产品定义 | 完成（`docs/0926_01_PRD.md`，**v2.1** 已对齐 Swift 原生路线） |
+| 产品定义 | 完成（`docs/0926_01_PRD.md`，**v2.1**） |
 | 技术路线验证 | **完成，判 Go**（`docs/0926_02_swift-native-spike-plan.md`） |
 | Swift 原生外壳 MVP | **已实现，核心链路真机验证通过**（`docs/0926_03_swift-native-mvp-implementation.md`） |
 | 视觉与交互 | **部分**：视觉基调已定（系统控件 + 原生材质）；**Phase 1 交互骨架 + Phase 2 工具栏/列表/传输面板已完成**（聚焦态描边 / Tab 循环 / 四向拖拽 / ⌘C⌘V 跨栏 / 空格 Quick Look / 列头排序 / 搜索 / 失败重试 / 位置弹窗 + 最近使用），**运行时行为待人工验收**。仍缺网格与分栏视图、无障碍，方案见 `docs/1009_01_uiux-revamp-plan.md` |
 | 公证与分发 | **未做**（架构范围已决策：**arm64-only**，放弃 Intel，见 PRD §5.1） |
-
-仓库里存在**两条技术路线**的代码，这是历史原因，不是并列关系：
-
-- **`macos/`（Swift 原生，当前路线）** —— SwiftUI + 复用已验证的 Rust sidecar。已判 Go，MVP 在此推进。
-- **`src-tauri/` + `src/`（Tauri v2，前序路线）** —— 用于回答「Tauri + ADB sidecar 的 macOS 分发风险」这一批问题。验证结论已沉淀进 `docs/`，代码保留作对照，**不再是开发主线**。
 
 ---
 
 ## 仓库结构
 
 ```
-macos/                    Swift 原生外壳（当前路线）
+macos/                    Swift 原生外壳（唯一应用工程）
   project.yml               xcodegen 工程定义
   Sources/DroidBerth/       39 个 Swift 文件 / 5977 行
   Resources/                Info.plist + entitlements
-  Scripts/build-sidecar.sh  编译 Rust sidecar 并暂存
-sidecar/droidberth-adb/   Rust sidecar（1787 行 / 5 文件）
+  Scripts/build-sidecar.sh  编译 Rust sidecar 并暂存到 macos/Sidecar/
+sidecar/droidberth-adb/   Rust sidecar（1787 行 / 5 文件，零第三方依赖）
                           version / doctor / resolve / exec / raw 五个子命令
-src-tauri/ + src/         Tauri 路线（前序，保留作对照）
-scripts/                  两条路线共用的构建、签名、公证脚本
+scripts/                  构建、签名、公证脚本（Swift 路线）
 vendor/                   adb 源码与 platform-tools（见「依赖与许可」）
-docs/                     产品文档、验证方案、实现文档、风险报告
+docs/                     产品文档、验证方案、实现文档、UI/UX 改造方案
 reports/                  doctor 报告输出
 ```
 
@@ -57,7 +53,7 @@ SidecarLocator.locate()          相对 Bundle.main.executableURL 的同级目�
        └─ 得到真实 adb 路径 → 之后所有设备操作直接调 adb
 ```
 
-`doctor` 的 14 项检查是上一轮验证过的判据设计，复用它们等于免费继承一套诊断能力；
+`doctor` 的 14 项检查是一套可复跑的判据设计，复用它们等于免费继承一套诊断能力；
 而每次 `shell` 都绕一层 sidecar 只会多一次进程启动开销，没有收益。
 
 ---
@@ -66,13 +62,22 @@ SidecarLocator.locate()          相对 Bundle.main.executableURL 的同级目�
 
 ### 前置条件
 
-- macOS 14+，Apple Silicon
+- macOS 14+，Apple Silicon（v1 不做 Intel，见 PRD §5.1）
 - Xcode（含命令行工具）
 - [xcodegen](https://github.com/yonaskolb/XcodeGen) 2.46.0
 - Rust 工具链（由 `scripts/env.sh` 注入 `RUSTUP_HOME` / `CARGO_HOME`）
-- Developer ID 证书（仅签名相关步骤需要）
+- Developer ID 证书（仅签名 / 公证相关步骤需要）
 
-### 步骤
+### 一键构建
+
+```bash
+./scripts/build.sh
+```
+
+它会依次：暂存 sidecar → `xcodegen generate` → `xcodebuild`。
+产物：`macos/build/dd/Build/Products/Release/DroidBerth.app`。
+
+### 分步（等价，便于调试）
 
 ```bash
 # 1. 暂存 sidecar —— 必须先跑，否则 Xcode 的 preBuildScript 直接 fail
@@ -90,6 +95,15 @@ open build/dd/Build/Products/Release/DroidBerth.app
 
 `USER=$(id -un)` **不是装饰**：某些 shell 环境里 `USER` 未设置，
 XcodeGen 会报 `Couldn't find current username` 且**静默不生成工程**。
+
+### 签名与公证
+
+```bash
+./scripts/checklist.sh                    # 跑 sidecar 的 14 项自检
+./scripts/notarize.sh                     # zip → 公证 → staple → 出 DMG → 公证 DMG
+./scripts/resign.sh                       # 需要在 Xcode 之外重签时用
+./scripts/verify-clean.sh <dmg> --apply --replace --quarantine
+```
 
 ### 快捷键
 
@@ -192,9 +206,7 @@ MediaStore 的 **file 表，涵盖所有文件类型**。结果是上传 `.txt` 
 | `docs/0926_02_swift-native-spike-plan.md` | 换栈 Go/No-Go 验证方案与执行记录（V1–V4） |
 | `docs/0926_03_swift-native-mvp-implementation.md` | **MVP 实现文档**：架构、三个已修缺陷、验证边界、未验证项 |
 | `docs/1009_01_uiux-revamp-plan.md` | **UI/UX 分阶段改造方案**：交互层差距矩阵、Phase 0–4 任务分解与验收点 |
-| `docs/risk-validation-report.md` | Tauri 路线的 macOS 分发风险验证 |
-| `docs/reusable-solutions-and-pitfalls.md` | 可复用方案与避坑清单 |
-| `docs/article-embedding-adb-in-macos-app.md` | 在 macOS app 内嵌 ADB 的实践记录 |
+| `.scratch/ui-simplification-tickets.md` | UI 精简（方案 A）+ P0 第一批 ticket 队列 |
 
 ---
 
@@ -224,7 +236,7 @@ MediaStore 的 **file 表，涵盖所有文件类型**。结果是上传 `.txt` 
 - sidecar 定位用**相对自身可执行文件**的路径，不用安装路径拼接。
 - 子进程封装必须**同时抽干 stdout 和 stderr**，并带超时。
 - 禁止手写 `hdiutil create`，统一走 `scripts/env.sh` 的 `make_signed_dmg()`。
-- 不要把 `src-tauri/binaries/adb-*` 打进产品包（体积与许可双重理由）。
+- adb 只暂存到 `macos/Sidecar/`（该目录已被 `.gitignore` 排除），**不提交、不随仓库分发**。
 
 ---
 

@@ -21,12 +21,8 @@ BUILT="$SIDECAR_SRC/target/$TRIPLE/release/droidberth-adb"
 cp "$BUILT" "$STAGE/droidberth-adb"
 printf '    %s\n' "$STAGE/droidberth-adb"
 
-ADB_SRC=""
-for candidate in \
-  "$ROOT/src-tauri/binaries/adb-$TRIPLE" \
-  "$ROOT/vendor/platform-tools/adb"; do
-  if [ -x "$candidate" ]; then ADB_SRC="$candidate"; break; fi
-done
+ADB_SRC="$ROOT/vendor/platform-tools/adb"
+[ -x "$ADB_SRC" ] || ADB_SRC=""
 
 if [ -n "$ADB_SRC" ]; then
   cp "$ADB_SRC" "$STAGE/adb"

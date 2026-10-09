@@ -139,7 +139,7 @@ def build_icns(master, out_dir, iconset_dir, icns_path):
 
 
 def main():
-    out_dir = sys.argv[1] if len(sys.argv) > 1 else "src-tauri/icons"
+    out_dir = sys.argv[1] if len(sys.argv) > 1 else "macos/Resources"
     os.makedirs(out_dir, exist_ok=True)
     master = os.path.join(out_dir, "icon.png")
     print(f"rendering {SIZE}x{SIZE} master with {SS}x{SS} supersampling...")

@@ -383,16 +383,17 @@ fn doctor_report(table: bool) -> J {
         String::new(),
     );
 
-    let universal_ok = app_archs.len() > 1 && sidecar_archs.len() > 1;
+    let arm64_ok = app_archs.iter().any(|a| a.as_str() == "arm64")
+        && sidecar_archs.iter().any(|a| a.as_str() == "arm64");
     check(
         7,
-        "bundle.universal",
+        "bundle.arch",
         "module-1",
-        "Universal binary covers arm64 and x86_64",
+        "App and sidecar both contain arm64",
         "medium",
         if main_exe.is_none() {
             "skip"
-        } else if universal_ok {
+        } else if arm64_ok {
             "pass"
         } else {
             "fail"
@@ -402,7 +403,7 @@ fn doctor_report(table: bool) -> J {
             app_archs.join(" "),
             sidecar_archs.join(" ")
         ),
-        "Tauri looks for binaries/<name>-<target-triple>; ship both aarch64-apple-darwin and x86_64-apple-darwin.".into(),
+        "v1 ships Apple Silicon only (PRD §5.1) -- Intel was dropped, so no universal build is produced or expected.".into(),
     );
 
     let size_measured = dmg_mb.unwrap_or(app_dir_mb);
@@ -589,7 +590,7 @@ fn doctor_report(table: bool) -> J {
         "high",
         if sequoia { "pass" } else { "fail" },
         format!("macOS {} ({})", host.version, host.build),
-        "A macOS 14 pass does not imply a macOS 15 pass; the doc requires the clean-environment check on Sequoia.".into(),
+        "A macOS 14 pass does not imply a macOS 15 pass; the clean-environment check must be run on Sequoia.".into(),
     );
 
     check(

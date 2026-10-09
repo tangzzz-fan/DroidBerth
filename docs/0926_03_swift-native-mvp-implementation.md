@@ -20,7 +20,7 @@
 
 | 项 | 状态 |
 |---|---|
-| SwiftUI 原生外壳替换 Tauri/WKWebView | **已实现**，Release 可构建、可运行 |
+| SwiftUI 原生外壳 | **已实现**，Release 可构建、可运行 |
 | 复用已验证的 Rust sidecar | **成立**，sidecar 一行未改 |
 | 签名链 | **通过**（三项判据全中，见 §3.4） |
 | 双向文件传输 | **真机实测通过**（上传 / 下载 / 文件夹递归 / 重名 / SHA 回验 / 进度上报） |
@@ -123,7 +123,7 @@ XcodeGen 会报 `Couldn't find current username` 且**静默不生成工程**。
 
 | 设置 | 状态 |
 |---|---|
-| `OTHER_CODE_SIGN_FLAGS: "--timestamp"` | **必需**。Xcode 在**不设**它时是显式传 `--timestamp=none`（不是「省略」）。「缺 `--timestamp` 不是缺陷」这条结论**不能从 Tauri 外推到 Xcode** |
+| `OTHER_CODE_SIGN_FLAGS: "--timestamp"` | **必需**。Xcode 在**不设**它时是显式传 `--timestamp=none`（不是「省略」）。「缺 `--timestamp` 不是缺陷」这条结论**不能从别的调用者外推到 Xcode** |
 | `CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO` | **必需**。默认为 `YES`，会往 Release 里注入 `com.apple.security.get-task-allow`，**直接挡公证** |
 | `ENABLE_USER_SCRIPT_SANDBOXING: NO` | **必要性未证实**。见下方说明 |
 
@@ -487,5 +487,4 @@ build/dd/Build/Products/Release/DroidBerth.app/Contents/MacOS/DroidBerth --spike
 |---|---|
 | `docs/0926_01_PRD.md` | 产品定义。本文不重复其内容 |
 | `docs/0926_02_swift-native-spike-plan.md` | Go/No-Go 验证方案与执行记录。本文的 §2.3 / §5.2 直接承接其结论，**不推翻任何一条** |
-| `docs/risk-validation-report.md` | Tauri 路线的分发风险验证。其 §3.6「受控实验的结论不能外推到它没覆盖的条件」正是本文 §2.3 三条设置的来源 |
-| `docs/reusable-solutions-and-pitfalls.md` | 可复用方案与避坑清单 |
+| `docs/1009_01_uiux-revamp-plan.md` | 交互层的分阶段改造方案、差距矩阵与验收点 |

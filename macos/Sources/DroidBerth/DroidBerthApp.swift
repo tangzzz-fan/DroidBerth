@@ -125,11 +125,11 @@ struct DroidBerthApp: App {
 
                 Divider()
 
-                // PRD §11 View 菜单：列表 ⌘1 / 分栏 ⌘2 / 网格 ⌘3。
-                // **⌘2 刻意缺席** —— 分栏视图（§13.2）尚未实现，挂一个什么都不做的
-                // 菜单项属于假可用（与工具栏只放两段是同一条判据）。
+                // PRD §11 View 菜单：列表 ⌘1 / 分栏 ⌘2 / 网格 ⌘3。三段随 Phase 3.2 齐了。
                 Button("列表视图") { model.setViewMode(.list, for: model.focus) }
                     .keyboardShortcut("1", modifiers: .command)
+                Button("分栏视图") { model.setViewMode(.column, for: model.focus) }
+                    .keyboardShortcut("2", modifiers: .command)
                 Button("网格视图") { model.setViewMode(.grid, for: model.focus) }
                     .keyboardShortcut("3", modifiers: .command)
 
@@ -141,6 +141,42 @@ struct DroidBerthApp: App {
                 Button("缩小图标") { model.shrinkGridIcons() }
                     .keyboardShortcut("-", modifiers: .command)
                     .disabled(!model.canShrinkGridIcons)
+            }
+
+            // PRD §11 Device 菜单。此前这些动作只散落在工具栏的「设备」下拉与「⋯」里，
+            // 进菜单是为了可发现性 —— 用键盘的人不会去翻工具栏。
+            //
+            // **「连接设备…」（主动连接向导）刻意缺席**：它需要一套输入 IP / 配对的
+            // 交互，尚未实现。与工具栏只放能用的段、⌘2 补不上就不挂是同一条判据 ——
+            // 摆一个永远灰着的项是假可用。
+            CommandMenu("设备") {
+                Button("设备信息…") {
+                    Task { await model.showDeviceInfo() }
+                }
+                .disabled(model.activeDevice == nil)
+
+                Button("启用无线连接") {
+                    Task { await model.enableWireless() }
+                }
+                .disabled(model.activeDevice == nil
+                          || model.activeDevice?.isWireless == true
+                          || model.wireless.busy)
+
+                Button("断开连接") {
+                    Task { await model.disconnectDevice() }
+                }
+                .disabled(model.activeDevice == nil)
+
+                Divider()
+
+                Button("重新检测设备") {
+                    Task { await model.monitor.refresh() }
+                }
+
+                Button("重新扫描媒体库") {
+                    Task { await model.scanRemoteSelection() }
+                }
+                .disabled(model.activeDevice == nil || model.remoteSelection.isEmpty)
             }
 
             // ⌘, 打开设置。工具栏不再放齿轮 —— 设置属于 app 菜单，放两处只会让人犹豫。

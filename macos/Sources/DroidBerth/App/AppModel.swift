@@ -73,6 +73,14 @@ final class AppModel {
     var remoteLoading = false
     var remoteAvailableBytes: Int64?
 
+    /// 分栏视图「当前所在目录」，只服务窗格底部的路径栏（PRD §13.2）。
+    ///
+    /// 刻意与 `localDirectory` / `remoteDirectory` 分开：那两个是列表 / 网格显示的目录，
+    /// 同时也是列视图的**根**。列里点文件夹只更新这两个 `…ColumnDirectory`，不动根 ——
+    /// 否则根一变，列视图每点一下就整体回到第一列。
+    var localColumnDirectory = ""
+    var remoteColumnDirectory = ""
+
     var photoSelection: Set<String> = []
 
     var showHiddenFiles = false
@@ -131,6 +139,8 @@ final class AppModel {
 
     func navigateLocal(to url: URL, resetHistory: Bool = false) {
         localDirectory = url
+        // 列视图的根与「列里点到了哪」分开记：前者是 localDirectory，后者是这个。
+        localColumnDirectory = url.path
         if resetHistory {
             localHistory = [url]
             localHistoryIndex = 0
@@ -234,6 +244,9 @@ final class AppModel {
 
         // 缩略图要先知道「往哪台设备、用什么 adb 取头」。换设备时 store 会自行清空缓存。
         thumbnails.updateDevice(shell: shell, serial: device.serial)
+
+        // 列视图的根跟着窗格目录走；列内点选只改 remoteColumnDirectory，不改这里。
+        remoteColumnDirectory = remoteDirectory
 
         remoteLoading = true
         let path = remoteDirectory
@@ -947,6 +960,61 @@ final class AppModel {
         await wireless.reconnectRemembered(monitor: monitor)
     }
 
+    /// 设备菜单 →「断开连接」。
+    ///
+    /// 只有无线连接能在 app 内断开（`adb disconnect`）。USB 没有对应的「软断开」——
+    /// 拔线才是断开。这里如实说明，不假装做了一个其实什么也没做的动作。
+    func disconnectDevice() async {
+        guard let device = monitor.activeDevice else {
+            banner = Banner(level: .info, title: "没有可用的设备", detail: nil)
+            return
+        }
+        guard device.isWireless else {
+            banner = Banner(
+                level: .info,
+                title: "USB 连接无法在 app 内断开",
+                detail: "直接拔掉数据线即可。只有无线连接的设备能在这里断开"
+            )
+            return
+        }
+
+        await wireless.disconnect(address: device.serial)
+        monitor.selectedSerial = nil
+        await monitor.refresh()
+        await deviceDidChange()
+        banner = Banner(level: .info, title: "已断开无线连接", detail: device.serial)
+    }
+
+    /// 设备菜单 →「设备信息」。
+    ///
+    /// 走既有的 banner 而不是新开一个面板：信息是**一次性**的，而弹窗是一个需要
+    /// 占位的界面承诺（关掉之后那块区域还得处理）。等真有常驻信息面板的需求再说。
+    func showDeviceInfo() async {
+        guard let device = monitor.activeDevice, let shell = monitor.shell(for: device) else {
+            banner = Banner(level: .info, title: "没有可用的设备", detail: nil)
+            return
+        }
+
+        let version = device.displayName
+        let serial = device.serial
+        let connection = device.connectionLabel
+
+        let lines = await Task.detached(priority: .userInitiated) { () -> [String] in
+            var result = ["型号：\(version)", "序列号：\(serial)", "连接：\(connection)"]
+            let android = shell.androidVersion()
+            if let release = android.release {
+                let sdk = android.sdk.map(String.init) ?? "—"
+                result.append("Android \(release)（API \(sdk)）")
+            }
+            if let bytes = shell.availableBytes(at: "/sdcard") {
+                result.append("可用空间：\(ByteFormat.size(bytes))")
+            }
+            return result
+        }.value
+
+        banner = Banner(level: .info, title: "设备信息", detail: lines.joined(separator: "\n"))
+    }
+
     // MARK: - 交换 / 工具
 
     func revealInFinder(_ entry: LocalEntry) {
@@ -958,27 +1026,11 @@ final class AppModel {
     }
 
     var localBreadcrumbs: [(String, URL)] {
-        var result: [(String, URL)] = [("/", URL(fileURLWithPath: "/"))]
-        var url = URL(fileURLWithPath: "/")
-        for component in localDirectory.standardizedFileURL.pathComponents where component != "/" {
-            url.appendPathComponent(component)
-            result.append((component, url))
-        }
-        return result
+        Self.localBreadcrumbs(for: localDirectory)
     }
 
     var remoteBreadcrumbs: [(String, String)] {
-        var result: [(String, String)] = []
-        var path = remoteDirectory
-        while path.count > 1 {
-            let name = (path as NSString).lastPathComponent
-            result.insert((name.isEmpty ? path : name, path), at: 0)
-            let parent = (path as NSString).deletingLastPathComponent
-            if parent == path || parent.isEmpty { break }
-            path = parent
-        }
-        result.insert(("/", "/"), at: 0)
-        return result
+        Self.remoteBreadcrumbs(for: remoteDirectory)
     }
 
     // MARK: - 窗格布局（PRD §10「交换两侧」）
@@ -1030,6 +1082,82 @@ final class AppModel {
     func shrinkGridIcons() { settings.adjustGridIconSize(by: -AppSettings.gridIconSizeStep) }
     var canEnlargeGridIcons: Bool { settings.canEnlargeGridIcons }
     var canShrinkGridIcons: Bool { settings.canShrinkGridIcons }
+
+    // MARK: - 分栏视图（PRD §13.2）
+
+    /// 取某个目录的子项，供分栏视图按需加载。
+    ///
+    /// 返回 `BrowserEntry` 而不是各自的类型：列视图两侧共用一套实现，路径语义
+    /// （`id == path`）也与列表 / 网格一致，所以选择态、上传下载、Quick Look 都不用改。
+    ///
+    /// 本地是同步的文件系统调用；设备端要走一次 `adb shell ls` 子进程，**必须留在
+    /// 主线外** —— 分栏视图的 delegate 是同步接口，那条路径见 `EntryColumns` 的说明。
+    func browserChildren(path: String, origin: BrowserEntry.Origin) async -> [BrowserEntry] {
+        switch origin {
+        case .local:
+            guard case .success(let entries) = LocalFileSystem.list(
+                URL(fileURLWithPath: path),
+                showHidden: showHiddenFiles
+            ) else { return [] }
+            return entries.sorted(by: Self.localSort).map(\.asBrowserEntry)
+
+        case .remote:
+            guard let device = monitor.activeDevice,
+                  let shell = monitor.shell(for: device) else { return [] }
+            let listed = await Task.detached(priority: .userInitiated) { () -> [RemoteEntry] in
+                switch shell.list(path) {
+                case .success(let entries): return entries
+                case .failure: return []
+                }
+            }.value
+            return listed.sorted(by: Self.remoteSort).map(BrowserEntry.init(remote:))
+
+        case .photo:
+            // 照片图库没有目录层级，列视图对它没有意义（照片窗格会回退成列表）。
+            return []
+        }
+    }
+
+    /// 在分栏视图里双击一个设备端文件 = 预览。
+    ///
+    /// 不能复用 `quickLookFocusedSelection`：那条路径靠 `remoteEntries` 反查，而列视图
+    /// 选中的文件可能位于**子目录**里，根本不在当前 `remoteEntries` 中。这里直接由
+    /// `BrowserEntry` 还原出 `RemoteEntry`。
+    func previewRemote(_ entry: RemoteEntry) {
+        guard !entry.isDirectory else { return }
+        focus = .device
+        remoteSelection = [entry.id]
+        if let size = entry.size, size > Self.previewSizeLimit {
+            pendingPreview = PendingPreview(entry: entry)
+        } else {
+            Task { await pullForPreview(entry) }
+        }
+    }
+
+    /// 任意目录的面包屑。列表 / 网格用的是「当前目录」，分栏用的是「列里点到的目录」。
+    static func localBreadcrumbs(for directory: URL) -> [(String, URL)] {
+        var result: [(String, URL)] = [("/", URL(fileURLWithPath: "/"))]
+        var url = URL(fileURLWithPath: "/")
+        for component in directory.standardizedFileURL.pathComponents where component != "/" {
+            url.appendPathComponent(component)
+            result.append((component, url))
+        }
+        return result
+    }
+
+    static func remoteBreadcrumbs(for directory: String) -> [(String, String)] {
+        var result: [(String, String)] = []
+        var path = directory
+        while path.count > 1 {
+            let name = (path as NSString).lastPathComponent
+            result.insert((name.isEmpty ? path : name, path), at: 0)
+            let parent = (path as NSString).deletingLastPathComponent
+            if parent == path || parent.isEmpty { break }
+            path = parent
+        }
+        result.insert(("/", "/"), at: 0)
+        return result
+    }
 
     /// ⌘⌥← / ⌘⌥→ 按**视觉位置**聚焦，而不是按 Mac / 设备 —— 交换之后不能反直觉。
     func focusLeftPane() { focus = leftPane }

@@ -168,6 +168,20 @@ struct MainView: View {
                         dragSide: .local,
                         foldersFirst: model.settings.foldersFirst
                     )
+                case .column:
+                    EntryColumns(
+                        rootPath: model.localDirectory.path,
+                        selection: $model.localSelection,
+                        currentDirectory: $model.localColumnDirectory,
+                        listChildren: { path in
+                            await model.browserChildren(path: path, origin: .local)
+                        },
+                        onOpenFile: openMacEntry
+                    )
+                }
+                // PRD §13.2：分栏视图的路径栏在窗格**底部**。列表 / 网格沿用顶栏面包屑。
+                if model.viewMode(for: .mac) == .column {
+                    columnPathBar
                 }
                 localStatusBar
             } else {
@@ -196,7 +210,10 @@ struct MainView: View {
 
             placesButton
 
-            PathBreadcrumb(items: model.localBreadcrumbs.map { item in (item.0, { model.navigateLocal(to: item.1) }) })
+            // 分栏模式的路径栏在窗格底部（PRD §13.2），顶栏就不再重复一条面包屑。
+            if model.viewMode(for: .mac) != .column {
+                PathBreadcrumb(items: model.localBreadcrumbs.map { item in (item.0, { model.navigateLocal(to: item.1) }) })
+            }
 
             Spacer()
 
@@ -304,7 +321,10 @@ struct MainView: View {
                 Button { Task { await model.remoteGoUp() } } label: { Image(systemName: "arrow.up") }
                     .buttonStyle(.borderless)
 
-                PathBreadcrumb(items: remoteBreadcrumbItems)
+                // 分栏模式的路径栏在窗格底部（PRD §13.2）。
+                if model.viewMode(for: .device) != .column {
+                    PathBreadcrumb(items: remoteBreadcrumbItems)
+                }
 
                 Spacer()
 
@@ -346,6 +366,20 @@ struct MainView: View {
                     dragSide: .remote,
                     foldersFirst: model.settings.foldersFirst
                 )
+            case .column:
+                EntryColumns(
+                    rootPath: model.remoteDirectory,
+                    selection: $model.remoteSelection,
+                    currentDirectory: $model.remoteColumnDirectory,
+                    listChildren: { path in
+                        await model.browserChildren(path: path, origin: .remote)
+                    },
+                    onOpenFile: openRemoteFile
+                )
+            }
+
+            if model.viewMode(for: .device) == .column {
+                remoteColumnPathBar
             }
 
             HStack {
@@ -463,9 +497,7 @@ struct MainView: View {
             deviceMenu
         }
 
-        // PRD §10：工具栏左＝视图切换，作用于**聚焦窗格**。
-        // 只有「列表 / 网格」两段 —— 分栏（§13.2）尚未实现，先摆一个按不动的段
-        // 属于假可用，比没有更糟（与 §3.6 拒绝「先摆视图切换控件」同一条判据）。
+        // PRD §10：工具栏左＝视图切换，作用于**聚焦窗格**。三段齐了（分栏已在 Phase 3.2 落地）。
         ToolbarItem(placement: .navigation) {
             Picker("浏览形态", selection: viewModeBinding) {
                 ForEach(ViewMode.allCases, id: \.self) { mode in
@@ -476,8 +508,8 @@ struct MainView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(width: 78)
-            .help("切换聚焦窗格的浏览形态（⌘1 列表 / ⌘3 网格）")
+            .frame(width: 116)
+            .help("切换聚焦窗格的浏览形态（⌘1 列表 / ⌘2 分栏 / ⌘3 网格）")
         }
 
         // PRD §10 要求 ⇄ 居中。放在两栏之间语义上也对 —— 它交换的正是这两栏。
@@ -646,26 +678,85 @@ struct MainView: View {
 
     /// 下面这几个把 `BrowserEntry` 映射回 `AppModel` 的类型。
     ///
-    /// 列表与网格的**零参**回调各自不同（列表靠系统帮它选中右键行，网格靠显式目标），
-    /// 但「打开 / 在 Finder 显示 / 上传 / 下载」的映射逻辑是同一份，抽在这里避免两份漂移。
+    /// 一律**由 `BrowserEntry` 现场还原**，而不是去 `model.localEntries` /
+    /// `remoteEntries` 里按 id 反查：列视图选中的条目可能位于**子目录**里，根本不在
+    /// 当前目录的列表中，反查会静默取不到。
 
     private func openMacEntry(_ entry: BrowserEntry) {
-        guard let local = model.localEntries.first(where: { $0.id == entry.id }) else { return }
-        if local.isDirectory {
-            model.navigateLocal(to: local.url)
+        if entry.isDirectory {
+            model.navigateLocal(to: URL(fileURLWithPath: entry.path))
         } else {
-            model.openLocalEntry(local)
+            model.openLocalEntry(localEntry(from: entry))
         }
     }
 
     private func revealMacEntry(_ entry: BrowserEntry) {
-        guard let local = model.localEntries.first(where: { $0.id == entry.id }) else { return }
-        model.revealInFinder(local)
+        model.revealInFinder(localEntry(from: entry))
     }
 
     private func openRemoteEntry(_ entry: BrowserEntry) {
-        guard let remote = model.remoteEntries.first(where: { $0.id == entry.id }), remote.isDirectory else { return }
-        Task { await model.navigateRemote(to: remote.path) }
+        guard entry.isDirectory else { return }
+        Task { await model.navigateRemote(to: entry.path) }
+    }
+
+    /// 分栏视图里双击设备端文件 = 预览（文件夹由 NSBrowser 自己展开，不会走到这）。
+    private func openRemoteFile(_ entry: BrowserEntry) {
+        model.previewRemote(remoteEntry(from: entry))
+    }
+
+    private func localEntry(from entry: BrowserEntry) -> LocalEntry {
+        LocalEntry(
+            name: entry.name,
+            url: URL(fileURLWithPath: entry.path),
+            isDirectory: entry.isDirectory,
+            isSymlink: entry.isSymlink,
+            size: entry.size,
+            modified: entry.modified
+        )
+    }
+
+    private func remoteEntry(from entry: BrowserEntry) -> RemoteEntry {
+        RemoteEntry(
+            name: entry.name,
+            path: entry.path,
+            isDirectory: entry.isDirectory,
+            isSymlink: entry.isSymlink,
+            size: entry.size,
+            modified: entry.modified
+        )
+    }
+
+    // MARK: - 分栏视图的底部路径栏（PRD §13.2）
+
+    /// Mac 窗格。列表 / 网格的面包屑在顶栏，分栏的在底部 —— PRD §13.2 明文。
+    private var columnPathBar: some View {
+        let path = model.localColumnDirectory.isEmpty ? model.localDirectory.path : model.localColumnDirectory
+        let items = AppModel.localBreadcrumbs(for: URL(fileURLWithPath: path)).map { item in
+            (item.0, { model.navigateLocal(to: item.1) })
+        }
+        return pathBar(items)
+    }
+
+    private var remoteColumnPathBar: some View {
+        let path = model.remoteColumnDirectory.isEmpty ? model.remoteDirectory : model.remoteColumnDirectory
+        let items = AppModel.remoteBreadcrumbs(for: path).map { item -> (String, () -> Void) in
+            let target = item.1
+            return (item.0, { Task { await model.navigateRemote(to: target) } })
+        }
+        return pathBar(items)
+    }
+
+    private func pathBar(_ items: [(String, () -> Void)]) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "folder")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+            PathBreadcrumb(items: items)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(.quaternary.opacity(0.25))
     }
 
     private func downloadRemoteEntries(_ entries: [BrowserEntry]) {

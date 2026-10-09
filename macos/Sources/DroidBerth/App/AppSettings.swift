@@ -13,17 +13,15 @@ enum ConflictPolicy: String, CaseIterable, Sendable {
 }
 
 /// 窗格的浏览形态（PRD §13）。
-///
-/// 刻意只有 `list` / `grid`：`column`（分栏，§13.2）尚未实现，先在分段控件里
-/// 摆一个按不动的段是**假可用**，比没有更糟 —— 与 §3.6 拒绝「先摆视图切换控件」
-/// 是同一条判据。分栏落地时再补第三段。
 enum ViewMode: String, CaseIterable, Sendable {
     case list
+    case column
     case grid
 
     var label: String {
         switch self {
         case .list: "列表"
+        case .column: "分栏"
         case .grid: "网格"
         }
     }
@@ -31,6 +29,7 @@ enum ViewMode: String, CaseIterable, Sendable {
     var systemImage: String {
         switch self {
         case .list: "list.bullet"
+        case .column: "rectangle.split.3x1"
         case .grid: "square.grid.2x2"
         }
     }

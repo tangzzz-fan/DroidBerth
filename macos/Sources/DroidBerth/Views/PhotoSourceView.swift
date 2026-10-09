@@ -31,11 +31,13 @@ struct PhotoSourceView: View {
                 Divider()
                 VStack(spacing: 0) {
                     // 照片图库沿用 Mac 窗格的浏览形态设置（PRD §13「两侧各自支持
-                    // 列表/网格视图」）。**缩略图暂缺**：图库条目的 path 是
-                    // localIdentifier，缩略图要走 PhotoKit 的 PHImageManager，
-                    // 不在本轮范围内 —— 网格里先回退类型图标，见改造方案 §4.1。
+                    // 列表/网格视图」）。两处回退：
+                    // - **分栏回退成列表**：图库只有相簿一层，没有目录层级，列视图对它
+                    //   没有意义（`browserChildren` 对 `.photo` 返回空）。
+                    // - **缩略图暂缺**：图库条目的 path 是 localIdentifier，缩略图要走
+                    //   PhotoKit 的 PHImageManager，见改造方案 §4.6。
                     switch model.viewMode(for: .mac) {
-                    case .list:
+                    case .list, .column:
                         EntryTable(
                             entries: model.photos.items.map(\.asBrowserEntry),
                             selection: $model.photoSelection,

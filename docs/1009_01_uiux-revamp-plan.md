@@ -57,6 +57,8 @@ PRD 内不再出现任何作为**实现依据**的 Tauri/WKWebView/CSS 约束；
 
 ## 2. Phase 1：交互骨架（P0 — 体感现代化，投入产出比最高）
 
+> **执行状态（2026-10-09）**：1.4 / 1.1 / 1.2 / 1.3 已实现并通过 `swiftc` 编译验证，**运行时行为待人工验收**。剩余已知偏离见 §2.6。
+
 ### 2.1 拖拽传输
 
 | 方向 | 行为 |
@@ -84,7 +86,14 @@ PRD 内不再出现任何作为**实现依据**的 Tauri/WKWebView/CSS 约束；
 
 - 本地文件：`.quickLookPreview($url)`
 - 远端文件：先落到 `$TMPDIR/DroidBerth/preview/` 再预览；> 200 MB 先弹确认
-- 涉及：`Views/EntryTable.swift`、`App/AppModel.swift`、`Support/AppPaths.swift`
+- 涉及：`App/AppModel.swift`、`Support/AppPaths.swift`、`Views/MainView.swift`
+
+> **实现坑（务必记住）**：`.quickLookPreview(_:)` **不在 `SwiftUI` 模块里**，它由
+> `QuickLook` + `SwiftUI` 的 cross-import overlay（`_QuickLook_SwiftUI`）提供。
+> 只写 `import SwiftUI` 会报 `has no member 'quickLookPreview'`——这正是
+> `f4c65d7` 那次「SwiftUI 没有 quickLookPreview」错误结论的根因。正确写法是
+> **同时 `import QuickLook`**，之后 `_QuickLook_SwiftUI.framework` 会自动链接。
+> 另：该 API 的实际可用性标注是 macOS 11.0+，不是 PRD 写的 14.0+。
 
 ### 2.4 窗格聚焦与键盘导航（PRD §22 / §25）
 
@@ -96,6 +105,18 @@ PRD 内不再出现任何作为**实现依据**的 Tauri/WKWebView/CSS 约束；
 ### 2.5 验收点
 
 能从 Finder 直接拖文件进窗口完成上传；能把设备文件拖到 Finder 完成下载；⌘C/⌘V 跨栏生效；空格可预览；Tab 可循环聚焦；焦点态有可见描边。
+
+### 2.6 Phase 1 的已知偏离（实现时确定，不是遗漏）
+
+| 偏离 | 说明 | 处置 |
+|---|---|---|
+| Tab 只做「Mac 窗格 ↔ 设备窗格」两段循环 | PRD §22 要求三段（含传输面板），但面板目前没有键盘可交互的内容，把焦点移进去无意义 | 随 Phase 2.3 传输面板改造补齐 |
+| 设备窗格 → Finder 拖出未实现 | 需要 `NSFilePromiseProvider` 支撑「拖到任意位置才决定落点」，与窗格间拖拽是两套机制 | 另立一票，Phase 2 之后 |
+| 同侧拖拽（Mac 内部 / 设备内部移动）只给提示 | 需要 move 语义与设备端 `mv` | Phase 4 |
+| ⌘X 剪切只给提示 | 同上 | Phase 4 |
+| 照片图库不支持空格预览 | 图库条目要先导出成文件 | Phase 3 |
+| Quick Look 菜单项**不挂空格快捷键** | 无修饰键的菜单快捷键会先于文本框拿到事件，会把输入框里的空格吃掉。空格只由 `PaneKeyMonitor` 的本地监听处理，它带 `TextEditingRelay.isEditing` 守卫 | 保持现状；菜单项仅提供可发现性与启用态 |
+| 多选时按空格不预览 | 面板一次只呈现一个文件，硬挑第一个会造成误解。此时空格交还系统 | 有意为之 |
 
 ---
 
@@ -204,11 +225,11 @@ Phase 0（PRD 对齐）
 
 ## 8. 总验收清单
 
-- [ ] PRD 升版 v2.1，UX 章节无 Tauri 实现约束
-- [ ] 四向拖拽可用，不可写目录有禁止反馈
-- [ ] ⌘C/⌘V 跨栏传输可用，文本框内恢复文本语义
-- [ ] 空格 Quick Look 可用（本地就地、远端先落地）
-- [ ] 窗格聚焦有描边 + 标题加粗，Tab 可循环
+- [x] PRD 升版 v2.1，UX 章节无 Tauri 实现约束
+- [x] 四向拖拽可用，不可写目录有禁止反馈（设备 → Finder 除外，见 §2.6）
+- [x] ⌘C/⌘V 跨栏传输可用，文本框内恢复文本语义
+- [x] 空格 Quick Look 可用（本地就地、远端先落地）
+- [x] 窗格聚焦有描边 + 标题加粗，Tab 可循环（两段循环，见 §2.6）
 - [ ] 工具栏含视图切换 / 交换 / 搜索 / 溢出菜单
 - [ ] 传输面板含速度、ETA、失败原因、可固定
 - [ ] 网格视图含缩略图

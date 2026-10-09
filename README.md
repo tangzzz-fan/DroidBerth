@@ -20,7 +20,7 @@ ADB 二进制内嵌在 app 内 —— 用户不需要装 Android SDK、不需要
 | 产品定义 | 完成（`docs/0926_01_PRD.md`，**v2.1** 已对齐 Swift 原生路线） |
 | 技术路线验证 | **完成，判 Go**（`docs/0926_02_swift-native-spike-plan.md`） |
 | Swift 原生外壳 MVP | **已实现，核心链路真机验证通过**（`docs/0926_03_swift-native-mvp-implementation.md`） |
-| 视觉与交互 | **部分**：视觉基调已定（系统控件 + 原生材质）；**交互层缺口较大** —— 拖拽 / ⌘C⌘V 跨栏 / Quick Look / 分栏 / 网格 / 无障碍均未实现，方案见 `docs/1009_01_uiux-revamp-plan.md` |
+| 视觉与交互 | **部分**：视觉基调已定（系统控件 + 原生材质）；**Phase 1 交互骨架已完成**（聚焦态描边 / Tab 循环 / 四向拖拽 / ⌘C⌘V 跨栏 / 空格 Quick Look），**运行时行为待人工验收**。仍缺视图切换、侧边栏、网格与无障碍，方案见 `docs/1009_01_uiux-revamp-plan.md` |
 | 公证与分发 | **未做** |
 
 仓库里存在**两条技术路线**的代码，这是历史原因，不是并列关系：
@@ -35,7 +35,7 @@ ADB 二进制内嵌在 app 内 —— 用户不需要装 Android SDK、不需要
 ```
 macos/                    Swift 原生外壳（当前路线）
   project.yml               xcodegen 工程定义
-  Sources/DroidBerth/       36 个 Swift 文件 / 4578 行
+  Sources/DroidBerth/       39 个 Swift 文件 / 5389 行
   Resources/                Info.plist + entitlements
   Scripts/build-sidecar.sh  编译 Rust sidecar 并暂存
 sidecar/droidberth-adb/   Rust sidecar（1787 行 / 5 文件）
@@ -98,6 +98,32 @@ XcodeGen 会报 `Couldn't find current username` 且**静默不生成工程**。
 | `⇧⌘U` | 上传选中项到设备 |
 | `⇧⌘S` | 下载选中项到 Mac |
 | `⇧⌘N` | 在设备端新建文件夹 |
+| `⌘C` / `⌘V` | **跨栏传输**：Mac 栏选中 → 设备栏粘贴 = 上传；反向 = 下载（焦点在输入框时恢复文本语义） |
+| `Space` | Quick Look 就地预览（远端文件先拉到 `$TMPDIR/DroidBerth/preview/`） |
+| `Tab` / `⇧Tab` | 在 Mac 窗格 ↔ 设备窗格之间循环聚焦 |
+| `⌘⌥←` / `⌘⌥→` | 直接聚焦 Mac / 设备窗格 |
+| `⌘[` / `⌘]` | 后退 / 前进 |
+| `⌘↑` | 上一层文件夹 |
+| `⌘R` | 刷新聚焦窗格 |
+| `⌘⌫` | 删除设备端选中项（不可撤销） |
+
+> `Space` 与 `Tab` 由本地事件监听（`Support/PaneKeyMonitor.swift`）接管，并带「正在编辑文本」守卫，
+> 因此输入框里的空格与 Tab 保持系统默认语义。**菜单里刻意不给它们挂快捷键**——无修饰键的菜单
+> 快捷键会先于文本框拿到事件。
+
+### 编译验证（无需 Rust 工具链 / adb）
+
+本机没有 Rust 工具链与 adb 二进制时，完整 `xcodebuild` 跑不通，可以用这一条做 Swift 侧回归：
+
+```bash
+swiftc -typecheck -target arm64-apple-macos14.0 \
+  -sdk "$(xcrun --show-sdk-path --sdk macosx)" \
+  -swift-version 6 -strict-concurrency=complete -parse-as-library \
+  $(find macos/Sources -name '*.swift')
+```
+
+去掉 `-typecheck` 换成 `-o /tmp/x` 还能顺带验证链接（能确认 `_QuickLook_SwiftUI` 这类
+Swift overlay 框架被正确自动链接）。
 
 ### 验证面板
 
@@ -133,10 +159,11 @@ build/dd/Build/Products/Release/DroidBerth.app/Contents/MacOS/DroidBerth --spike
 
 | 项 | 原因 |
 |---|---|
-| 视觉与交互验收（双击、拖拽、布局） | 开发环境无法截图 / 无法模拟点击，**需要人工操作**。双击 / 右键打开已人工确认可用；**拖拽与整体布局仍未验收** |
+| 视觉与交互验收（双击、拖拽、布局、Quick Look、跨栏粘贴） | 开发环境无法截图 / 无法模拟点击，**需要人工操作**。双击 / 右键打开已人工确认可用；**Phase 1 新增的交互仍未验收** |
 | 照片图库作为素材来源 | 需要人工在授权弹窗点「允许」 |
 | App Translocation | 需要先有一个**已公证**的产物才能构造该场景 |
-| 拖拽 / ⌘C⌘V 跨栏 / 分栏视图 / 网格视图 / 拖出到 Finder / Quick Look | **未实现**，见 `docs/1009_01_uiux-revamp-plan.md` |
+| 设备窗格 → Finder 拖出 | **未实现**（需 `NSFilePromiseProvider`），见 `docs/1009_01_uiux-revamp-plan.md` §2.6 |
+| 视图切换 / 侧边栏 / 网格视图 / 传输面板增强 / 无障碍 | **未实现**，属 Phase 2 / 3 |
 | 性能基线（相对裸 `adb push` 的开销） | 未测量 |
 | 干净 VM 上的安装验证 | 需要另一台机器 |
 

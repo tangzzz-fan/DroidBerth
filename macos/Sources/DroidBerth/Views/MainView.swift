@@ -10,13 +10,6 @@ struct MainView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            DeviceBar(model: model, onEnableWireless: {
-                Task { await model.enableWireless() }
-            }, onReconnect: {
-                Task { await model.reconnectWireless() }
-            })
-            Divider()
-
             HSplitView {
                 macPane
                     .frame(minWidth: 340)
@@ -70,103 +63,6 @@ struct MainView: View {
             }
         } message: {
             Text("此操作不可撤销。设备端没有回收站，删除后无法恢复。")
-        }
-    }
-
-    // MARK: - 顶部设备栏
-
-    private struct DeviceBar: View {
-        @Bindable var model: AppModel
-        let onEnableWireless: () -> Void
-        let onReconnect: () -> Void
-
-        var body: some View {
-            HStack(spacing: 10) {
-                Image(systemName: "iphone.gen3")
-                    .foregroundStyle(.secondary)
-
-                if model.monitor.usableDevices.isEmpty {
-                    devicePlaceholder
-                } else {
-                    Picker("", selection: Binding(
-                        get: { model.monitor.selectedSerial ?? "" },
-                        set: { model.monitor.selectedSerial = $0 }
-                    )) {
-                        ForEach(model.monitor.usableDevices) { device in
-                            Text("\(device.displayName) · \(device.connectionLabel)").tag(device.serial)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(maxWidth: 320)
-
-                    if let device = model.activeDevice {
-                        Text(device.serial)
-                            .font(.caption.monospaced())
-                            .foregroundStyle(.secondary)
-                        if device.isWireless {
-                            Label("无线", systemImage: "wifi")
-                                .font(.caption)
-                                .foregroundStyle(.teal)
-                        }
-                    }
-                }
-
-                Spacer()
-
-                if model.wireless.busy {
-                    ProgressView().controlSize(.small)
-                }
-
-                if let device = model.activeDevice, !device.isWireless {
-                    Button("启用无线连接") { onEnableWireless() }
-                        .controlSize(.small)
-                        .disabled(model.wireless.busy)
-                }
-
-                if model.activeDevice == nil, !model.settings.rememberedWirelessDevices.isEmpty {
-                    Button("尝试无线重连") { onReconnect() }
-                        .controlSize(.small)
-                }
-
-                Button {
-                    Task { await model.monitor.refresh() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .help("重新检测设备")
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(.bar)
-        }
-
-        @ViewBuilder
-        private var devicePlaceholder: some View {
-            switch model.monitor.status {
-            case .sidecarMissing:
-                Label("找不到 sidecar，请重新构建 app", systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
-            case .adbMissing:
-                Label("app 包内缺少 adb 可执行文件", systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
-            case .failed(let message):
-                Label(message, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-            case .idle:
-                if let unauthorized = model.monitor.devices.first(where: { $0.state == .unauthorized }) {
-                    Label("\(unauthorized.displayName) 未授权", systemImage: "lock.fill")
-                        .foregroundStyle(.orange)
-                    Text("请在手机上勾选「始终允许」后点确定")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Label("未检测到 Android 设备", systemImage: "cable.connector")
-                        .foregroundStyle(.secondary)
-                    Text("请用数据线连接手机，并在手机上允许 USB 调试")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
         }
     }
 
@@ -330,7 +226,7 @@ struct MainView: View {
             EntryTable(
                 entries: model.remoteEntries.map(BrowserEntry.init(remote:)),
                 selection: $model.remoteSelection,
-                emptyMessage: model.remoteError ?? (model.activeDevice == nil ? "未连接设备" : "这个文件夹是空的"),
+                emptyMessage: deviceEmptyMessage,
                 onOpen: { entry in
                     guard let remote = model.remoteEntries.first(where: { $0.id == entry.id }) else { return }
                     if remote.isDirectory {
@@ -364,10 +260,81 @@ struct MainView: View {
         .background(model.focus == .device ? Color.accentColor.opacity(0.06) : Color.clear)
     }
 
+    // MARK: - 设备菜单
+
+    private var deviceMenu: some View {
+        Menu {
+            if model.monitor.usableDevices.isEmpty {
+                Text("插入设备后出现在这里")
+            } else {
+                Section {
+                    ForEach(model.monitor.usableDevices) { device in
+                        Button {
+                            model.monitor.selectedSerial = device.serial
+                        } label: {
+                            if device.serial == model.monitor.selectedSerial {
+                                Label("\(device.displayName) · \(device.connectionLabel)", systemImage: "checkmark")
+                            } else {
+                                Text("\(device.displayName) · \(device.connectionLabel)")
+                            }
+                        }
+                    }
+                }
+                Section {
+                    Button("重新检测设备") {
+                        Task { await model.monitor.refresh() }
+                    }
+                    if let device = model.activeDevice, !device.isWireless {
+                        Button("启用无线连接") {
+                            Task { await model.enableWireless() }
+                        }
+                        .disabled(model.wireless.busy)
+                    }
+                    if model.activeDevice == nil, !model.settings.rememberedWirelessDevices.isEmpty {
+                        Button("尝试无线重连") {
+                            Task { await model.reconnectWireless() }
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "iphone.gen3")
+                    .foregroundStyle(model.activeDevice == nil ? Color.secondary : Color.accentColor)
+                Text(model.activeDevice?.displayName ?? "未连接设备")
+                    .lineLimit(1)
+                if model.wireless.busy {
+                    ProgressView().controlSize(.mini)
+                }
+            }
+        }
+    }
+
+    private var deviceEmptyMessage: String {
+        if let remoteError = model.remoteError { return remoteError }
+        if model.activeDevice != nil { return "这个文件夹是空的" }
+        switch model.monitor.status {
+        case .sidecarMissing:
+            return "找不到 sidecar，请重新构建 app"
+        case .adbMissing:
+            return "app 包内缺少 adb 可执行文件"
+        case .failed(let message):
+            return message
+        case .idle:
+            if let unauthorized = model.monitor.devices.first(where: { $0.state == .unauthorized }) {
+                return "\(unauthorized.displayName) 未授权：请在手机上勾选「始终允许」后点确定"
+            }
+            return "未检测到 Android 设备，请用数据线连接并在手机上允许 USB 调试"
+        }
+    }
+
     // MARK: - 工具栏与提示
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
+            deviceMenu
+        }
         ToolbarItemGroup(placement: .primaryAction) {
             Button {
                 Task { await model.uploadSelection() }

@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import UniformTypeIdentifiers
 
 @MainActor
 @Observable
@@ -522,6 +523,122 @@ final class AppModel {
         let normalized = path.hasSuffix("/") ? String(path.dropLast()) : path
         let blocked = ["/Android/data", "/Android/obb"]
         return !blocked.contains { normalized.hasSuffix($0) || normalized.contains($0 + "/") }
+    }
+
+    // MARK: - 跨栏传输（⌘C / ⌘V，PRD §22）
+
+    /// ⌘C / ⌘V 的路由判定。抽成纯函数，便于单测与后续复用到菜单启用逻辑。
+    enum PasteRoute: Equatable, Sendable {
+        case upload
+        case download
+        case unsupported
+    }
+
+    static func pasteRoute(from source: TransferDragPayload.Side, to target: Pane) -> PasteRoute {
+        switch (source, target) {
+        case (.local, .device): .upload
+        case (.remote, .mac): .download
+        default: .unsupported
+        }
+    }
+
+    /// 内部剪贴板。与拖拽共用 `TransferDragPayload`，所以两条路径的载荷语义一致。
+    private(set) var clipboard: TransferDragPayload?
+
+    var canCopySelection: Bool {
+        switch focus {
+        case .mac: macSource == .files && !localSelection.isEmpty
+        case .device: !remoteSelection.isEmpty
+        }
+    }
+
+    /// ⌘C。同时把载荷写进通用剪贴板，「粘贴」菜单项据此启用。
+    func copySelection() {
+        let payload: TransferDragPayload
+        switch focus {
+        case .mac:
+            guard macSource == .files else {
+                banner = Banner(
+                    level: .info,
+                    title: "照片图库暂不支持复制",
+                    detail: "请直接把照片拖到设备窗格，或点「上传到设备」"
+                )
+                return
+            }
+            let urls = selectedLocalURLs
+            guard !urls.isEmpty else { return }
+            payload = TransferDragPayload(side: .local, origin: .pane, paths: urls.map(\.path))
+
+        case .device:
+            let entries = remoteEntries.filter { remoteSelection.contains($0.id) }
+            guard !entries.isEmpty else { return }
+            payload = TransferDragPayload(side: .remote, origin: .pane, paths: entries.map(\.path))
+        }
+
+        clipboard = payload
+        writeToPasteboard(payload)
+        banner = Banner(
+            level: .info,
+            title: "已复制 \(payload.paths.count) 个项目",
+            detail: payload.side == .local ? "切到设备窗格后按 ⌘V 上传" : "切到 Mac 窗格后按 ⌘V 下载"
+        )
+    }
+
+    /// ⌘V。方向由「剪贴板来源 → 当前聚焦窗格」决定。
+    func pasteIntoFocus() {
+        guard let clipboard else { return }
+        switch Self.pasteRoute(from: clipboard.side, to: focus) {
+        case .upload:
+            let urls = clipboard.paths.map { URL(fileURLWithPath: $0) }
+            Task { await uploadFiles(urls, toRemotePath: remoteDirectory) }
+
+        case .download:
+            let entries = clipboard.paths.compactMap { path in
+                remoteEntries.first { $0.path == path }
+            }
+            guard !entries.isEmpty else {
+                banner = Banner(
+                    level: .info,
+                    title: "剪贴板里的项目已不在当前目录",
+                    detail: "请回到原来的设备目录再粘贴"
+                )
+                return
+            }
+            Task { await downloadEntries(entries, toDirectory: localDirectory) }
+
+        case .unsupported:
+            banner = Banner(
+                level: .info,
+                title: "同一侧不产生传输",
+                detail: "Mac 栏内部的 ⌘C/⌘V 是复制、设备栏内部是移动，两者都尚未支持"
+            )
+        }
+    }
+
+    func selectAllInFocusedPane() {
+        switch (focus, macSource) {
+        case (.mac, .files): localSelection = Set(localEntries.map(\.id))
+        case (.mac, .photos): photoSelection = Set(photos.items.map(\.id))
+        case (.device, _): remoteSelection = Set(remoteEntries.map(\.id))
+        }
+    }
+
+    func showCutUnsupported() {
+        banner = Banner(
+            level: .info,
+            title: "剪切尚未支持",
+            detail: "剪切需要「移动」语义，设备端移动列在后续阶段（改造方案 Phase 4）"
+        )
+    }
+
+    private func writeToPasteboard(_ payload: TransferDragPayload) {
+        guard let data = try? JSONEncoder().encode(payload) else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setData(
+            data,
+            forType: NSPasteboard.PasteboardType(UTType.droidBerthTransfer.identifier)
+        )
     }
 
     // MARK: - 设备端写操作

@@ -31,20 +31,12 @@ final class PaneCycleKeyMonitor {
 
     private func handle(_ event: NSEvent) -> NSEvent? {
         guard event.keyCode == Self.tabKeyCode else { return event }
-        guard !Self.isEditingText else { return event }
+        guard !TextEditingRelay.isEditing else { return event }
         // 有修饰键时交还给系统（⌘⇥ 切应用、⌃⇥ 等）
         let relevant: NSEvent.ModifierFlags = [.command, .option, .control]
         guard event.modifierFlags.intersection(relevant).isEmpty else { return event }
 
         handler(event.modifierFlags.contains(.shift))
         return nil
-    }
-
-    /// 首响应者是文本视图（或正在编辑的文本字段）时，Tab 属于文本编辑语义。
-    private static var isEditingText: Bool {
-        guard let responder = NSApp.keyWindow?.firstResponder else { return false }
-        if responder is NSTextView { return true }
-        if let view = responder as? NSView, view is NSTextField { return true }
-        return false
     }
 }

@@ -36,11 +36,45 @@ struct DroidBerthApp: App {
                     NotificationCenter.default.post(name: .droidBerthNewFolder, object: nil)
                 }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
+            }
+
+            // ⌘C / ⌘V 在本产品里必须被占用（跨栏 = 传输，PRD §22）。
+            // 焦点在文本框里时逐个转发回系统文本语义，见 TextEditingRelay。
+            CommandGroup(replacing: .pasteboard) {
+                Button("剪切") {
+                    if !TextEditingRelay.forwardIfEditing(#selector(NSText.cut(_:))) {
+                        model.showCutUnsupported()
+                    }
+                }
+                .keyboardShortcut("x", modifiers: .command)
+
+                Button("拷贝") {
+                    if !TextEditingRelay.forwardIfEditing(#selector(NSText.copy(_:))) {
+                        model.copySelection()
+                    }
+                }
+                .keyboardShortcut("c", modifiers: .command)
+
+                Button("粘贴") {
+                    if !TextEditingRelay.forwardIfEditing(#selector(NSText.paste(_:))) {
+                        model.pasteIntoFocus()
+                    }
+                }
+                .keyboardShortcut("v", modifiers: .command)
 
                 Divider()
 
+                Button("全选") {
+                    if !TextEditingRelay.forwardIfEditing(#selector(NSText.selectAll(_:))) {
+                        model.selectAllInFocusedPane()
+                    }
+                }
+                .keyboardShortcut("a", modifiers: .command)
+
                 Button("删除…") {
-                    NotificationCenter.default.post(name: .droidBerthDeleteSelection, object: nil)
+                    if !TextEditingRelay.forwardIfEditing(#selector(NSText.delete(_:))) {
+                        NotificationCenter.default.post(name: .droidBerthDeleteSelection, object: nil)
+                    }
                 }
                 .keyboardShortcut(.delete, modifiers: .command)
                 .disabled(!model.canDeleteSelection)

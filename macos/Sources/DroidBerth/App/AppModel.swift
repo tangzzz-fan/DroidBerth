@@ -37,6 +37,15 @@ final class AppModel {
         case finished(exported: Int, failed: Int)
     }
 
+    /// 需要用户确认才能预览的远端文件（PRD §23 的大文件保护）。
+    struct PendingPreview: Identifiable, Sendable {
+        let id = UUID()
+        let entry: RemoteEntry
+    }
+
+    /// 预览的体量上限：超过它先问一句，不要静默开始下载。
+    static let previewSizeLimit: Int64 = 200 * 1024 * 1024
+
     let settings = AppSettings.shared
     let monitor = DeviceMonitor()
     let wireless = WirelessManager()
@@ -68,6 +77,13 @@ final class AppModel {
     var banner: Banner?
     var exportPhase: ExportPhase = .idle
 
+    /// 绑定给 `.quickLookPreview(_:)`：非 nil 时系统弹出就地预览面板。
+    var previewURL: URL?
+    /// 正在把远端文件拉到本机。拉取期间再按空格不重复发起。
+    var previewLoading = false
+    /// 超过 `previewSizeLimit` 的远端文件，等用户确认后再下载（PRD §23）。
+    var pendingPreview: PendingPreview?
+
     var deviceQuickLocations: [(String, String)] {
         [("DCIM", "/sdcard/DCIM"), ("Movies", "/sdcard/Movies"), ("Pictures", "/sdcard/Pictures"), ("Download", "/sdcard/Download")]
     }
@@ -83,6 +99,7 @@ final class AppModel {
 
     func start() {
         AppPaths.clearStaging()
+        AppPaths.clearPreviews()
         photos.refreshAccess()
         wireless.attach(monitor: monitor)
         monitor.start()
@@ -641,6 +658,135 @@ final class AppModel {
         )
     }
 
+    // MARK: - Quick Look 预览（PRD §23）
+
+    /// 有且仅有一个可预览的选中项。
+    ///
+    /// 多选时不给预览：面板一次只呈现一个文件，硬挑第一个会让人误以为其它
+    /// 选中项也进了预览。此时把空格还给系统（见 `PaneKeyMonitor`）。
+    var canQuickLook: Bool {
+        switch (focus, macSource) {
+        case (.mac, .files): localSelection.count == 1
+        case (.mac, .photos): photoSelection.count == 1
+        case (.device, _): remoteSelection.count == 1
+        }
+    }
+
+    /// 空格键入口。返回值语义与 `PaneKeyMonitor.onQuickLook` 一致：
+    /// true = 已消费（无论成功还是给了明确反馈），false = 交还系统。
+    @discardableResult
+    func quickLookFocusedSelection() -> Bool {
+        switch (focus, macSource) {
+        case (.mac, .files):
+            let picked = localEntries.filter { localSelection.contains($0.id) }
+            guard picked.count == 1, let entry = picked.first else { return false }
+            previewURL = entry.url
+            return true
+
+        case (.mac, .photos):
+            guard photoSelection.count == 1 else { return false }
+            banner = Banner(
+                level: .info,
+                title: "照片图库暂不支持快速查看",
+                detail: "图库条目要先导出成文件才能预览，列在改造方案 Phase 3；现在可以双击打开"
+            )
+            return true
+
+        case (.device, _):
+            let picked = remoteEntries.filter { remoteSelection.contains($0.id) }
+            guard picked.count == 1, let entry = picked.first else { return false }
+            guard !entry.isDirectory else {
+                banner = Banner(
+                    level: .info,
+                    title: "文件夹不支持预览",
+                    detail: "\(entry.name) 是文件夹，预览需要单个文件"
+                )
+                return true
+            }
+            if let size = entry.size, size > Self.previewSizeLimit {
+                pendingPreview = PendingPreview(entry: entry)
+                return true
+            }
+            Task { await pullForPreview(entry) }
+            return true
+        }
+    }
+
+    /// 远端文件没法就地预览：先落到 `$TMPDIR/DroidBerth/preview/` 再交给 Quick Look。
+    ///
+    /// 与正式下载刻意走两条路：预览不需要进度条、不进传输面板、落地即弃，用一次
+    /// `adb pull` 就够；塞进 `TransferQueue` 反而会在面板里留下一次性任务。
+    func pullForPreview(_ entry: RemoteEntry) async {
+        guard !previewLoading else { return }
+        guard let device = monitor.activeDevice, device.state.isUsable else {
+            banner = Banner(level: .warning, title: "没有可用的设备", detail: nil)
+            return
+        }
+
+        previewLoading = true
+        defer { previewLoading = false }
+
+        // 面板开着时不清理：正在显示的文件就躺在预览目录里，删掉会让面板报错。
+        // 面板已关（常见情况）时顺手清掉上一轮残留，避免临时目录在一次会话里堆积。
+        if previewURL == nil { AppPaths.clearPreviews() }
+        let target = AppPaths.makePreviewItem(named: entry.name)
+        let serial = device.serial
+        let remotePath = entry.path
+        let binary = ADBBinary.shared
+
+        banner = Banner(
+            level: .info,
+            title: "正在准备预览…",
+            detail: "先把 \(entry.name)（\(ByteFormat.size(entry.size))）下载到本机"
+        )
+
+        let outcome = await Task.detached(priority: .userInitiated) { () -> PreviewPullOutcome in
+            // 定位 adb 要跑 sidecar，放到主线程外，免得按空格时界面卡一下
+            guard let adb = binary.path else { return .missingADB }
+            let result = ProcessRunner.run(
+                adb,
+                ["-s", serial, "pull", remotePath, target.path],
+                timeout: 300
+            )
+            guard result.ok else { return .failed(Self.describe(result)) }
+            return .success
+        }.value
+
+        switch outcome {
+        case .success:
+            banner = nil
+            previewURL = target
+        case .missingADB:
+            banner = Banner(level: .error, title: "未找到 adb", detail: "请重新构建 app")
+        case .failed(let message):
+            banner = Banner(level: .error, title: "预览前下载失败", detail: message)
+        }
+    }
+
+    func confirmPendingPreview() {
+        guard let pending = pendingPreview else { return }
+        pendingPreview = nil
+        Task { await pullForPreview(pending.entry) }
+    }
+
+    func cancelPendingPreview() {
+        pendingPreview = nil
+    }
+
+    /// 把 `adb pull` 的输出压成一句人话。进度行（`[ 45%]`）没有信息量，丢掉。
+    private nonisolated static func describe(_ result: ProcessResult) -> String {
+        if let spawnError = result.spawnError { return spawnError }
+        if result.timedOut { return "下载超时（超过 5 分钟）" }
+        let lines = (result.stdout + "\n" + result.stderr)
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && !$0.hasPrefix("[") }
+        guard let last = lines.last else {
+            return "adb 退出码 \(result.exitCode.map(String.init) ?? "nil")"
+        }
+        return last
+    }
+
     // MARK: - 设备端写操作
 
     func makeRemoteDirectory(named name: String) async {
@@ -820,4 +966,14 @@ final class AppModel {
     var canDeleteSelection: Bool {
         focus == .device && !remoteSelection.isEmpty && activeDevice != nil
     }
+}
+
+/// `pullForPreview` 在主线外跑 `adb pull` 的结果。
+///
+/// 声明在文件作用域而不是 `AppModel` 里：它要穿过 `Task.detached` 的
+/// `@Sendable` 边界，放在 `@MainActor` 类型内部容易连带继承隔离。
+private enum PreviewPullOutcome: Sendable {
+    case success
+    case missingADB
+    case failed(String)
 }

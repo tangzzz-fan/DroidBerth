@@ -1,3 +1,4 @@
+import QuickLook
 import SwiftUI
 
 @MainActor
@@ -7,7 +8,7 @@ struct MainView: View {
     @State private var showNewFolder = false
     @State private var newFolderName = ""
     @State private var showDeleteConfirm = false
-    @State private var tabMonitor: PaneCycleKeyMonitor?
+    @State private var keyMonitor: PaneKeyMonitor?
     @State private var macDropTargeted = false
     @State private var deviceDropTargeted = false
 
@@ -31,15 +32,18 @@ struct MainView: View {
         .task {
             AppearanceController.apply(model.settings.appearance)
             model.start()
-            if tabMonitor == nil {
-                let monitor = PaneCycleKeyMonitor { backwards in
+            if keyMonitor == nil {
+                let monitor = PaneKeyMonitor()
+                monitor.onCycleFocus = { backwards in
                     model.cycleFocus(backwards: backwards)
                 }
+                monitor.onQuickLook = { model.quickLookFocusedSelection() }
                 monitor.start()
-                tabMonitor = monitor
+                keyMonitor = monitor
             }
         }
-        .onDisappear { tabMonitor?.stop() }
+        .onDisappear { keyMonitor?.stop() }
+        .quickLookPreview($model.previewURL)
         .onReceive(NotificationCenter.default.publisher(for: .droidBerthNewFolder)) { _ in
             guard model.activeDevice != nil else { return }
             showNewFolder = true
@@ -78,6 +82,19 @@ struct MainView: View {
             }
         } message: {
             Text("此操作不可撤销。设备端没有回收站，删除后无法恢复。")
+        }
+        .alert(
+            "预览需要先下载",
+            isPresented: Binding(
+                get: { model.pendingPreview != nil },
+                set: { if !$0 { model.cancelPendingPreview() } }
+            ),
+            presenting: model.pendingPreview
+        ) { _ in
+            Button("取消", role: .cancel) { model.cancelPendingPreview() }
+            Button("下载并预览") { model.confirmPendingPreview() }
+        } message: { pending in
+            Text("\(pending.entry.name) 有 \(ByteFormat.size(pending.entry.size))，预览需要先完整下载到本机。")
         }
     }
 
@@ -184,6 +201,11 @@ struct MainView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            if model.localSelection.count == 1 {
+                Text("空格预览")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
             Spacer()
             if let bytes = model.remoteAvailableBytes, model.activeDevice != nil {
                 Text("设备可用 \(ByteFormat.size(bytes))")
@@ -269,6 +291,11 @@ struct MainView: View {
                     Text("已选 \(model.remoteSelection.count) 个")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+                if model.remoteSelection.count == 1 {
+                    Text("空格预览")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
                 }
                 Spacer()
                 if let bytes = model.remoteAvailableBytes {

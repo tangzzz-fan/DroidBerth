@@ -101,6 +101,14 @@ struct DroidBerthApp: App {
                 Button("聚焦设备窗格") { model.focus = .device }
                     .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
             }
+
+            // 空格本身由 PaneKeyMonitor 的本地事件监听处理，这里刻意不挂菜单快捷键：
+            // 无修饰键的菜单快捷键会先于文本框拿到事件，会把输入框里的空格吃掉。
+            // 菜单项只负责「可发现」与启用态，键位见 PRD §22。
+            CommandGroup(after: .toolbar) {
+                Button("快速查看") { model.quickLookFocusedSelection() }
+                    .disabled(!model.canQuickLook)
+            }
         }
     }
 }

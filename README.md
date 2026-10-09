@@ -20,8 +20,8 @@ ADB 二进制内嵌在 app 内 —— 用户不需要装 Android SDK、不需要
 | 产品定义 | 完成（`docs/0926_01_PRD.md`，**v2.1** 已对齐 Swift 原生路线） |
 | 技术路线验证 | **完成，判 Go**（`docs/0926_02_swift-native-spike-plan.md`） |
 | Swift 原生外壳 MVP | **已实现，核心链路真机验证通过**（`docs/0926_03_swift-native-mvp-implementation.md`） |
-| 视觉与交互 | **部分**：视觉基调已定（系统控件 + 原生材质）；**Phase 1 交互骨架已完成**（聚焦态描边 / Tab 循环 / 四向拖拽 / ⌘C⌘V 跨栏 / 空格 Quick Look），**运行时行为待人工验收**。仍缺视图切换、侧边栏、网格与无障碍，方案见 `docs/1009_01_uiux-revamp-plan.md` |
-| 公证与分发 | **未做** |
+| 视觉与交互 | **部分**：视觉基调已定（系统控件 + 原生材质）；**Phase 1 交互骨架 + Phase 2 工具栏/列表/传输面板已完成**（聚焦态描边 / Tab 循环 / 四向拖拽 / ⌘C⌘V 跨栏 / 空格 Quick Look / 列头排序 / 搜索 / 失败重试 / 位置弹窗 + 最近使用），**运行时行为待人工验收**。仍缺网格与分栏视图、无障碍，方案见 `docs/1009_01_uiux-revamp-plan.md` |
+| 公证与分发 | **未做**（架构范围已决策：**arm64-only**，放弃 Intel，见 PRD §5.1） |
 
 仓库里存在**两条技术路线**的代码，这是历史原因，不是并列关系：
 
@@ -35,7 +35,7 @@ ADB 二进制内嵌在 app 内 —— 用户不需要装 Android SDK、不需要
 ```
 macos/                    Swift 原生外壳（当前路线）
   project.yml               xcodegen 工程定义
-  Sources/DroidBerth/       39 个 Swift 文件 / 5389 行
+  Sources/DroidBerth/       39 个 Swift 文件 / 5977 行
   Resources/                Info.plist + entitlements
   Scripts/build-sidecar.sh  编译 Rust sidecar 并暂存
 sidecar/droidberth-adb/   Rust sidecar（1787 行 / 5 文件）
@@ -100,16 +100,22 @@ XcodeGen 会报 `Couldn't find current username` 且**静默不生成工程**。
 | `⇧⌘N` | 在设备端新建文件夹 |
 | `⌘C` / `⌘V` | **跨栏传输**：Mac 栏选中 → 设备栏粘贴 = 上传；反向 = 下载（焦点在输入框时恢复文本语义） |
 | `Space` | Quick Look 就地预览（远端文件先拉到 `$TMPDIR/DroidBerth/preview/`） |
-| `Tab` / `⇧Tab` | 在 Mac 窗格 ↔ 设备窗格之间循环聚焦 |
-| `⌘⌥←` / `⌘⌥→` | 直接聚焦 Mac / 设备窗格 |
+| `⌘F` | 聚焦搜索框（筛选作用于聚焦窗格，作用域在编辑查询时锁定） |
+| `⇧⌘X` | 交换左右窗格 |
+| `⇧⌘.` | 显示 / 隐藏隐藏文件 |
+| `Tab` / `⇧Tab` | 在左右窗格之间循环聚焦 |
+| `⌘⌥←` / `⌘⌥→` | 聚焦**屏幕上的**左 / 右窗格（⇄ 交换后仍按视觉位置走） |
 | `⌘[` / `⌘]` | 后退 / 前进 |
 | `⌘↑` | 上一层文件夹 |
 | `⌘R` | 刷新聚焦窗格 |
 | `⌘⌫` | 删除设备端选中项（不可撤销） |
+| `⌘,` | 打开设置 |
 
 > `Space` 与 `Tab` 由本地事件监听（`Support/PaneKeyMonitor.swift`）接管，并带「正在编辑文本」守卫，
 > 因此输入框里的空格与 Tab 保持系统默认语义。**菜单里刻意不给它们挂快捷键**——无修饰键的菜单
 > 快捷键会先于文本框拿到事件。
+>
+> **未实现**：`⌘1` / `⌘2` / `⌘3`（视图切换，随分栏/网格一起做）、`⇧⌘P`（预览窗格）。
 
 ### 编译验证（无需 Rust 工具链 / adb）
 
@@ -159,11 +165,13 @@ build/dd/Build/Products/Release/DroidBerth.app/Contents/MacOS/DroidBerth --spike
 
 | 项 | 原因 |
 |---|---|
-| 视觉与交互验收（双击、拖拽、布局、Quick Look、跨栏粘贴） | 开发环境无法截图 / 无法模拟点击，**需要人工操作**。双击 / 右键打开已人工确认可用；**Phase 1 新增的交互仍未验收** |
+| 视觉与交互验收（双击、拖拽、布局、Quick Look、跨栏粘贴、排序、搜索） | 开发环境无法截图 / 无法模拟点击，**需要人工操作**。双击 / 右键打开已人工确认可用；**Phase 1 / 2 新增的交互仍未验收** |
 | 照片图库作为素材来源 | 需要人工在授权弹窗点「允许」 |
 | App Translocation | 需要先有一个**已公证**的产物才能构造该场景 |
 | 设备窗格 → Finder 拖出 | **未实现**（需 `NSFilePromiseProvider`），见 `docs/1009_01_uiux-revamp-plan.md` §2.6 |
-| 视图切换 / 侧边栏 / 网格视图 / 传输面板增强 / 无障碍 | **未实现**，属 Phase 2 / 3 |
+| 设备端重命名 / 移动、⌘X 剪切 | **未实现**（需设备端 `mv`），属 Phase 4 |
+| 网格视图、分栏视图、无障碍标签 | **未实现**，属 Phase 3 |
+| 工具栏搜索框的 `⌘F` 焦点行为 | `@FocusState` 在 `ToolbarItem` 里的行为**需运行时确认**；失败时降级为「点一下即可输入」，功能不受影响 |
 | 性能基线（相对裸 `adb push` 的开销） | 未测量 |
 | 干净 VM 上的安装验证 | 需要另一台机器 |
 

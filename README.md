@@ -11,6 +11,20 @@ ADB 二进制内嵌在 app 内 —— 用户不需要装 Android SDK、不需要
 
 **技术路线：Swift 原生（SwiftUI + AppKit），复用 Rust sidecar。** 全仓库单一实现路线，不存在并行的第二套外壳；`macos/` 是唯一的应用工程，`sidecar/` 是唯一的 ADB 定位 / 诊断组件。
 
+> **关键词 / Keywords**：macOS ↔ Android 文件传输 · Mac 传视频 / 照片到手机 · ADB 图形界面（GUI）· Android File Transfer 替代 — macOS ⇄ Android file transfer · adb GUI · Android File Transfer alternative
+
+---
+
+## 与相邻方案的差别
+
+| 方案 | 差别 |
+|---|---|
+| **Android File Transfer**（Google 官方） | 走 **MTP** 栈；本项目走 **ADB**。差别在技术栈与适用场景，**未做逐项横向实测**，因此不比较快慢 |
+| 命令行 `adb push` / `adb pull` | 能力等价。差别在于本项目把这一层包成双栏界面，并把 `adb` **内嵌进 app** —— 用户不需要装 Android SDK、不需要碰终端 |
+| 通用 MTP 客户端 / 设备管理器 | 与 ADB 是两条不同的栈，**本项目未评估**；且「设备管理」明确不在范围内 |
+
+> 本项目**不**处理 MTP，**不**做备份，**不**做设备管理。范围与理由见 `docs/0926_01_PRD.md` §1–§3。
+
 ---
 
 ## 当前状态
@@ -32,10 +46,10 @@ ADB 二进制内嵌在 app 内 —— 用户不需要装 Android SDK、不需要
 ```
 macos/                    Swift 原生外壳（唯一应用工程）
   project.yml               xcodegen 工程定义
-  Sources/DroidBerth/       39 个 Swift 文件 / 5977 行
+  Sources/DroidBerth/       39 个 Swift 文件 / 5989 行
   Resources/                Info.plist + entitlements
   Scripts/build-sidecar.sh  编译 Rust sidecar 并暂存到 macos/Sidecar/
-sidecar/droidberth-adb/   Rust sidecar（1787 行 / 5 文件，零第三方依赖）
+sidecar/droidberth-adb/   Rust sidecar（1788 行 / 5 文件，零第三方依赖）
                           version / doctor / resolve / exec / raw 五个子命令
 scripts/                  构建、签名、公证脚本（Swift 路线）
 vendor/                   adb 源码与 platform-tools（见「依赖与许可」）

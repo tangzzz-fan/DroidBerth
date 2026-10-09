@@ -25,12 +25,18 @@ struct EntryGrid: View {
     var onDelete: (([BrowserEntry]) -> Void)?
     var onNewFolder: (() -> Void)?
     var onRefresh: (() -> Void)?
+    /// 设备端重命名（PRD §13.1）。只在单选且来源为 `.remote` 时出现。
+    var onRename: ((BrowserEntry) -> Void)?
     /// 非 nil 时格子可拖拽，载荷按此侧标记（PRD §24）。
     var dragSide: TransferDragPayload.Side?
     var foldersFirst: Bool = true
 
     /// ⇧ 区间选择的锚点。
     @State private var anchorID: String?
+
+    /// 图标两侧留给文件名的宽度。随字号缩放（PRD §25 动态字体）—— 定死的话
+    /// 大字号下两行名称会被裁掉。
+    @ScaledMetric(relativeTo: .caption) private var labelAllowance: CGFloat = 34
 
     private let spacing: CGFloat = 12
 
@@ -64,7 +70,7 @@ struct EntryGrid: View {
     private var iconSide: CGFloat { CGFloat(iconSize) }
 
     /// 单元格宽度 = 图标 + 两侧留白。名称要能在图标下方折两行。
-    private var cellWidth: CGFloat { iconSide + 34 }
+    private var cellWidth: CGFloat { iconSide + labelAllowance }
 
     /// 自适应列数：宽度跟随图标尺寸，⌘± 因此直接改变一屏能放几个。
     private var columns: [GridItem] {
@@ -210,6 +216,9 @@ struct EntryGrid: View {
             Button("打开") { onOpen(entry) }
             if let onReveal, entry.origin == .local {
                 Button("在 Finder 中显示") { onReveal(entry) }
+            }
+            if let onRename, entry.origin == .remote {
+                Button("重命名…") { onRename(entry) }
             }
             Divider()
         }

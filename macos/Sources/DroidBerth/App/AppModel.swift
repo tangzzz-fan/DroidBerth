@@ -518,7 +518,8 @@ final class AppModel {
     /// 处理一次窗格落点（PRD §24）。
     ///
     /// `Android/data` 与 `Android/obb` 的禁止反馈由 `uploadFiles` 统一给出；
-    /// 同侧拖拽与设备端移动尚未实现，给明确提示而不是静默失败。
+    /// 设备端的同侧拖拽＝移动（Phase 4 已接上），Mac 端的同侧拖拽仍只给提示 ——
+    /// 本地文件的移动交给 Finder，本产品不做。
     func performDrop(_ payloads: [TransferDragPayload], onto target: Pane) {
         let localPayloads = payloads.filter { $0.side == .local }
         let remotePayloads = payloads.filter { $0.side == .remote }
@@ -531,11 +532,9 @@ final class AppModel {
                 Task { await uploadFiles(urls, toRemotePath: remoteDirectory) }
             }
             if !remotePayloads.isEmpty {
-                banner = Banner(
-                    level: .info,
-                    title: "设备端移动尚未支持",
-                    detail: "把设备文件拖到设备窗格内的移动操作列在后续阶段（改造方案 Phase 4）"
-                )
+                // 设备窗格内的拖拽 = 设备端移动（PRD §24）。
+                let movePaths = remotePayloads.flatMap(\.paths)
+                Task { await moveRemotePaths(movePaths, toDirectory: remoteDirectory) }
             }
 
         case .mac:
@@ -555,7 +554,7 @@ final class AppModel {
                 banner = Banner(
                     level: .info,
                     title: "同一侧不产生传输",
-                    detail: "Mac 窗格内部的拖拽是移动操作，尚未支持"
+                    detail: "Mac 窗格内部的移动交给 Finder，本产品不做"
                 )
             }
         }
@@ -576,19 +575,29 @@ final class AppModel {
     enum PasteRoute: Equatable, Sendable {
         case upload
         case download
+        /// ⌘X 剪切的设备端条目，粘回设备窗格 = 移动（PRD §22）。
+        case move
         case unsupported
     }
 
-    static func pasteRoute(from source: TransferDragPayload.Side, to target: Pane) -> PasteRoute {
+    static func pasteRoute(
+        from source: TransferDragPayload.Side,
+        to target: Pane,
+        isCut: Bool = false
+    ) -> PasteRoute {
         switch (source, target) {
         case (.local, .device): .upload
         case (.remote, .mac): .download
+        // 只有「剪切」才在设备端内部产生移动；普通拷贝的设备端内部粘贴没有定义。
+        case (.remote, .device) where isCut: .move
         default: .unsupported
         }
     }
 
     /// 内部剪贴板。与拖拽共用 `TransferDragPayload`，所以两条路径的载荷语义一致。
     private(set) var clipboard: TransferDragPayload?
+    /// 剪贴板里那一份是「剪切」还是「拷贝」。剪切 = 移动语义。
+    private(set) var clipboardIsCut = false
 
     var canCopySelection: Bool {
         switch focus {
@@ -621,6 +630,7 @@ final class AppModel {
         }
 
         clipboard = payload
+        clipboardIsCut = false
         writeToPasteboard(payload)
         banner = Banner(
             level: .info,
@@ -629,10 +639,37 @@ final class AppModel {
         )
     }
 
+    /// ⌘X。本产品里「剪切」只对**设备端**有定义 —— Mac 端的移动是 Finder 的事，
+    /// 在双栏工具里给本地文件做剪切会绕过 Finder 的废纸篓语义，不做。
+    func cutSelection() {
+        guard focus == .device else {
+            banner = Banner(
+                level: .info,
+                title: "Mac 端的移动交给 Finder",
+                detail: "这里的「剪切」只作用于设备窗格：切到设备窗格按 ⌘X，换到目标目录再按 ⌘V"
+            )
+            return
+        }
+        let entries = remoteEntries.filter { remoteSelection.contains($0.id) }
+        guard !entries.isEmpty else {
+            banner = Banner(level: .info, title: "请先选择要移动的项目", detail: "在设备窗格里选中文件或文件夹")
+            return
+        }
+        let payload = TransferDragPayload(side: .remote, origin: .pane, paths: entries.map(\.path))
+        clipboard = payload
+        clipboardIsCut = true
+        writeToPasteboard(payload)
+        banner = Banner(
+            level: .info,
+            title: "已剪切 \(payload.paths.count) 个项目",
+            detail: "换到目标目录后按 ⌘V 移动"
+        )
+    }
+
     /// ⌘V。方向由「剪贴板来源 → 当前聚焦窗格」决定。
     func pasteIntoFocus() {
         guard let clipboard else { return }
-        switch Self.pasteRoute(from: clipboard.side, to: focus) {
+        switch Self.pasteRoute(from: clipboard.side, to: focus, isCut: clipboardIsCut) {
         case .upload:
             let urls = clipboard.paths.map { URL(fileURLWithPath: $0) }
             Task { await uploadFiles(urls, toRemotePath: remoteDirectory) }
@@ -651,11 +688,14 @@ final class AppModel {
             }
             Task { await downloadEntries(entries, toDirectory: localDirectory) }
 
+        case .move:
+            Task { await moveRemotePaths(clipboard.paths, toDirectory: remoteDirectory) }
+
         case .unsupported:
             banner = Banner(
                 level: .info,
                 title: "同一侧不产生传输",
-                detail: "Mac 栏内部的 ⌘C/⌘V 是复制、设备栏内部是移动，两者都尚未支持"
+                detail: "设备栏内部的 ⌘C/⌘V 是复制，尚未支持；要移动请用 ⌘X 剪切"
             )
         }
     }
@@ -666,14 +706,6 @@ final class AppModel {
         case (.mac, .photos): photoSelection = Set(photos.items.map(\.id))
         case (.device, _): remoteSelection = Set(remoteEntries.map(\.id))
         }
-    }
-
-    func showCutUnsupported() {
-        banner = Banner(
-            level: .info,
-            title: "剪切尚未支持",
-            detail: "剪切需要「移动」语义，设备端移动列在后续阶段（改造方案 Phase 4）"
-        )
     }
 
     private func writeToPasteboard(_ payload: TransferDragPayload) {
@@ -771,7 +803,7 @@ final class AppModel {
             banner = Banner(
                 level: .info,
                 title: "照片图库暂不支持快速查看",
-                detail: "图库条目要先导出成文件才能预览，列在改造方案 Phase 3；现在可以双击打开"
+                detail: "图库条目要先导出成文件才能预览；现在可以双击打开"
             )
             return true
 
@@ -911,6 +943,140 @@ final class AppModel {
         } else {
             banner = Banner(level: .error, title: "删除失败", detail: result.failureMessage)
         }
+    }
+
+    // MARK: - 设备端重命名 / 移动（PRD §13.1 右键、§24 窗格内拖拽）
+
+    /// 设备端名称校验。抽成纯函数：校验规则要能被单测钉住，而且 UI 侧想在提交前
+    /// 实时禁用「确定」也要用它。
+    static func validateRemoteName(_ raw: String) -> String? {
+        let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if name.isEmpty { return "名称不能为空" }
+        if name == "." || name == ".." { return "「\(name)」不是合法的名称" }
+        if name.contains("/") { return "名称不能包含「/」" }
+        if name.count > 255 { return "名称过长（最多 255 个字符）" }
+        return nil
+    }
+
+    func renameRemoteEntry(_ entry: RemoteEntry, to rawName: String) async {
+        if let problem = Self.validateRemoteName(rawName) {
+            banner = Banner(level: .error, title: "名称不合法", detail: problem)
+            return
+        }
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard name != entry.name else { return }
+
+        let parent = (entry.path as NSString).deletingLastPathComponent
+        let destination = parent.hasSuffix("/") ? parent + name : parent + "/" + name
+
+        // 冲突预检：同目录已有同名就拒绝。`mv` 默认会静默覆盖，而覆盖一个手机上的
+        // 文件是不可逆的 —— 宁可让用户换个名字。列表本来就在手上，不额外开销。
+        if remoteEntries.contains(where: { $0.path == destination }) {
+            banner = Banner(level: .error, title: "已有同名项目", detail: "「\(name)」已存在，换一个名称再试")
+            return
+        }
+
+        guard let device = monitor.activeDevice, let shell = monitor.shell(for: device) else {
+            banner = Banner(level: .error, title: "未找到 adb", detail: nil)
+            return
+        }
+
+        let result = await Task.detached(priority: .userInitiated) {
+            shell.move(entry.path, to: destination)
+        }.value
+
+        guard result.ok else {
+            banner = Banner(level: .error, title: "重命名失败", detail: result.failureMessage)
+            return
+        }
+
+        // 改的若是「当前目录」本身，窗格路径与历史都要跟着走，否则会停在一个不存在的路径上。
+        if remoteDirectory == entry.path {
+            remoteDirectory = destination
+            remoteHistory = remoteHistory.map { $0 == entry.path ? destination : $0 }
+        }
+        remoteSelection = [destination]
+        await loadRemote()
+    }
+
+    /// 设备端移动（PRD §24：把设备文件拖到设备窗格内）。
+    ///
+    /// 入口收 `path` 而不是 `RemoteEntry`：⌘X 剪切后用户会先切到目标目录，此时源条目
+    /// 已经不在 `remoteEntries` 里了，只有路径还留着。
+    func moveRemotePaths(_ paths: [String], toDirectory destination: String) async {
+        guard !paths.isEmpty else { return }
+        let target = Self.normalizedDirectory(destination)
+
+        // 已经在目标目录里的不动 —— 否则「把文件拖到它自己所在窗格」会变成一个假的成功。
+        let pending = paths.filter { Self.parentDirectory(of: $0) != target }
+        guard !pending.isEmpty else {
+            banner = Banner(level: .info, title: "没有需要移动的项目", detail: "它们已经在 \(target) 里了")
+            return
+        }
+
+        // 不能把目录移进它自己或它的子目录。
+        let recursive = pending.filter { target == $0 || target.hasPrefix($0 + "/") }
+        guard recursive.isEmpty else {
+            banner = Banner(
+                level: .error,
+                title: "不能移动到自身内部",
+                detail: recursive.map { ($0 as NSString).lastPathComponent }.joined(separator: "、")
+            )
+            return
+        }
+
+        guard let device = monitor.activeDevice, let shell = monitor.shell(for: device) else {
+            banner = Banner(level: .error, title: "未找到 adb", detail: nil)
+            return
+        }
+
+        // 冲突预检：目标目录里已有同名 → **整批拒绝**。与重命名同一条理由：
+        // `mv` 的默认行为是静默覆盖，而这里覆盖的是用户手机上的数据。
+        let names = pending.map { ($0 as NSString).lastPathComponent }
+        let conflicts = await Task.detached(priority: .userInitiated) { () -> [String] in
+            guard case .success(let listed) = shell.list(target) else { return [] }
+            let existing = Set(listed.map(\.name))
+            return names.filter { existing.contains($0) }
+        }.value
+
+        guard conflicts.isEmpty else {
+            banner = Banner(
+                level: .error,
+                title: "目标目录已有同名项目",
+                detail: "\(conflicts.joined(separator: "、"))。为避免覆盖，本次一个都没有移动"
+            )
+            return
+        }
+
+        let result = await Task.detached(priority: .userInitiated) {
+            shell.move(pending, intoDirectory: target)
+        }.value
+
+        guard result.ok else {
+            banner = Banner(level: .error, title: "移动失败", detail: result.failureMessage)
+            return
+        }
+
+        // 剪切粘贴完成后撤销剪切态，与 Finder 一致（剪切是一次性的意图）。
+        if clipboardIsCut { clipboardIsCut = false }
+        remoteSelection = []
+        await loadRemote()
+        banner = Banner(level: .info, title: "已移动 \(pending.count) 个项目", detail: "→ \(target)")
+    }
+
+    func moveRemoteEntries(_ entries: [RemoteEntry], toDirectory destination: String) async {
+        await moveRemotePaths(entries.map(\.path), toDirectory: destination)
+    }
+
+    static func parentDirectory(of path: String) -> String {
+        normalizedDirectory((path as NSString).deletingLastPathComponent)
+    }
+
+    /// 去掉尾部斜杠（根目录除外），便于用 `==` 比较两个目录。
+    private static func normalizedDirectory(_ path: String) -> String {
+        var value = path
+        while value.count > 1, value.hasSuffix("/") { value.removeLast() }
+        return value
     }
 
     func scanRemoteSelection() async {
@@ -1230,7 +1396,7 @@ final class AppModel {
     }
 
     /// ⌘⌫ 目前只作用于设备端。Mac 端的删除要走 Finder 的「移到废纸篓」语义，
-    /// 涉及不可逆风险，不在 Phase 1 范围内（见改造方案 Phase 4）。
+    /// 涉及不可逆风险，**明确不做** —— 本地文件的删除交给 Finder。
     var canDeleteSelection: Bool {
         focus == .device && !remoteSelection.isEmpty && activeDevice != nil
     }

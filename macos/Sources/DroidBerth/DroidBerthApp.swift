@@ -43,7 +43,7 @@ struct DroidBerthApp: App {
             CommandGroup(replacing: .pasteboard) {
                 Button("剪切") {
                     if !TextEditingRelay.forwardIfEditing(#selector(NSText.cut(_:))) {
-                        model.showCutUnsupported()
+                        model.cutSelection()
                     }
                 }
                 .keyboardShortcut("x", modifiers: .command)

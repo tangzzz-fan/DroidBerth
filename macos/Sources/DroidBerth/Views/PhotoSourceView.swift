@@ -27,7 +27,7 @@ struct PhotoSourceView: View {
 
             HStack(spacing: 0) {
                 albumList
-                    .frame(width: 168)
+                    .frame(minWidth: 168)
                 Divider()
                 VStack(spacing: 0) {
                     // 照片图库沿用 Mac 窗格的浏览形态设置（PRD §13「两侧各自支持
@@ -139,7 +139,7 @@ struct PhotoSourceView: View {
                 if !current.isEmpty {
                     Text(current)
                         .font(.caption)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .frame(maxWidth: 140, alignment: .trailing)

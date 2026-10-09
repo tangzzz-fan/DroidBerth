@@ -11,6 +11,8 @@ struct TransferPanel: View {
     @Bindable var queue: TransferQueue
     @Bindable var settings: AppSettings
     @State private var userExpanded = true
+    /// PRD §25：Reduce Motion 时把折叠动画退化成无动画（展开/收起本身仍然发生）。
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var pinned: Bool { settings.transferPanelPinned }
     private var expanded: Bool { pinned || userExpanded }
@@ -76,7 +78,7 @@ struct TransferPanel: View {
             .help(pinned ? "取消固定：队列为空时自动隐藏" : "固定面板：队列为空时也常驻")
 
             Button {
-                withAnimation(.easeInOut(duration: 0.15)) { userExpanded.toggle() }
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.15)) { userExpanded.toggle() }
             } label: {
                 Image(systemName: expanded ? "chevron.down" : "chevron.up")
             }
@@ -121,6 +123,7 @@ private struct TransferRow: View {
 
     @State private var showsDetail = false
     @State private var hovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var isFailed: Bool { job.state == .failed }
 
@@ -185,7 +188,7 @@ private struct TransferRow: View {
             Button("重试", action: onRetry)
                 .controlSize(.small)
             Button(showsDetail ? "收起" : "查看原因") {
-                withAnimation(.easeInOut(duration: 0.12)) { showsDetail.toggle() }
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.12)) { showsDetail.toggle() }
             }
             .controlSize(.small)
         } else if job.state == .running || job.state == .waiting {
@@ -239,7 +242,7 @@ private struct TransferRow: View {
         HStack(alignment: .top, spacing: 6) {
             Text(label)
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
                 .frame(width: 26, alignment: .leading)
             Text(value)
                 .font(.caption2)

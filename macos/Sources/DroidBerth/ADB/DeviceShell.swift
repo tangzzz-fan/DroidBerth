@@ -104,6 +104,23 @@ struct DeviceShell: Sendable {
         return shell("rm -rf \(joined)", timeout: 60)
     }
 
+    /// 设备端重命名（PRD §13.1 右键菜单）。`mv` 换个名字就是重命名。
+    ///
+    /// 刻意**不加 `-f` / `-n`**：覆盖与否由调用方先做冲突预检再决定，而不是把一个
+    /// 静默覆盖或静默跳过的开关藏在命令里 —— 两种静默都比报错更糟。
+    func move(_ source: String, to destination: String) -> ShellResult {
+        shell("mv \(Self.quote(source)) \(Self.quote(destination))")
+    }
+
+    /// 把多个条目移进一个目录（PRD §24：设备窗格内拖拽 = 设备端移动）。
+    func move(_ sources: [String], intoDirectory directory: String) -> ShellResult {
+        guard !sources.isEmpty else {
+            return ShellResult(code: 0, stdout: "", stderr: "", timedOut: false, spawnError: nil)
+        }
+        let joined = sources.map(Self.quote).joined(separator: " ")
+        return shell("mv \(joined) \(Self.quote(directory))", timeout: 60)
+    }
+
     func availableBytes(at path: String) -> Int64? {
         let result = shell("df -k \(Self.quote(path))")
         guard result.ok else { return nil }

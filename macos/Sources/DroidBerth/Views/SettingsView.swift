@@ -29,7 +29,8 @@ struct SettingsView: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
         }
-        .frame(width: 480, height: 620)
+        // PRD §25 动态字体：给下限 / 理想值而不是定尺寸，字号放大时表单可以撑开。
+        .frame(minWidth: 480, idealWidth: 480, minHeight: 560, idealHeight: 620)
     }
 
     private var transferSection: some View {

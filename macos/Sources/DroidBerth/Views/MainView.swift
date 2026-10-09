@@ -8,11 +8,17 @@ struct MainView: View {
     @State private var showNewFolder = false
     @State private var newFolderName = ""
     @State private var showDeleteConfirm = false
+    @State private var showRename = false
+    @State private var renameTarget: RemoteEntry?
+    @State private var renameName = ""
     @State private var showPlaces = false
     @State private var keyMonitor: PaneKeyMonitor?
     @State private var macDropTargeted = false
     @State private var deviceDropTargeted = false
     @FocusState private var searchFocused: Bool
+    /// PRD §25「Reduce Motion：进度动画退化」。系统打开「减弱动态效果」后，
+    /// 位移类动画一律退化成无动画（淡入淡出保留 —— 它不引起前庭不适）。
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(spacing: 0) {
@@ -91,6 +97,23 @@ struct MainView: View {
         } message: {
             Text("此操作不可撤销。设备端没有回收站，删除后无法恢复。")
         }
+        .alert("重命名", isPresented: $showRename, presenting: renameTarget) { target in
+            TextField("名称", text: $renameName)
+            Button("取消", role: .cancel) {
+                renameTarget = nil
+                renameName = ""
+            }
+            Button("重命名") {
+                let name = renameName
+                renameTarget = nil
+                renameName = ""
+                Task { await model.renameRemoteEntry(target, to: name) }
+            }
+            // 名称不合法时直接禁用提交，而不是让用户提交完再吃一个报错。
+            .disabled(AppModel.validateRemoteName(renameName) != nil)
+        } message: { target in
+            Text("把「\(target.name)」重命名（留在同一目录）")
+        }
         .alert(
             "预览需要先下载",
             isPresented: Binding(
@@ -132,7 +155,8 @@ struct MainView: View {
                     }
                 }
                 .labelsHidden()
-                .frame(width: 130)
+                // PRD §25 动态字体：给的是下限而不是定宽，否则大字号下「Finder 位置」会截断。
+                .frame(minWidth: 130)
             }
             .onTapGesture { model.focus = .mac }
 
@@ -260,7 +284,7 @@ struct MainView: View {
             if model.localSelection.count == 1 {
                 Text("空格预览")
                     .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
             }
             if model.hiddenBySearchCount(in: .mac) > 0 {
                 Text("筛选后 \(model.visibleLocalEntries.count) / \(model.localEntries.count)")
@@ -305,7 +329,7 @@ struct MainView: View {
                     Label("位置", systemImage: "folder")
                 }
                 .menuStyle(.borderlessButton)
-                .frame(width: 92)
+                .frame(minWidth: 92)
             }
             .onTapGesture { model.focus = .device }
 
@@ -348,6 +372,7 @@ struct MainView: View {
                     onDownload: { Task { await model.downloadSelection() } },
                     onNewFolder: { showNewFolder = true },
                     onRefresh: { Task { await model.loadRemote() } },
+                    onRename: beginRename,
                     dragSide: .remote,
                     foldersFirst: model.settings.foldersFirst
                 )
@@ -363,6 +388,7 @@ struct MainView: View {
                     onDelete: confirmDeleteRemoteEntries,
                     onNewFolder: { showNewFolder = true },
                     onRefresh: { Task { await model.loadRemote() } },
+                    onRename: beginRename,
                     dragSide: .remote,
                     foldersFirst: model.settings.foldersFirst
                 )
@@ -394,7 +420,7 @@ struct MainView: View {
                 if model.remoteSelection.count == 1 {
                     Text("空格预览")
                         .font(.caption)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                 }
                 if model.hiddenBySearchCount(in: .device) > 0 {
                     Text("筛选后 \(model.visibleRemoteEntries.count) / \(model.remoteEntries.count)")
@@ -508,14 +534,14 @@ struct MainView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(width: 116)
+            .frame(minWidth: 116)
             .help("切换聚焦窗格的浏览形态（⌘1 列表 / ⌘2 分栏 / ⌘3 网格）")
         }
 
         // PRD §10 要求 ⇄ 居中。放在两栏之间语义上也对 —— 它交换的正是这两栏。
         ToolbarItem(placement: .principal) {
             Button {
-                withAnimation(.easeInOut(duration: 0.18)) { model.swapPanes() }
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) { model.swapPanes() }
             } label: {
                 Label("交换两侧", systemImage: "arrow.left.arrow.right")
             }
@@ -556,7 +582,7 @@ struct MainView: View {
             TextField(model.searchPrompt, text: searchBinding)
                 .textFieldStyle(.plain)
                 .focused($searchFocused)
-                .frame(width: 130)
+                .frame(minWidth: 130)
 
             if model.isSearching {
                 // 把「查询作用在哪个窗格」写在明面上：作用域只在编辑时锁定，
@@ -646,7 +672,8 @@ struct MainView: View {
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.separator))
             .shadow(radius: 6)
             .padding(12)
-            .transition(.move(edge: .top).combined(with: .opacity))
+            // Reduce Motion：只保留淡入淡出，去掉从顶部滑入的位移。
+            .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
         }
     }
 
@@ -785,6 +812,15 @@ struct MainView: View {
         showDeleteConfirm = true
     }
 
+    /// 右键「重命名…」：预填原名，并把这个条目设为选中（与 Finder 一致）。
+    private func beginRename(_ entry: BrowserEntry) {
+        let target = remoteEntry(from: entry)
+        model.remoteSelection = [target.id]
+        renameTarget = target
+        renameName = target.name
+        showRename = true
+    }
+
     private func chooseLocalFolder() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
@@ -833,7 +869,7 @@ private struct PlacesPopover: View {
             .buttonStyle(.plain)
         }
         .padding(8)
-        .frame(width: 290)
+        .frame(minWidth: 290)
     }
 
     private func sectionHeader<Trailing: View>(
@@ -843,7 +879,7 @@ private struct PlacesPopover: View {
         HStack {
             Text(title)
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
             Spacer()
             trailing()
         }
@@ -871,7 +907,7 @@ private struct PlacesPopover: View {
                 if let path, path != name {
                     Text(path)
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }

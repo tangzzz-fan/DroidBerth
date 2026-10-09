@@ -11,6 +11,8 @@ struct EntryTable: View {
     var onUpload: (() -> Void)?
     var onNewFolder: (() -> Void)?
     var onRefresh: (() -> Void)?
+    /// 设备端重命名（PRD §13.1）。只对单选且 `.remote` 的条目出现。
+    var onRename: ((BrowserEntry) -> Void)?
     /// 非 nil 时该表格的行可被拖拽，载荷按此侧标记（PRD §24）。
     /// 照片来源传 nil —— 图库条目不是文件路径，不参与拖拽。
     var dragSide: TransferDragPayload.Side?
@@ -75,6 +77,9 @@ struct EntryTable: View {
                     Button("打开") { onOpen(entry) }
                     if let onReveal, entry.origin == .local {
                         Button("在 Finder 中显示") { onReveal(entry) }
+                    }
+                    if let onRename, entry.origin == .remote {
+                        Button("重命名…") { onRename(entry) }
                     }
                     Divider()
                 }

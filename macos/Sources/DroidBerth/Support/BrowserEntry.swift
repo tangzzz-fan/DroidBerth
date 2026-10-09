@@ -20,6 +20,15 @@ struct BrowserEntry: Identifiable, Hashable, Sendable {
     let photoIdentifier: String?
     let isVideo: Bool
 
+    /// 供列表排序用的**非可空**投影。
+    ///
+    /// `TableColumn(_:value:)` 要求 `V: Comparable`，而 Swift 故意不给 `Optional`
+    /// 定义 `Comparable`（nil 的次序没有自然定义）。所以可空字段在这里投影成非可空：
+    /// 未知大小按 -1、未知日期按 `.distantPast`，两者都落在升序的最前面，与
+    /// 「未知就先看」的直觉一致。文件夹本来就靠 `foldersFirst` 单独分组，不受影响。
+    var sortableSize: Int64 { size ?? -1 }
+    var sortableModified: Date { modified ?? .distantPast }
+
     init(
         origin: Origin,
         name: String,

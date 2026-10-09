@@ -10,6 +10,7 @@ struct SettingsView: View {
                 transferSection
                 destinationSection
                 mediaSection
+                listSection
                 appearanceSection
                 rememberedSection
             }
@@ -28,7 +29,7 @@ struct SettingsView: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
         }
-        .frame(width: 480, height: 560)
+        .frame(width: 480, height: 620)
     }
 
     private var transferSection: some View {
@@ -46,6 +47,10 @@ struct SettingsView: View {
             Text(settings.conflictPolicy == .keepBoth
                  ? "保留两者：新文件会自动加上 (1)、(2) 后缀，不覆盖原有内容。"
                  : "覆盖：同名文件会被直接替换，设备端原有内容不可恢复。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Toggle("传输面板固定在最下方", isOn: $settings.transferPanelPinned)
+            Text("固定后即使没有传输任务也常驻，且不会自动折叠。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -67,6 +72,28 @@ struct SettingsView: View {
             Text("推送完成后向设备发送媒体扫描广播，新文件才会出现在手机相册里。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    private var listSection: some View {
+        Section("列表") {
+            Toggle("文件夹排在最前", isOn: $settings.foldersFirst)
+            Text("关闭后文件夹与文件一起按你选的列排序。列头点击排序始终可用。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("最近使用的文件夹")
+                    Text("「位置」弹窗里显示 \(settings.recentLocalFolders.count) 项")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("清除") { settings.forgetRecentLocalFolders() }
+                    .controlSize(.small)
+                    .disabled(settings.recentLocalFolders.isEmpty)
+            }
         }
     }
 

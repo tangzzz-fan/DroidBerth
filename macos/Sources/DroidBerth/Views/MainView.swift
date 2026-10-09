@@ -8,23 +8,25 @@ struct MainView: View {
     @State private var showNewFolder = false
     @State private var newFolderName = ""
     @State private var showDeleteConfirm = false
+    @State private var showPlaces = false
     @State private var keyMonitor: PaneKeyMonitor?
     @State private var macDropTargeted = false
     @State private var deviceDropTargeted = false
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             HSplitView {
-                macPane
+                pane(model.leftPane)
                     .frame(minWidth: 340)
-                devicePane
+                pane(model.rightPane)
                     .frame(minWidth: 340)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            if !model.queue.isEmpty {
+            if !model.queue.isEmpty || model.settings.transferPanelPinned {
                 Divider()
-                TransferPanel(queue: model.queue)
+                TransferPanel(queue: model.queue, settings: model.settings)
             }
         }
         .overlay(alignment: .top) { bannerOverlay }
@@ -51,6 +53,12 @@ struct MainView: View {
         .onReceive(NotificationCenter.default.publisher(for: .droidBerthDeleteSelection)) { _ in
             guard model.canDeleteSelection else { return }
             showDeleteConfirm = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .droidBerthFocusSearch)) { _ in
+            searchFocused = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .droidBerthOpenSettings)) { _ in
+            showSettings = true
         }
         .onChange(of: model.monitor.selectedSerial) { _, _ in
             Task { await model.deviceDidChange() }
@@ -98,6 +106,17 @@ struct MainView: View {
         }
     }
 
+    // MARK: - 窗格分发
+
+    /// 左右窗格由 `model.panesSwapped` 决定，因此 ⇄ 交换只需换这里的分发。
+    @ViewBuilder
+    private func pane(_ target: AppModel.Pane) -> some View {
+        switch target {
+        case .mac: macPane
+        case .device: devicePane
+        }
+    }
+
     // MARK: - Mac 窗格
 
     private var macPane: some View {
@@ -125,7 +144,7 @@ struct MainView: View {
                 EntryTable(
                     entries: macEntries,
                     selection: $model.localSelection,
-                    emptyMessage: model.localError ?? "这个文件夹是空的",
+                    emptyMessage: macEmptyMessage,
                     onOpen: { entry in
                         guard let local = model.localEntries.first(where: { $0.id == entry.id }) else { return }
                         if local.isDirectory {
@@ -140,7 +159,8 @@ struct MainView: View {
                     },
                     onUpload: { Task { await model.uploadSelection() } },
                     onRefresh: { model.reloadLocal() },
-                    dragSide: .local
+                    dragSide: .local,
+                    foldersFirst: model.settings.foldersFirst
                 )
                 localStatusBar
             } else {
@@ -167,17 +187,7 @@ struct MainView: View {
             Button { model.localGoUp() } label: { Image(systemName: "arrow.up") }
                 .buttonStyle(.borderless)
 
-            Menu {
-                ForEach(LocalFileSystem.places()) { place in
-                    Button(place.name) { model.navigateLocal(to: place.url, resetHistory: true) }
-                }
-                Divider()
-                Button("其它…") { chooseLocalFolder() }
-            } label: {
-                Image(systemName: "sidebar.left")
-            }
-            .menuStyle(.borderlessButton)
-            .frame(width: 28)
+            placesButton
 
             PathBreadcrumb(items: model.localBreadcrumbs.map { item in (item.0, { model.navigateLocal(to: item.1) }) })
 
@@ -189,6 +199,28 @@ struct MainView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
+    }
+
+    /// 位置入口。
+    ///
+    /// 刻意**不做常驻侧边栏**：这是一个双栏传输工具，第三栏会永久吃掉横向空间，
+    /// 而「位置」是偶发动作。真正的痛点是「回到上次传的那个项目文件夹」，
+    /// 所以弹窗里把「最近使用」放在最前面（见 `PlacesPopover`）。
+    private var placesButton: some View {
+        Button { showPlaces.toggle() } label: {
+            Image(systemName: "sidebar.left")
+        }
+        .buttonStyle(.borderless)
+        .popover(isPresented: $showPlaces, arrowEdge: .bottom) {
+            PlacesPopover(model: model, onPick: { url in
+                model.navigateLocal(to: url, resetHistory: true)
+                showPlaces = false
+            }, onChooseOther: {
+                showPlaces = false
+                chooseLocalFolder()
+            })
+        }
+        .help("位置")
     }
 
     private var localStatusBar: some View {
@@ -206,6 +238,11 @@ struct MainView: View {
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
+            if model.hiddenBySearchCount(in: .mac) > 0 {
+                Text("筛选后 \(model.visibleLocalEntries.count) / \(model.localEntries.count)")
+                    .font(.caption)
+                    .foregroundStyle(Color.accentColor)
+            }
             Spacer()
             if let bytes = model.remoteAvailableBytes, model.activeDevice != nil {
                 Text("设备可用 \(ByteFormat.size(bytes))")
@@ -218,7 +255,13 @@ struct MainView: View {
     }
 
     private var macEntries: [BrowserEntry] {
-        model.localEntries.map(\.asBrowserEntry)
+        model.visibleLocalEntries.map(\.asBrowserEntry)
+    }
+
+    private var macEmptyMessage: String {
+        if let error = model.localError { return error }
+        if model.hiddenBySearchCount(in: .mac) > 0 { return "没有匹配「\(model.searchQuery)」的项目" }
+        return "这个文件夹是空的"
     }
 
     // MARK: - 设备窗格
@@ -268,7 +311,7 @@ struct MainView: View {
             Divider()
 
             EntryTable(
-                entries: model.remoteEntries.map(BrowserEntry.init(remote:)),
+                entries: model.visibleRemoteEntries.map(BrowserEntry.init(remote:)),
                 selection: $model.remoteSelection,
                 emptyMessage: deviceEmptyMessage,
                 onOpen: { entry in
@@ -279,8 +322,10 @@ struct MainView: View {
                 },
                 onDelete: { showDeleteConfirm = true },
                 onDownload: { Task { await model.downloadSelection() } },
+                onNewFolder: { showNewFolder = true },
                 onRefresh: { Task { await model.loadRemote() } },
-                dragSide: .remote
+                dragSide: .remote,
+                foldersFirst: model.settings.foldersFirst
             )
 
             HStack {
@@ -296,6 +341,11 @@ struct MainView: View {
                     Text("空格预览")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
+                }
+                if model.hiddenBySearchCount(in: .device) > 0 {
+                    Text("筛选后 \(model.visibleRemoteEntries.count) / \(model.remoteEntries.count)")
+                        .font(.caption)
+                        .foregroundStyle(Color.accentColor)
                 }
                 Spacer()
                 if let bytes = model.remoteAvailableBytes {
@@ -368,6 +418,7 @@ struct MainView: View {
 
     private var deviceEmptyMessage: String {
         if let remoteError = model.remoteError { return remoteError }
+        if model.hiddenBySearchCount(in: .device) > 0 { return "没有匹配「\(model.searchQuery)」的项目" }
         if model.activeDevice != nil { return "这个文件夹是空的" }
         switch model.monitor.status {
         case .sidecarMissing:
@@ -391,6 +442,19 @@ struct MainView: View {
         ToolbarItem(placement: .navigation) {
             deviceMenu
         }
+
+        // PRD §10 要求 ⇄ 居中。放在两栏之间语义上也对 —— 它交换的正是这两栏。
+        ToolbarItem(placement: .principal) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) { model.swapPanes() }
+            } label: {
+                Label("交换两侧", systemImage: "arrow.left.arrow.right")
+            }
+            .help("左右窗格互换（⇧⌘X）")
+        }
+
+        // 上传 / 下载是这个产品的核心动作，刻意留在工具栏而不是收进 ⋯：
+        // 把主要动作藏进菜单是净损失（PRD §10 把它们列在 ⋯ 里，此处偏离）。
         ToolbarItemGroup(placement: .primaryAction) {
             Button {
                 Task { await model.uploadSelection() }
@@ -408,30 +472,76 @@ struct MainView: View {
             .disabled(model.remoteSelection.isEmpty || model.activeDevice == nil)
             .help("把设备窗格中选中的项目下载到 Mac 当前目录（⇧⌘S）")
 
-            Divider()
+            searchField
 
-            Button {
-                showNewFolder = true
-            } label: {
-                Label("新建文件夹", systemImage: "folder.badge.plus")
-            }
-            .disabled(model.activeDevice == nil)
-            .help("在设备当前目录下新建文件夹（⇧⌘N）")
+            moreMenu
+        }
+    }
 
-            Button {
-                Task { await model.scanRemoteSelection() }
-            } label: {
-                Label("刷新媒体库", systemImage: "arrow.triangle.2.circlepath")
-            }
-            .disabled(model.remoteSelection.isEmpty || model.activeDevice == nil)
-            .help("让设备端相册重新索引选中的文件")
+    private var searchField: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "magnifyingglass")
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
-            Button {
-                showSettings = true
-            } label: {
-                Label("设置", systemImage: "gearshape")
+            TextField(model.searchPrompt, text: searchBinding)
+                .textFieldStyle(.plain)
+                .focused($searchFocused)
+                .frame(width: 130)
+
+            if model.isSearching {
+                // 把「查询作用在哪个窗格」写在明面上：作用域只在编辑时锁定，
+                // 不跟随焦点实时变化，否则 Tab 一下结果就跳。
+                Text(model.searchScopeIsMac ? "Mac" : "设备")
+                    .font(.caption2)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(.quaternary, in: Capsule())
+                    .help(model.searchScopeIsMac ? "筛选「这台 Mac」窗格" : "筛选设备窗格")
+
+                Button { model.clearSearch() } label: {
+                    Image(systemName: "xmark.circle.fill")
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
+                .help("清除筛选")
             }
         }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    private var searchBinding: Binding<String> {
+        Binding(get: { model.searchQuery }, set: { model.setSearchQuery($0) })
+    }
+
+    private var moreMenu: some View {
+        Menu {
+            Button("新建文件夹…") { showNewFolder = true }
+                .disabled(model.activeDevice == nil)
+            Button("刷新媒体库") {
+                Task { await model.scanRemoteSelection() }
+            }
+            .disabled(model.remoteSelection.isEmpty || model.activeDevice == nil)
+
+            Divider()
+
+            Button("刷新") { model.refreshFocusedPane() }
+            Toggle("显示隐藏文件", isOn: $model.showHiddenFiles)
+            // `AppModel.settings` 是 let，取不到可写 keyPath，用 Bindable 包一层。
+            Toggle("文件夹排在最前", isOn: Bindable(model.settings).foldersFirst)
+
+            Divider()
+
+            Button("交换两侧") { model.swapPanes() }
+            Button("快速查看") { model.quickLookFocusedSelection() }
+                .disabled(!model.canQuickLook)
+            Button("设置…") { showSettings = true }
+        } label: {
+            Label("更多", systemImage: "ellipsis.circle")
+        }
+        .help("更多操作")
     }
 
     @ViewBuilder
@@ -497,6 +607,93 @@ struct MainView: View {
         if panel.runModal() == .OK, let url = panel.url {
             model.navigateLocal(to: url, resetHistory: true)
         }
+    }
+}
+
+/// 「位置」弹窗。
+///
+/// 「最近使用」排在「位置」之前，是因为主场景里用户反复回到的是**同一个项目文件夹**
+/// （几百 GB 的素材目录），而不是桌面 / 下载这些固定位置。
+private struct PlacesPopover: View {
+    @Bindable var model: AppModel
+    let onPick: (URL) -> Void
+    let onChooseOther: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if !model.recentLocalFolders.isEmpty {
+                sectionHeader("最近使用") {
+                    Button("清除") { model.settings.forgetRecentLocalFolders() }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(model.recentLocalFolders, id: \.path) { url in
+                    row(url.lastPathComponent, "clock", url.path)
+                }
+                Divider().padding(.vertical, 4)
+            }
+
+            sectionHeader("位置", trailing: { EmptyView() })
+            ForEach(LocalFileSystem.places()) { place in
+                row(place.name, place.systemImage, place.url.path)
+            }
+
+            Divider().padding(.vertical, 4)
+            Button { onChooseOther() } label: {
+                rowLabel("其它…", "ellipsis.circle", nil)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(8)
+        .frame(width: 290)
+    }
+
+    private func sectionHeader<Trailing: View>(
+        _ title: String,
+        @ViewBuilder trailing: () -> Trailing
+    ) -> some View {
+        HStack {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+            Spacer()
+            trailing()
+        }
+        .padding(.horizontal, 6)
+        .padding(.bottom, 2)
+    }
+
+    private func row(_ name: String, _ symbol: String, _ path: String?) -> some View {
+        Button {
+            guard let path else { return }
+            onPick(URL(fileURLWithPath: path, isDirectory: true))
+        } label: {
+            rowLabel(name, symbol, path)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func rowLabel(_ name: String, _ symbol: String, _ path: String?) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: symbol)
+                .frame(width: 16)
+                .foregroundStyle(Color.accentColor)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(name).lineLimit(1)
+                if let path, path != name {
+                    Text(path)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
     }
 }
 

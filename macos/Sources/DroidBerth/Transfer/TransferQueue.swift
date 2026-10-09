@@ -59,14 +59,29 @@ final class TransferQueue {
 
     func retryFailed() {
         for job in jobs where job.state == .failed {
-            job.state = .waiting
-            job.fraction = 0
-            job.bytesTransferred = 0
-            job.errorMessage = nil
-            job.mediaScanNote = nil
-            job.mediaScanFailed = false
+            reset(job)
         }
         pump()
+    }
+
+    /// 单任务重试（PRD §14 要求失败行自带「重试」）。
+    func retry(_ job: TransferJob) {
+        guard job.state == .failed else { return }
+        reset(job)
+        pump()
+    }
+
+    /// 把任务退回「等待」并清空上一轮的进度与错误。速度 / ETA 必须一并清掉，
+    /// 否则重试后第一帧会显示上一轮的残留值。
+    private func reset(_ job: TransferJob) {
+        job.state = .waiting
+        job.fraction = 0
+        job.bytesTransferred = 0
+        job.bytesPerSecond = nil
+        job.estimatedRemaining = nil
+        job.errorMessage = nil
+        job.mediaScanNote = nil
+        job.mediaScanFailed = false
     }
 
     func clearFinished() {

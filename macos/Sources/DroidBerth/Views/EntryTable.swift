@@ -9,10 +9,18 @@ struct EntryTable: View {
     var onDelete: (() -> Void)?
     var onDownload: (() -> Void)?
     var onUpload: (() -> Void)?
+    var onNewFolder: (() -> Void)?
     var onRefresh: (() -> Void)?
     /// 非 nil 时该表格的行可被拖拽，载荷按此侧标记（PRD §24）。
     /// 照片来源传 nil —— 图库条目不是文件路径，不参与拖拽。
     var dragSide: TransferDragPayload.Side?
+    /// 文件夹排在最前（PRD §13.1，默认开启，可在设置里关）。
+    var foldersFirst: Bool = true
+
+    /// 名称列用 Finder 的本地化比较，而不是字典序 —— 否则 "Zebra" 会排在 "apple" 前。
+    @State private var sortOrder: [KeyPathComparator<BrowserEntry>] = [
+        KeyPathComparator(\BrowserEntry.name, comparator: .localizedStandard)
+    ]
 
     var body: some View {
         if entries.isEmpty {
@@ -21,8 +29,8 @@ struct EntryTable: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            Table(entries, selection: $selection) {
-                TableColumn("名称") { entry in
+            Table(sortedEntries, selection: $selection, sortOrder: sortOrderBinding) {
+                TableColumn("名称", value: \.name) { entry in
                     draggableCell(entry) {
                         HStack(spacing: 6) {
                             Image(systemName: entry.systemImage)
@@ -34,14 +42,14 @@ struct EntryTable: View {
                 }
                 .width(min: 180, ideal: 280)
 
-                TableColumn("种类") { entry in
+                TableColumn("种类", value: \.kindLabel) { entry in
                     draggableCell(entry) {
                         Text(entry.kindLabel).foregroundStyle(.secondary)
                     }
                 }
                 .width(min: 70, ideal: 90)
 
-                TableColumn("大小") { entry in
+                TableColumn("大小", value: \.sortableSize) { entry in
                     draggableCell(entry) {
                         Text(ByteFormat.size(entry.size))
                             .monospacedDigit()
@@ -50,7 +58,7 @@ struct EntryTable: View {
                 }
                 .width(min: 70, ideal: 90)
 
-                TableColumn("修改日期") { entry in
+                TableColumn("修改日期", value: \.sortableModified) { entry in
                     draggableCell(entry) {
                         Text(ByteFormat.date(entry.modified))
                             .foregroundStyle(.secondary)
@@ -76,6 +84,9 @@ struct EntryTable: View {
                 if let onUpload, !picked.isEmpty, noRemote {
                     Button("上传到设备") { onUpload() }
                 }
+                if let onNewFolder, picked.isEmpty {
+                    Button("新建文件夹…") { onNewFolder() }
+                }
                 if let onRefresh, picked.isEmpty {
                     Button("刷新") { onRefresh() }
                 }
@@ -88,6 +99,48 @@ struct EntryTable: View {
                 onOpen(entry)
             }
         }
+    }
+
+    // MARK: - 排序
+
+    /// 文件夹优先 + 用户选择的列 + 名称兜底。
+    ///
+    /// 排序必须自己做：`Table` 拿到 `sortOrder` 只负责画箭头，不会重排数据。
+    /// 用单个比较器而不是「先排序再二次稳定排序」，是为了不依赖 `sorted(by:)`
+    /// 的稳定性（Swift 未承诺稳定）。
+    private var sortedEntries: [BrowserEntry] {
+        let comparators = sortOrder
+        return entries.sorted { lhs, rhs in
+            if foldersFirst, lhs.isDirectory != rhs.isDirectory {
+                return lhs.isDirectory
+            }
+            for comparator in comparators {
+                switch comparator.compare(lhs, rhs) {
+                case .orderedAscending: return true
+                case .orderedDescending: return false
+                case .orderedSame: continue
+                }
+            }
+            return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+        }
+    }
+
+    /// 点击列头时 `Table` 会用**默认比较器**重建 comparator（名称列会退化成
+    /// 大小写敏感的字典序）。这里把名称列换回本地化比较，其余列原样透传。
+    private var sortOrderBinding: Binding<[KeyPathComparator<BrowserEntry>]> {
+        Binding(
+            get: { sortOrder },
+            set: { updated in
+                sortOrder = updated.map { comparator in
+                    guard comparator.keyPath == \BrowserEntry.name else { return comparator }
+                    return KeyPathComparator(
+                        \BrowserEntry.name,
+                        comparator: .localizedStandard,
+                        order: comparator.order
+                    )
+                }
+            }
+        )
     }
 
     // MARK: - 拖拽

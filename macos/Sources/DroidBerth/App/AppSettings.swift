@@ -57,6 +57,42 @@ final class AppSettings {
         didSet { defaults.set(appearance.rawValue, forKey: Key.appearance) }
     }
 
+    /// 传输面板固定（PRD §14）：固定后即使队列为空也常驻，且不自动折叠。
+    var transferPanelPinned: Bool {
+        didSet { defaults.set(transferPanelPinned, forKey: Key.transferPanelPinned) }
+    }
+
+    /// 列表里文件夹是否排在最前（PRD §13.1：默认开启，可在设置里关）。
+    var foldersFirst: Bool {
+        didSet { defaults.set(foldersFirst, forKey: Key.foldersFirst) }
+    }
+
+    /// 左右窗格是否互换（PRD §10「交换两侧」）。布局偏好，跨启动保留。
+    var panesSwapped: Bool {
+        didSet { defaults.set(panesSwapped, forKey: Key.panesSwapped) }
+    }
+
+    /// 最近打开过的 Mac 文件夹（新→旧），供「位置」弹窗用。
+    private(set) var recentLocalFolders: [String] {
+        didSet { defaults.set(recentLocalFolders, forKey: Key.recentLocalFolders) }
+    }
+
+    private static let recentLocalFoldersLimit = 8
+
+    func rememberLocalFolder(_ path: String) {
+        guard !path.isEmpty, path != "/" else { return }
+        var updated = recentLocalFolders.filter { $0 != path }
+        updated.insert(path, at: 0)
+        if updated.count > Self.recentLocalFoldersLimit {
+            updated.removeLast(updated.count - Self.recentLocalFoldersLimit)
+        }
+        recentLocalFolders = updated
+    }
+
+    func forgetRecentLocalFolders() {
+        recentLocalFolders = []
+    }
+
     private var lastDestination: [String: String] {
         didSet { defaults.set(lastDestination, forKey: Key.lastDestination) }
     }
@@ -74,6 +110,10 @@ final class AppSettings {
         rememberLastDestination = defaults.object(forKey: Key.rememberLastDestination) as? Bool ?? true
         scanAfterTransfer = defaults.object(forKey: Key.scanAfterTransfer) as? Bool ?? true
         appearance = AppearanceMode(rawValue: defaults.string(forKey: Key.appearance) ?? "") ?? .system
+        transferPanelPinned = defaults.object(forKey: Key.transferPanelPinned) as? Bool ?? false
+        foldersFirst = defaults.object(forKey: Key.foldersFirst) as? Bool ?? true
+        panesSwapped = defaults.object(forKey: Key.panesSwapped) as? Bool ?? false
+        recentLocalFolders = defaults.stringArray(forKey: Key.recentLocalFolders) ?? []
         lastDestination = defaults.dictionary(forKey: Key.lastDestination) as? [String: String] ?? [:]
         wirelessAddress = defaults.dictionary(forKey: Key.wirelessAddress) as? [String: String] ?? [:]
     }
@@ -110,6 +150,10 @@ final class AppSettings {
         static let rememberLastDestination = "transfer.rememberLastDestination"
         static let scanAfterTransfer = "media.scanAfterTransfer"
         static let appearance = "ui.appearance"
+        static let transferPanelPinned = "ui.transferPanelPinned"
+        static let foldersFirst = "list.foldersFirst"
+        static let panesSwapped = "ui.panesSwapped"
+        static let recentLocalFolders = "list.recentLocalFolders"
         static let lastDestination = "device.lastDestination"
         static let wirelessAddress = "device.wirelessAddress"
     }

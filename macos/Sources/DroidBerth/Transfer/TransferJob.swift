@@ -57,6 +57,15 @@ final class TransferJob: Identifiable {
     var displayName: String { plan.displayName }
     var totalBytes: Int64? { plan.totalBytes }
 
+    /// 失败详情里展示的两端路径（PRD §14「查看原因」）。
+    var sourceDescription: String {
+        plan.direction == .upload ? plan.localPath : plan.remotePath
+    }
+
+    var destinationDescription: String {
+        plan.direction == .upload ? plan.remotePath : plan.localPath
+    }
+
     init(plan: TransferPlan) {
         self.plan = plan
     }

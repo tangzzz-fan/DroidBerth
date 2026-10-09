@@ -96,18 +96,40 @@ struct DroidBerthApp: App {
 
             CommandGroup(after: .sidebar) {
                 Divider()
-                Button("聚焦 Mac 窗格") { model.focus = .mac }
+                Button("聚焦左侧窗格") { model.focusLeftPane() }
                     .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
-                Button("聚焦设备窗格") { model.focus = .device }
+                Button("聚焦右侧窗格") { model.focusRightPane() }
                     .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
             }
 
+            // 显示菜单（PRD §22）。
             // 空格本身由 PaneKeyMonitor 的本地事件监听处理，这里刻意不挂菜单快捷键：
             // 无修饰键的菜单快捷键会先于文本框拿到事件，会把输入框里的空格吃掉。
-            // 菜单项只负责「可发现」与启用态，键位见 PRD §22。
+            // 菜单项只负责「可发现」与启用态。
             CommandGroup(after: .toolbar) {
                 Button("快速查看") { model.quickLookFocusedSelection() }
                     .disabled(!model.canQuickLook)
+
+                Button("搜索") {
+                    NotificationCenter.default.post(name: .droidBerthFocusSearch, object: nil)
+                }
+                .keyboardShortcut("f", modifiers: .command)
+
+                Divider()
+
+                Toggle("显示隐藏文件", isOn: $model.showHiddenFiles)
+                    .keyboardShortcut(".", modifiers: [.command, .shift])
+
+                Button("交换两侧") { model.swapPanes() }
+                    .keyboardShortcut("x", modifiers: [.command, .shift])
+            }
+
+            // ⌘, 打开设置。工具栏不再放齿轮 —— 设置属于 app 菜单，放两处只会让人犹豫。
+            CommandGroup(replacing: .appSettings) {
+                Button("设置…") {
+                    NotificationCenter.default.post(name: .droidBerthOpenSettings, object: nil)
+                }
+                .keyboardShortcut(",", modifiers: .command)
             }
         }
     }
@@ -116,4 +138,8 @@ struct DroidBerthApp: App {
 extension Notification.Name {
     static let droidBerthNewFolder = Notification.Name("DroidBerth.newFolder")
     static let droidBerthDeleteSelection = Notification.Name("DroidBerth.deleteSelection")
+    /// 菜单命令 → `MainView` 的桥。`showSettings` 与搜索焦点都是 `MainView` 的
+    /// `@State` / `@FocusState`，菜单命令拿不到，只能靠通知转一手。
+    static let droidBerthOpenSettings = Notification.Name("DroidBerth.openSettings")
+    static let droidBerthFocusSearch = Notification.Name("DroidBerth.focusSearch")
 }

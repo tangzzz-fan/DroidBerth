@@ -139,12 +139,17 @@ final class AppModel {
             localHistoryIndex = localHistory.count - 1
         }
         localSelection = []
+        // 同 navigateRemote：换目录清筛选，刷新保留。
+        clearSearch()
         reloadLocal()
+        settings.rememberLocalFolder(url.path)
     }
 
     func reloadLocal() {
         switch LocalFileSystem.list(localDirectory, showHidden: showHiddenFiles) {
         case .success(let entries):
+            // 这里排的是「列表的基准顺序」——入队顺序、多选遍历都依赖它稳定。
+            // 展示层的列头排序由 `EntryTable` 负责，两者互不干扰。
             localEntries = entries.sorted(by: Self.localSort)
             localError = nil
         case .failure(let message):
@@ -204,6 +209,9 @@ final class AppModel {
             remoteHistoryIndex = remoteHistory.count - 1
         }
         remoteSelection = []
+        // 筛选只作用于「当前这个文件夹」：换了目录就清掉，避免出现
+        // 「明明有文件却显示空」的困惑。刷新（reload）不清，保留筛选。
+        clearSearch()
         await loadRemote()
     }
 
@@ -658,6 +666,61 @@ final class AppModel {
         )
     }
 
+    // MARK: - 搜索（PRD §10 / §13.1）
+
+    var searchQuery = ""
+
+    /// 查询作用于哪个窗格。
+    ///
+    /// 刻意**不**跟随焦点实时变化：那样 Tab 一下结果就会跳，用户会以为丢了东西。
+    /// 只在「查询被编辑」的那一刻锁定到当时的聚焦窗格——编辑是明确动作，跳变可预期。
+    private(set) var searchScope: Pane = .mac
+
+    private var trimmedQuery: String {
+        searchQuery.trimmingCharacters(in: .whitespaces)
+    }
+
+    var isSearching: Bool { !trimmedQuery.isEmpty }
+
+    var searchScopeIsMac: Bool { searchScope == .mac }
+
+    func setSearchQuery(_ value: String) {
+        searchQuery = value
+        searchScope = focus
+    }
+
+    func clearSearch() {
+        searchQuery = ""
+    }
+
+    /// 展示用列表。选择态、上传下载仍以完整列表为准，过滤只影响看得见的东西。
+    var visibleLocalEntries: [LocalEntry] {
+        guard isSearching, searchScopeIsMac else { return localEntries }
+        return localEntries.filter { $0.name.localizedCaseInsensitiveContains(trimmedQuery) }
+    }
+
+    var visibleRemoteEntries: [RemoteEntry] {
+        guard isSearching, !searchScopeIsMac else { return remoteEntries }
+        return remoteEntries.filter { $0.name.localizedCaseInsensitiveContains(trimmedQuery) }
+    }
+
+    /// 被筛掉的条目数，用来在状态栏里说明「不是文件夹空了，是被过滤了」。
+    func hiddenBySearchCount(in pane: Pane) -> Int {
+        guard isSearching, searchScope == pane else { return 0 }
+        switch pane {
+        case .mac: return max(localEntries.count - visibleLocalEntries.count, 0)
+        case .device: return max(remoteEntries.count - visibleRemoteEntries.count, 0)
+        }
+    }
+
+    /// 搜索框的占位文案：把「作用于哪个窗格」写在明面上（PRD §10 要求作用于聚焦窗格）。
+    var searchPrompt: String {
+        switch focus {
+        case .mac: "搜索「\(macSource == .files ? "这台 Mac" : "照片图库")」"
+        case .device: "搜索「\(activeDevice?.displayName ?? "Android 设备")」"
+        }
+    }
+
     // MARK: - Quick Look 预览（PRD §23）
 
     /// 有且仅有一个可预览的选中项。
@@ -900,6 +963,39 @@ final class AppModel {
         }
         result.insert(("/", "/"), at: 0)
         return result
+    }
+
+    // MARK: - 窗格布局（PRD §10「交换两侧」）
+
+    /// 左右窗格是否互换。
+    ///
+    /// **读法说明**：PRD §10 写的是「把两个窗格的**位置**互换」。本地路径与设备路径
+    /// 不可能互相赋值，所以「位置」只能读作**窗格在窗口里的摆放位置** —— 这也正是
+    /// 双栏文件管理器的经典语义（Total Commander 的 Ctrl+U「交换面板」）。
+    /// 「目录路径互换」在本地 ↔ 远端之间没有定义，不实现。
+    ///
+    /// 存进设置而不是只放在内存：这是明确的布局偏好，每次启动都要重按一次会很烦。
+    var panesSwapped: Bool {
+        get { settings.panesSwapped }
+        set { settings.panesSwapped = newValue }
+    }
+
+    var leftPane: Pane { panesSwapped ? .device : .mac }
+    var rightPane: Pane { panesSwapped ? .mac : .device }
+
+    func swapPanes() {
+        panesSwapped.toggle()
+    }
+
+    /// ⌘⌥← / ⌘⌥→ 按**视觉位置**聚焦，而不是按 Mac / 设备 —— 交换之后不能反直觉。
+    func focusLeftPane() { focus = leftPane }
+    func focusRightPane() { focus = rightPane }
+
+    /// 最近打开过的 Mac 文件夹（已过滤掉已被删除 / 移走的）。
+    var recentLocalFolders: [URL] {
+        settings.recentLocalFolders
+            .map { URL(fileURLWithPath: $0, isDirectory: true) }
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
     }
 
     // MARK: - 聚焦与键盘导航

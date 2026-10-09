@@ -17,10 +17,10 @@ ADB 二进制内嵌在 app 内 —— 用户不需要装 Android SDK、不需要
 
 | 层 | 状态 |
 |---|---|
-| 产品定义 | 完成（`docs/0926_01_PRD.md`） |
+| 产品定义 | 完成（`docs/0926_01_PRD.md`，**v2.1** 已对齐 Swift 原生路线） |
 | 技术路线验证 | **完成，判 Go**（`docs/0926_02_swift-native-spike-plan.md`） |
 | Swift 原生外壳 MVP | **已实现，核心链路真机验证通过**（`docs/0926_03_swift-native-mvp-implementation.md`） |
-| 视觉与交互验收 | **未做** |
+| 视觉与交互 | **部分**：视觉基调已定（系统控件 + 原生材质）；**交互层缺口较大** —— 拖拽 / ⌘C⌘V 跨栏 / Quick Look / 分栏 / 网格 / 无障碍均未实现，方案见 `docs/1009_01_uiux-revamp-plan.md` |
 | 公证与分发 | **未做** |
 
 仓库里存在**两条技术路线**的代码，这是历史原因，不是并列关系：
@@ -35,7 +35,7 @@ ADB 二进制内嵌在 app 内 —— 用户不需要装 Android SDK、不需要
 ```
 macos/                    Swift 原生外壳（当前路线）
   project.yml               xcodegen 工程定义
-  Sources/DroidBerth/       36 个 Swift 文件 / 4611 行
+  Sources/DroidBerth/       36 个 Swift 文件 / 4578 行
   Resources/                Info.plist + entitlements
   Scripts/build-sidecar.sh  编译 Rust sidecar 并暂存
 sidecar/droidberth-adb/   Rust sidecar（1787 行 / 5 文件）
@@ -133,10 +133,10 @@ build/dd/Build/Products/Release/DroidBerth.app/Contents/MacOS/DroidBerth --spike
 
 | 项 | 原因 |
 |---|---|
-| 视觉与交互验收（双击、拖拽、布局） | 开发环境无法截图 / 无法模拟点击，**需要人工操作** |
+| 视觉与交互验收（双击、拖拽、布局） | 开发环境无法截图 / 无法模拟点击，**需要人工操作**。双击 / 右键打开已人工确认可用；**拖拽与整体布局仍未验收** |
 | 照片图库作为素材来源 | 需要人工在授权弹窗点「允许」 |
 | App Translocation | 需要先有一个**已公证**的产物才能构造该场景 |
-| 分栏视图 / 拖出到 Finder / Quick Look | 未做 |
+| 拖拽 / ⌘C⌘V 跨栏 / 分栏视图 / 网格视图 / 拖出到 Finder / Quick Look | **未实现**，见 `docs/1009_01_uiux-revamp-plan.md` |
 | 性能基线（相对裸 `adb push` 的开销） | 未测量 |
 | 干净 VM 上的安装验证 | 需要另一台机器 |
 
@@ -153,9 +153,10 @@ MediaStore 的 **file 表，涵盖所有文件类型**。结果是上传 `.txt` 
 
 | 文档 | 内容 |
 |---|---|
-| `docs/0926_01_PRD.md` | 产品需求与产品设计（产品定位、功能需求、信息架构、设计原则） |
+| `docs/0926_01_PRD.md` | 产品需求与产品设计（产品定位、功能需求、信息架构、设计原则）。**当前 v2.1** |
 | `docs/0926_02_swift-native-spike-plan.md` | 换栈 Go/No-Go 验证方案与执行记录（V1–V4） |
 | `docs/0926_03_swift-native-mvp-implementation.md` | **MVP 实现文档**：架构、三个已修缺陷、验证边界、未验证项 |
+| `docs/1009_01_uiux-revamp-plan.md` | **UI/UX 分阶段改造方案**：交互层差距矩阵、Phase 0–4 任务分解与验收点 |
 | `docs/risk-validation-report.md` | Tauri 路线的 macOS 分发风险验证 |
 | `docs/reusable-solutions-and-pitfalls.md` | 可复用方案与避坑清单 |
 | `docs/article-embedding-adb-in-macos-app.md` | 在 macOS app 内嵌 ADB 的实践记录 |

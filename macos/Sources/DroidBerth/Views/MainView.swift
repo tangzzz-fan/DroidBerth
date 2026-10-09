@@ -8,6 +8,8 @@ struct MainView: View {
     @State private var newFolderName = ""
     @State private var showDeleteConfirm = false
     @State private var tabMonitor: PaneCycleKeyMonitor?
+    @State private var macDropTargeted = false
+    @State private var deviceDropTargeted = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -120,7 +122,8 @@ struct MainView: View {
                         model.revealInFinder(local)
                     },
                     onUpload: { Task { await model.uploadSelection() } },
-                    onRefresh: { model.reloadLocal() }
+                    onRefresh: { model.reloadLocal() },
+                    dragSide: .local
                 )
                 localStatusBar
             } else {
@@ -128,6 +131,12 @@ struct MainView: View {
             }
         }
         .modifier(PaneFocusStyle(isFocused: model.focus == .mac))
+        .dropDestination(for: TransferDragPayload.self) { payloads, _ in
+            model.focus = .mac
+            model.performDrop(payloads, onto: .mac)
+            return true
+        } isTargeted: { macDropTargeted = $0 }
+        .modifier(PaneDropHighlight(isTargeted: macDropTargeted))
     }
 
     private var fileNavigationBar: some View {
@@ -248,7 +257,8 @@ struct MainView: View {
                 },
                 onDelete: { showDeleteConfirm = true },
                 onDownload: { Task { await model.downloadSelection() } },
-                onRefresh: { Task { await model.loadRemote() } }
+                onRefresh: { Task { await model.loadRemote() } },
+                dragSide: .remote
             )
 
             HStack {
@@ -271,6 +281,12 @@ struct MainView: View {
             .padding(.vertical, 4)
         }
         .modifier(PaneFocusStyle(isFocused: model.focus == .device))
+        .dropDestination(for: TransferDragPayload.self) { payloads, _ in
+            model.focus = .device
+            model.performDrop(payloads, onto: .device)
+            return true
+        } isTargeted: { deviceDropTargeted = $0 }
+        .modifier(PaneDropHighlight(isTargeted: deviceDropTargeted))
     }
 
     // MARK: - 设备菜单
@@ -472,6 +488,23 @@ private struct PaneFocusStyle: ViewModifier {
                     .strokeBorder(isFocused ? Color.accentColor : Color.clear, lineWidth: 2)
                     .allowsHitTesting(false)
             }
+    }
+}
+
+/// 拖拽悬停时的落点高亮（PRD §24「拖拽进入目标区域时高亮」）。
+private struct PaneDropHighlight: ViewModifier {
+    let isTargeted: Bool
+
+    func body(content: Content) -> some View {
+        content.overlay {
+            if isTargeted {
+                ZStack {
+                    Color.accentColor.opacity(0.12)
+                    Rectangle().strokeBorder(Color.accentColor, lineWidth: 3)
+                }
+                .allowsHitTesting(false)
+            }
+        }
     }
 }
 

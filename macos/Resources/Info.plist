@@ -36,5 +36,20 @@
 	<string>DroidBerth 需要访问下载文件夹，以便浏览和传输其中的文件。</string>
 	<key>NSRemovableVolumesUsageDescription</key>
 	<string>DroidBerth 需要访问可移动卷，以便浏览和传输外接存储上的文件。</string>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>dev.tango.droidberth.transfer</string>
+			<key>UTTypeDescription</key>
+			<string>DroidBerth 拖拽载荷</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict/>
+		</dict>
+	</array>
 </dict>
 </plist>

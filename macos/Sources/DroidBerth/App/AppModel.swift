@@ -301,14 +301,6 @@ final class AppModel {
             banner = Banner(level: .warning, title: "没有可用的设备", detail: "请用数据线连接 Android 手机，并在手机上允许 USB 调试")
             return
         }
-        guard device.state.isUsable else {
-            banner = Banner(level: .warning, title: "设备当前不可用", detail: "状态：\(device.state.localizedDescription)")
-            return
-        }
-        guard let shell = monitor.shell(for: device) else {
-            banner = Banner(level: .error, title: "未找到 adb", detail: "请确认 app 包内的 adb 完整")
-            return
-        }
 
         var sources: [URL] = []
         switch macSource {
@@ -329,13 +321,43 @@ final class AppModel {
         }
 
         let destination = uploadDestination(for: device)
+        await uploadFiles(sources, toRemotePath: destination.path, reason: destination.reason)
+    }
+
+    /// 把给定的本地 URL 上传到设备上的指定目录。
+    ///
+    /// 工具栏按钮（走当前选中项 + 落点分流）与拖拽（走显式落点）共用这一条路径，
+    /// 所以落点校验、冲突策略、入队与「记住上次目录」都只有一份实现。
+    func uploadFiles(_ urls: [URL], toRemotePath destination: String, reason: String? = nil) async {
+        guard let device = monitor.activeDevice else {
+            banner = Banner(level: .warning, title: "没有可用的设备", detail: "请用数据线连接 Android 手机，并在手机上允许 USB 调试")
+            return
+        }
+        guard device.state.isUsable else {
+            banner = Banner(level: .warning, title: "设备当前不可用", detail: "状态：\(device.state.localizedDescription)")
+            return
+        }
+        guard let shell = monitor.shell(for: device) else {
+            banner = Banner(level: .error, title: "未找到 adb", detail: "请确认 app 包内的 adb 完整")
+            return
+        }
+        guard !urls.isEmpty else { return }
+        guard Self.isWritableRemotePath(destination) else {
+            banner = Banner(
+                level: .warning,
+                title: "这个目录不能写入",
+                detail: "\(destination) 在 Android 11+ 上禁止写入（PRD §12.2），换一个目录再试"
+            )
+            return
+        }
+
         let serial = device.serial
         let policy = settings.conflictPolicy
 
         let expansion = await Task.detached(priority: .userInitiated) {
             TransferPlanner.upload(
-                localURLs: sources,
-                remoteDirectory: destination.path,
+                localURLs: urls,
+                remoteDirectory: destination,
                 serial: serial,
                 shell: shell,
                 policy: policy
@@ -352,12 +374,12 @@ final class AppModel {
         }
 
         var notes = expansion.notes
-        notes.insert("落点：\(destination.path)（\(destination.reason)）", at: 0)
+        notes.insert("落点：\(destination)（\(reason ?? "拖拽指定")）", at: 0)
         queue.enqueue(plans: expansion.plans, notes: notes)
-        settings.rememberDestination(destination.path, for: serial)
+        settings.rememberDestination(destination, for: serial)
 
-        if destination.path != remoteDirectory {
-            await navigateRemote(to: destination.path)
+        if destination != remoteDirectory {
+            await navigateRemote(to: destination)
         } else {
             await loadRemote()
         }
@@ -394,12 +416,8 @@ final class AppModel {
     // MARK: - 下载
 
     func downloadSelection() async {
-        guard let device = monitor.activeDevice, device.state.isUsable else {
+        guard monitor.activeDevice?.state.isUsable == true else {
             banner = Banner(level: .warning, title: "没有可用的设备", detail: nil)
-            return
-        }
-        guard let shell = monitor.shell(for: device) else {
-            banner = Banner(level: .error, title: "未找到 adb", detail: nil)
             return
         }
 
@@ -409,7 +427,22 @@ final class AppModel {
             return
         }
 
-        let destination = localDirectory
+        await downloadEntries(entries, toDirectory: localDirectory)
+    }
+
+    /// 把给定的设备端条目下载到 Mac 上的指定目录。
+    /// 工具栏按钮与拖拽（拖到 Mac 窗格）共用这一条路径。
+    func downloadEntries(_ entries: [RemoteEntry], toDirectory destination: URL) async {
+        guard let device = monitor.activeDevice, device.state.isUsable else {
+            banner = Banner(level: .warning, title: "没有可用的设备", detail: nil)
+            return
+        }
+        guard let shell = monitor.shell(for: device) else {
+            banner = Banner(level: .error, title: "未找到 adb", detail: nil)
+            return
+        }
+        guard !entries.isEmpty else { return }
+
         let serial = device.serial
         let policy = settings.conflictPolicy
 
@@ -432,6 +465,63 @@ final class AppModel {
         notes.insert("落点：\(destination.path)", at: 0)
         queue.enqueue(plans: expansion.plans, notes: notes)
         reloadLocal()
+    }
+
+    // MARK: - 拖拽落点
+
+    /// 处理一次窗格落点（PRD §24）。
+    ///
+    /// `Android/data` 与 `Android/obb` 的禁止反馈由 `uploadFiles` 统一给出；
+    /// 同侧拖拽与设备端移动尚未实现，给明确提示而不是静默失败。
+    func performDrop(_ payloads: [TransferDragPayload], onto target: Pane) {
+        let localPayloads = payloads.filter { $0.side == .local }
+        let remotePayloads = payloads.filter { $0.side == .remote }
+
+        switch target {
+        case .device:
+            let uploadPaths = localPayloads.flatMap(\.paths)
+            if !uploadPaths.isEmpty {
+                let urls = uploadPaths.map { URL(fileURLWithPath: $0) }
+                Task { await uploadFiles(urls, toRemotePath: remoteDirectory) }
+            }
+            if !remotePayloads.isEmpty {
+                banner = Banner(
+                    level: .info,
+                    title: "设备端移动尚未支持",
+                    detail: "把设备文件拖到设备窗格内的移动操作列在后续阶段（改造方案 Phase 4）"
+                )
+            }
+
+        case .mac:
+            let downloadPaths = remotePayloads.flatMap(\.paths)
+            if !downloadPaths.isEmpty {
+                let entries = downloadPaths.compactMap { path in remoteEntries.first { $0.path == path } }
+                Task { await downloadEntries(entries, toDirectory: localDirectory) }
+            }
+            // 从 Finder 拖入窗口任意位置 = 上传（PRD §12.1）
+            let externalPaths = localPayloads.filter { $0.origin == .external }.flatMap(\.paths)
+            if !externalPaths.isEmpty {
+                let urls = externalPaths.map { URL(fileURLWithPath: $0) }
+                Task { await uploadFiles(urls, toRemotePath: remoteDirectory) }
+            }
+            let samePanePaths = localPayloads.filter { $0.origin == .pane }.flatMap(\.paths)
+            if !samePanePaths.isEmpty {
+                banner = Banner(
+                    level: .info,
+                    title: "同一侧不产生传输",
+                    detail: "Mac 窗格内部的拖拽是移动操作，尚未支持"
+                )
+            }
+        }
+    }
+
+    /// PRD §12.2：`Android/data` 与 `Android/obb` 在 Android 11+ 不可写入，
+    /// 因此不在 UI 里暴露。拖拽可以绕过 UI，所以落点必须再校验一次，
+    /// 而不是让 adb 传到一半才失败。
+    static func isWritableRemotePath(_ path: String) -> Bool {
+        let normalized = path.hasSuffix("/") ? String(path.dropLast()) : path
+        let blocked = ["/Android/data", "/Android/obb"]
+        return !blocked.contains { normalized.hasSuffix($0) || normalized.contains($0 + "/") }
     }
 
     // MARK: - 设备端写操作

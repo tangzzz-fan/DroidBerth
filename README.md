@@ -36,7 +36,7 @@ ADB 二进制内嵌在 app 内 —— 用户不需要装 Android SDK、不需要
 | 产品定义 | 完成（`docs/0926_01_PRD.md`，**v2.1**） |
 | 技术路线验证 | **完成，判 Go**（`docs/0926_02_swift-native-spike-plan.md`） |
 | Swift 原生外壳 MVP | **已实现，核心链路真机验证通过**（`docs/0926_03_swift-native-mvp-implementation.md`） |
-| 视觉与交互 | **部分**：视觉基调已定（系统控件 + 原生材质）；**PRD 正文里计划要做的事项已全部落地**（聚焦态描边 / Tab 循环 / 四向拖拽 / ⌘C⌘V 跨栏 / ⌘X 剪切 / 空格 Quick Look / 列头排序 / 搜索 / 失败重试 / 位置弹窗 + 最近使用 / 三种视图齐全 / 缩略图 / ⌘± 图标尺寸 / View + Device 菜单 / 设备端重命名与移动 / Reduce Motion / 预览窗格 ⇧⌘P），**运行时行为待人工验收**。VoiceOver 按要求跳过；动态字体与对比度只做到部分；仍缺照片图库缩略图，方案见 `docs/1009_01_uiux-revamp-plan.md` |
+| 视觉与交互 | **部分**：视觉基调已定（系统控件 + 原生材质）；**PRD 正文里计划要做的事项已全部落地**（聚焦态描边 / Tab 循环 / 四向拖拽 / ⌘C⌘V 跨栏 / ⌘X 剪切 / 空格 Quick Look / 列头排序 / 搜索 / 失败重试 / 位置弹窗 + 最近使用 / 三种视图齐全 / 缩略图 / ⌘± 图标尺寸 / View + Device 菜单 / 设备端重命名与移动 / Reduce Motion / 预览窗格 ⇧⌘P / **设备端存储卷（内部存储 / SD 卡）**），**运行时行为待人工验收**。VoiceOver 按要求跳过；动态字体与对比度只做到部分；仍缺照片图库缩略图，方案见 `docs/1009_01_uiux-revamp-plan.md` |
 | 公证与分发 | **未做**（架构范围已决策：**arm64-only**，放弃 Intel，见 PRD §5.1） |
 
 ---
@@ -46,7 +46,7 @@ ADB 二进制内嵌在 app 内 —— 用户不需要装 Android SDK、不需要
 ```
 macos/                    Swift 原生外壳（唯一应用工程）
   project.yml               xcodegen 工程定义
-  Sources/DroidBerth/       44 个 Swift 文件 / 8209 行
+  Sources/DroidBerth/       44 个 Swift 文件 / 8572 行
   Resources/                Info.plist + entitlements
   Scripts/build-sidecar.sh  编译 Rust sidecar 并暂存到 macos/Sidecar/
 sidecar/droidberth-adb/   Rust sidecar（1788 行 / 5 文件，零第三方依赖）
@@ -236,6 +236,9 @@ build/dd/Build/Products/Release/DroidBerth.app/Contents/MacOS/DroidBerth --spike
 | 工具栏搜索框的 `⌘F` 焦点行为 | `@FocusState` 在 `ToolbarItem` 里的行为**需运行时确认**；失败时降级为「点一下即可输入」，功能不受影响 |
 | 性能基线（相对裸 `adb push` 的开销） | 未测量 |
 | 干净 VM 上的安装验证 | 需要另一台机器 |
+| **设备端存储卷（SD 卡 / 外置存储）** | 卷枚举（`ls /storage/`）、卷间跳转、面包屑替换、落点分流跟随当前卷、以及「记住的目标目录在被拔掉的卡上时回落到内部存储」都只做到编译通过。**本机没有真机**，所以连「`ls /storage/` 在真机上到底列出什么」都还没见到 |
+| **媒体扫描命令的真机生效性** | 改成「探测 `cmd -l` 的名单」之后，`cmd media_scanner scan-file` / `cmd media.scan` 哪个真的存在、真的生效，仍要在 Android 10 / 13 / 15 上逐版本实测（PRD 附录 B #1）。结构上保证的只是：命令不对时不会静默假装成功 |
+| 隐藏文件对称性 | 修法已落地，但「设备窗格里的 `.nomedia` 是否真按开关显隐」未在运行时确认 |
 
 ### 交互层面的已知偏离（2026-10-10 审查）
 
@@ -249,12 +252,23 @@ build/dd/Build/Products/Release/DroidBerth.app/Contents/MacOS/DroidBerth --spike
 | Quick Look 缩放动画 | 未实现 `previewPanel:sourceFrameOnScreenForPreviewItem:` | 面板是淡入而不是从图标放大。要各视图给出源矩形，成本较高 |
 | 空格接管 | 全局空格 = Quick Look，聚焦在按钮上时空格不再触发按钮 | 本产品窗格内可聚焦按钮极少，且 §23 明确要求空格 = Quick Look，接受 |
 
-### 已知未修缺陷
+### 已修缺陷（2026-10-10 同类 app 坑点核对）
 
-**`MediaScanner.isIndexed` 的判据偏宽。** 它查的是 `content://media/external/file` ——
-MediaStore 的 **file 表，涵盖所有文件类型**。结果是上传 `.txt` 也会显示「已进入相册索引」，
-但相册 app 里看不到它。修法方向：按扩展名分流到 `images/media` / `video/media` / `audio/media`，
-非媒体文件不报这句。详见实现文档 §6。
+这一轮是拿同类型产品（Android File Transfer / OpenMTP / MacDroid）的公开坑点逐条核对本项目，
+查出三条此前文档里没有的缺陷，都已修：
+
+| 缺陷 | 判据 | 修法 |
+|---|---|---|
+| **隐藏文件过滤不对称** | `showHiddenFiles` 只进 `LocalFileSystem.list`；`loadRemote()` 把 `shell.list` 的结果原样赋值，远端从不过滤 ⇒ 设备窗格里 `.nomedia` / `.thumbnails` 永远可见，⇧⌘. 那一侧不生效 | 过滤收敛到 `AppModel.filterHidden`，列表 / 网格 / 分栏三个入口共用；开关变化时两侧都刷新，分栏视图靠 `.id()` 重建（它的子项是缓存的） |
+| **下载重名检测大小写敏感，而 macOS 卷不敏感** | `TransferPlanner.download` 用 `Set(contentsOfDirectory)` 做 `contains`。本机实测卷不敏感（`touch ABC.txt` 后 `-f abc.txt` 为真）⇒ 设备上同时有 `IMG.JPG` 与 `img.jpg` 时，第二个不被判为冲突，**静默覆盖**第一个 | 按目标卷的 `volumeSupportsCaseSensitiveNames` 折叠大小写与 Unicode 组合形式后再比较；取不到卷信息时按**不区分**处理 —— 多一个 ` (1)` 只是碍眼，静默覆盖是丢数据 |
+| **媒体入库的触发命令用的是已废弃广播** | `MediaScanner` 在发 `am broadcast MEDIA_SCANNER_SCAN_FILE`（API 29 已废弃），而 PRD §19.3 的策略写的是「以新 API 为基准」 | 改为**运行时探测** `cmd -l` 的服务名单，在 `cmd media_scanner scan-file` / `cmd media.scan` 之间选，都没有才退回广播 |
+
+同轮还修掉了 `MediaScanner.isIndexed` 那条**已知未修缺陷**（它查 `content://media/external/file`
+这张涵盖所有类型的表，导致上传 `.txt` 也报「已进入相册索引」）：判定改为三态
+（`已入库` / `未查到` / **`非媒体文件` → 保持沉默**），查询按扩展名分流到
+`images` / `video` / `audio` 三张表，再按 basename 精确核一遍。详见 PRD §19 的「实现现状」。
+
+**当前没有已知未修缺陷。** 上面三类之外的问题都在「未验证」里 —— 那是**没跑过**，不是已知坏了。
 
 ---
 

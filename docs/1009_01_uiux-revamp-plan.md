@@ -288,6 +288,33 @@ PRD §11 一直挂着「显示预览窗格（⇧⌘P）」，但本文档的 Pha
 
 ---
 
+### 4.10 交互原生化修正（2026-10-10，用户报告 + 主动审查）
+
+用户报告：「按一次空格能弹出预览，但再按一次无法收回」，并要求「尽量使用原生的交互方案，不要脱节」。
+
+**已修**
+
+| 问题 | 根因 | 处置 |
+|---|---|---|
+| **空格不能收起预览** | ① `.quickLookPreview($binding)` 把面板状态藏在 binding 后面，**面板被关掉后是否写回 nil 没有承诺**；② `PaneKeyMonitor` 是本地监听、优先级高于一切窗口，**空格在到达面板前就被吃掉**（`previewPanel:handleEvent:` 的兜底因此永远调不到） | 按原生做法**自持 `QLPreviewPanel`**（`Support/QuickLookPresenter.swift`），`isVisible` 成为权威状态，空格 = 切换 |
+| **模态弹窗弹着时空格切换背后的 Quick Look** | 本地监听不管模态 | `NSApp.modalWindow == nil` 守卫 —— 那一刻空格属于弹窗 |
+| **预览面板开着时 Tab 把焦点搬到另一窗格** | 同上，监听无差别接管 | 面板可见时**只保留空格**，其余放行给面板 |
+| **面板不跟随选择** | 未做 | 面板开着时改选，内容实时更新（Finder 行为）。**仅本地** —— 远端跟随意味着隐式下载 |
+
+**白拿的原生能力**（自持面板后自然得到）：面板内**方向键在条目间切换**、Esc 关闭、缩放与全屏。
+
+**三处非显然的实现约束**（都踩过，别重犯）：
+
+1. **响应者链**：`makeKeyAndOrderFront` 前必须有人 `acceptsPreviewPanelControl:` 返回 true，否则**面板是空的**。必须挂在 **App 代理**上（响应者链终点）；`.`background` 放的视图是**兄弟节点、不在链上**。
+2. 那三个控制方法是 `NSObject` 分类里的 **nonisolated** 方法，覆写后也变 nonisolated ⇒ 碰 MainActor 状态要 `MainActor.assumeIsolated`。
+3. `QLPreviewPanelDataSource` / `Delegate` **没标 `NS_SWIFT_UI_ACTOR`** ⇒ @MainActor 的类要 `@preconcurrency` 一致性。
+
+**审查发现但未做**（需取舍，已列入 README「交互层面的已知偏离」）：网格视图无键盘导航 / 方向键 / type-select（**最明显的一处脱节**）、回车重命名、Tab 吃掉系统焦点遍历（产品决策）、Quick Look 缩放动画。
+
+**⚠️ 未验证**：面板能否真的被带出（响应者链那一步本机无法实测）、方向键切换、跟随选择。
+
+---
+
 ## 5. Phase 4（可选）：设备端写操作补全
 
 > **执行状态（2026-10-10）**：**重命名与移动已实现**（`DeviceShell.move` / `AppModel.renameRemoteEntry` / `moveRemotePaths`），连同 ⌘X 剪切；**复制未做**（PRD §22 把同栏 ⌘C/⌘V 定义为复制，本产品里设备端内部的复制没有明确用法，暂不做）。细节见 §4.8。
@@ -353,6 +380,7 @@ Phase 0（PRD 对齐）                                    ✅ 已完成
 - [x] 设备端重命名与移动（含 ⌘X 剪切、冲突整批拒绝）
 - [x] 预览窗格（⇧⌘P：缩略图 + 元数据 + 多选合计 + 按来源的传输按钮，**运行时待验收**，见 §4.9）
 - [x] 「点选即聚焦」与列视图下的选中项解析（修掉列视图里 Quick Look / ⌘C / ⌘⌫ 取不到选中项的缺陷，见 §4.9）
+- [x] 空格 = Quick Look **切换**（自持 `QLPreviewPanel`，含模态与面板按键守卫，见 §4.10）
 - [ ] **VoiceOver**：每行 accessibility label —— **用户 2026-10-10 明确要求跳过**
 - [ ] 对比度达 WCAG AA / 动态字体逐屏核对（只做到「部分」，见 §4.8）
 - [ ] **全部交互的运行时人工验收**（本机无 Rust 工具链与 adb，只能做到编译 + 链接验证）

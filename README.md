@@ -46,7 +46,7 @@ ADB 二进制内嵌在 app 内 —— 用户不需要装 Android SDK、不需要
 ```
 macos/                    Swift 原生外壳（唯一应用工程）
   project.yml               xcodegen 工程定义
-  Sources/DroidBerth/       43 个 Swift 文件 / 8022 行
+  Sources/DroidBerth/       44 个 Swift 文件 / 8209 行
   Resources/                Info.plist + entitlements
   Scripts/build-sidecar.sh  编译 Rust sidecar 并暂存到 macos/Sidecar/
 sidecar/droidberth-adb/   Rust sidecar（1788 行 / 5 文件，零第三方依赖）
@@ -149,7 +149,7 @@ XcodeGen 会报 `Couldn't find current username` 且**静默不生成工程**。
 | `⇧⌘N` | 在设备端新建文件夹 |
 | `⌘C` / `⌘V` | **跨栏传输**：Mac 栏选中 → 设备栏粘贴 = 上传；反向 = 下载（焦点在输入框时恢复文本语义） |
 | `⌘X` | **设备端剪切**：切到目标目录后 `⌘V` = 移动（Mac 端的移动交给 Finder，不在此列） |
-| `Space` | Quick Look 就地预览（远端文件先拉到 `$TMPDIR/DroidBerth/preview/`） |
+| `Space` | Quick Look 就地预览，**再按一次收起**（面板内可用方向键在条目间切换；远端文件先拉到 `$TMPDIR/DroidBerth/preview/`） |
 | `⌘F` | 聚焦搜索框（筛选作用于聚焦窗格，作用域在编辑查询时锁定） |
 | `⇧⌘X` | 交换左右窗格 |
 | `⇧⌘P` | 显示 / 隐藏预览窗格（窗口右缘，显示聚焦窗格的选中项） |
@@ -221,6 +221,7 @@ build/dd/Build/Products/Release/DroidBerth.app/Contents/MacOS/DroidBerth --spike
 | 视觉与交互验收（双击、拖拽、布局、Quick Look、跨栏粘贴、排序、搜索、网格选择、分栏铺列、菜单、重命名、移动、预览窗格） | 开发环境无法截图 / 无法模拟点击，**需要人工操作**。双击 / 右键打开已人工确认可用；**Phase 1–4 与预览窗格的新增交互仍未验收** |
 | **网格缩略图的远端成品率** | 只拉 64 KB 文件头再交给 `QLThumbnailGenerator`。**截断数据能否解码没有真机验证**：JPEG 通常可解出部分图像，HEIC / `moov` 在文件尾的 MP4 很可能解不出 ⇒ 回退类型图标。「一律拉完整文件」已被 PRD §23 明确拒绝 |
 | 分栏视图的运行时行为 | `NSBrowser` 的铺列、异步补行、单选、双击预览、底部路径栏均未运行过；**行内类型图标**还多一层不确定 —— `willDisplayCell` 在 item-based 浏览器里是否被调用，Apple 文档没有明确承诺（不调用则退化为纯文本行，功能不受影响） |
+| Quick Look 面板本身 | 改用 `QLPreviewPanel` 后，**面板能否真的被带出（响应者链那一步）在本机无法实测**；面板内方向键切换、跟随选择同样未验。见 PRD §23 |
 | 网格「点空白处取消选择」与「单击选中」的延迟手感 | 单击与双击手势共存时 SwiftUI 会让单击等一个双击间隔；是否能接受需运行时确认 |
 | 照片图库作为素材来源 | 需要人工在授权弹窗点「允许」 |
 | App Translocation | 需要先有一个**已公证**的产物才能构造该场景 |
@@ -235,6 +236,18 @@ build/dd/Build/Products/Release/DroidBerth.app/Contents/MacOS/DroidBerth --spike
 | 工具栏搜索框的 `⌘F` 焦点行为 | `@FocusState` 在 `ToolbarItem` 里的行为**需运行时确认**；失败时降级为「点一下即可输入」，功能不受影响 |
 | 性能基线（相对裸 `adb push` 的开销） | 未测量 |
 | 干净 VM 上的安装验证 | 需要另一台机器 |
+
+### 交互层面的已知偏离（2026-10-10 审查）
+
+刻意保留或**尚未做**的非原生交互，逐条列出以便日后取舍：
+
+| 项 | 现状 | 取舍 |
+|---|---|---|
+| **网格视图没有键盘导航** | `Table` / `NSBrowser` 都有原生方向键与 type-select（敲字母跳转），**只有 `LazyVGrid` 没有** | **当前最明显的一处脱节**。Finder 图标视图方向键是基本操作，值得补 |
+| **回车重命名** | Finder 里选中按 Enter 进重命名；本产品只能从右键菜单进 | 重命名本身已实现，只差一个键位，成本低 |
+| **Tab 循环窗格** | 全局吃掉 Tab 用于切换窗格（PRD §22 明文要求） | macOS 上 Tab 的原生语义是**在控件间移动焦点**，因此键盘用户走不到工具栏。这是**产品决策**，改法是换 `⌥Tab` 或加设置项 |
+| Quick Look 缩放动画 | 未实现 `previewPanel:sourceFrameOnScreenForPreviewItem:` | 面板是淡入而不是从图标放大。要各视图给出源矩形，成本较高 |
+| 空格接管 | 全局空格 = Quick Look，聚焦在按钮上时空格不再触发按钮 | 本产品窗格内可聚焦按钮极少，且 §23 明确要求空格 = Quick Look，接受 |
 
 ### 已知未修缺陷
 

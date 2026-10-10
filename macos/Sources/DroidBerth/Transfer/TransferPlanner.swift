@@ -46,6 +46,23 @@ enum TransferPlanner {
         return output
     }
 
+    /// 「保留两者」在**下载**方向的冲突判据。
+    ///
+    /// macOS 默认卷（APFS / HFS+）**不区分大小写**，也不区分 Unicode 组合形式 ——
+    /// `IMG.JPG` 与 `img.jpg` 在同一目录里就是同一个文件。而设备端（ext4 / f2fs）
+    /// 区分大小写，所以手机上可以同时存在这两个名字。一旦按设备侧的语义去比较，
+    /// 第二个文件会被判为「不冲突」，写过去**静默覆盖**第一个 —— 一次无声的数据丢失。
+    ///
+    /// 判据取自目标卷自身的 `volumeSupportsCaseSensitiveNames`，不是写死的假设
+    /// （外接 APFS 区分大小写的卷是合法的）。取不到时按**不区分**处理：这一侧的
+    /// 误判代价不对称 —— 多出一个 ` (1)` 只是碍眼，静默覆盖是丢数据。
+    ///
+    /// **上传方向刻意不折叠**：设备端主存储是 ext4 / f2fs 派生，确实区分大小写；
+    /// 而 FAT32 格式的 SD 卡不区分 —— 那一种要等真机实测后再定（PRD §16 待验证项）。
+    private static func conflictKey(_ name: String, caseSensitiveVolume: Bool) -> String {
+        caseSensitiveVolume ? name : name.precomposedStringWithCanonicalMapping.lowercased()
+    }
+
     static func upload(
         localURLs: [URL],
         remoteDirectory: String,
@@ -193,6 +210,11 @@ enum TransferPlanner {
         let fileManager = FileManager.default
         let basePath = localDirectory.path
 
+        // 目标卷怎么判「同名」，直接决定「保留两者」会不会误判。见 conflictKey 的说明。
+        let caseSensitiveVolume = (try? localDirectory.resourceValues(
+            forKeys: [.volumeSupportsCaseSensitiveNamesKey]
+        ).volumeSupportsCaseSensitiveNames) ?? false
+
         var usedNames: [String: Set<String>] = [:]
         var conflictCount = 0
 
@@ -207,9 +229,10 @@ enum TransferPlanner {
             var name = candidate.components.last ?? "unnamed"
             if policy == .keepBoth {
                 var taken = usedNames[targetDirectory] ?? Set(
-                    (try? fileManager.contentsOfDirectory(atPath: targetDirectory)) ?? []
+                    ((try? fileManager.contentsOfDirectory(atPath: targetDirectory)) ?? [])
+                        .map { Self.conflictKey($0, caseSensitiveVolume: caseSensitiveVolume) }
                 )
-                if taken.contains(name) {
+                if taken.contains(Self.conflictKey(name, caseSensitiveVolume: caseSensitiveVolume)) {
                     let stem = (name as NSString).deletingPathExtension
                     let ext = (name as NSString).pathExtension
                     var index = 1
@@ -217,11 +240,11 @@ enum TransferPlanner {
                     repeat {
                         candidateName = ext.isEmpty ? "\(stem) (\(index))" : "\(stem) (\(index)).\(ext)"
                         index += 1
-                    } while taken.contains(candidateName)
+                    } while taken.contains(Self.conflictKey(candidateName, caseSensitiveVolume: caseSensitiveVolume))
                     name = candidateName
                     conflictCount += 1
                 }
-                taken.insert(name)
+                taken.insert(Self.conflictKey(name, caseSensitiveVolume: caseSensitiveVolume))
                 usedNames[targetDirectory] = taken
             }
 

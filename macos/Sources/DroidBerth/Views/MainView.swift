@@ -80,7 +80,10 @@ struct MainView: View {
             Task { await model.deviceDidChange() }
         }
         .onChange(of: model.showHiddenFiles) { _, _ in
+            // 两侧都要刷：「显示隐藏文件」在 PRD §10 里是一条全局显示偏好，
+            // 早先只作用于本地，设备窗格永远显示 .nomedia / .thumbnails —— 不对称。
             model.reloadLocal()
+            Task { await model.loadRemote() }
         }
         .onChange(of: model.settings.appearance) { _, newValue in
             AppearanceController.apply(newValue)
@@ -213,6 +216,9 @@ struct MainView: View {
                         onOpenFile: openMacEntry,
                         onSelectEntry: { model.rememberColumnSelection($0, in: .mac) }
                     )
+                    // 「显示隐藏文件」变化时重建列视图：它的子项是**缓存**的（delegate 是
+                    // 同步接口，见 EntryColumns 的类型注释），不换身份就会继续拿旧缓存。
+                    .id(model.showHiddenFiles)
                 }
                 // PRD §13.2：分栏视图的路径栏在窗格**底部**。列表 / 网格沿用顶栏面包屑。
                 if model.viewMode(for: .mac) == .column {
@@ -333,6 +339,16 @@ struct MainView: View {
                 isFocused: model.focus == .device
             ) {
                 Menu {
+                    // 存储位置：设备只有一个卷时整组不出现 —— 不摆一个没得选的子菜单
+                    // （同「分栏没实现就不挂 ⌘2」的判据）。
+                    if model.deviceVolumes.count > 1 {
+                        Picker("存储位置", selection: deviceVolumeBinding) {
+                            ForEach(model.deviceVolumes, id: \.path) { volume in
+                                Text(volume.label).tag(volume.path)
+                            }
+                        }
+                        Divider()
+                    }
                     ForEach(model.deviceQuickLocations, id: \.1) { item in
                         Button(item.0) { Task { await model.navigateRemote(to: item.1) } }
                     }
@@ -414,6 +430,8 @@ struct MainView: View {
                     onOpenFile: openRemoteFile,
                     onSelectEntry: { model.rememberColumnSelection($0, in: .device) }
                 )
+                // 同本窗格：列视图的子项是缓存的，隐藏文件开关变化必须重建。
+                .id(model.showHiddenFiles)
             }
 
             if model.viewMode(for: .device) == .column {
@@ -623,6 +641,15 @@ struct MainView: View {
         Binding(get: { model.searchQuery }, set: { model.setSearchQuery($0) })
     }
 
+    /// 位置弹窗里的存储卷选择（PRD §12.2）。选中即跳转 —— `navigateRemote` 是异步的，
+    /// 绑定里不能等，所以只发一个 Task。
+    private var deviceVolumeBinding: Binding<String> {
+        Binding(
+            get: { model.currentDeviceVolume.path },
+            set: { path in Task { await model.navigateRemote(to: path) } }
+        )
+    }
+
     private var viewModeBinding: Binding<ViewMode> {
         Binding(
             get: { model.focusedViewMode },
@@ -808,7 +835,7 @@ struct MainView: View {
 
     private var remoteColumnPathBar: some View {
         let path = model.remoteColumnDirectory.isEmpty ? model.remoteDirectory : model.remoteColumnDirectory
-        let items = AppModel.remoteBreadcrumbs(for: path).map { item -> (String, () -> Void) in
+        let items = model.remoteBreadcrumbs(for: path).map { item -> (String, () -> Void) in
             let target = item.1
             return (item.0, { Task { await model.navigateRemote(to: target) } })
         }

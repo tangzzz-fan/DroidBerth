@@ -125,8 +125,12 @@ final class TransferQueue {
                     let shell = DeviceShell(adb: adb, serial: plan.serial)
                     let results = MediaScanner.scan(shell: shell, remotePaths: [plan.remotePath])
                     if let result = results.first {
-                        scanNote = result.indexed ? "已进入相册索引" : result.detail
-                        scanFailed = !result.indexed
+                        // 非媒体文件（.txt / .apk / .zip）本来就不该进相册，**什么都不说** ——
+                        // 报「未入库」是甩锅，报「已入库」是撒谎。见 MediaScanner.Indexability。
+                        scanNote = result.applicable
+                            ? (result.indexed ? "已进入相册索引" : result.detail)
+                            : nil
+                        scanFailed = result.applicable && !result.indexed
                     }
                 }
             }

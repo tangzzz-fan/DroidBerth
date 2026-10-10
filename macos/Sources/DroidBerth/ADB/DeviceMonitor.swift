@@ -69,6 +69,11 @@ final class DeviceMonitor {
         }
 
         let parsed = AndroidDevice.parse(result.stdout)
+        // 拔掉的设备顺手清掉它的扫描命令探测缓存（按 serial 分键，不清理也无害，
+        // 只是长会话里会留无主条目）。
+        for gone in MediaScanner.knownSerials where !parsed.contains(where: { $0.serial == gone }) {
+            MediaScanner.forget(serial: gone)
+        }
         devices = parsed
         status = .idle
         lastRefreshed = Date()

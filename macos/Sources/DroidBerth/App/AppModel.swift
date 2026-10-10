@@ -73,6 +73,10 @@ final class AppModel {
     var remoteLoading = false
     var remoteAvailableBytes: Int64?
 
+    /// 设备上可浏览的存储卷（PRD §12.2）。按 serial 缓存一次，换设备时重取。
+    private(set) var deviceVolumes: [DeviceShell.StorageVolume] = [DeviceShell.internalVolume]
+    private var volumesLoadedForSerial: String?
+
     /// 分栏视图「当前所在目录」，只服务窗格底部的路径栏（PRD §13.2）。
     ///
     /// 刻意与 `localDirectory` / `remoteDirectory` 分开：那两个是列表 / 网格显示的目录，
@@ -92,8 +96,51 @@ final class AppModel {
     /// 超过 `previewSizeLimit` 的远端文件，等用户确认后再下载（PRD §23）。
     var pendingPreview: PendingPreview?
 
+    /// 设备窗格当前所在的存储卷。路径落在哪个卷的子树里就是哪个卷。
+    ///
+    /// 与「常用文件夹」配套：`/sdcard/DCIM` 和 `/storage/XXXX-XXXX/DCIM` 是两个不同的
+    /// 目录，快捷位置必须跟着当前卷走，否则在 SD 卡上点「DCIM」会跳回内部存储。
+    var currentDeviceVolume: DeviceShell.StorageVolume {
+        let path = remoteDirectory
+        return deviceVolumes.first { volume in
+            volume.isRemovable && (path == volume.path || path.hasPrefix(volume.path + "/"))
+        } ?? DeviceShell.internalVolume
+    }
+
     var deviceQuickLocations: [(String, String)] {
-        [("DCIM", "/sdcard/DCIM"), ("Movies", "/sdcard/Movies"), ("Pictures", "/sdcard/Pictures"), ("Download", "/sdcard/Download")]
+        let root = currentDeviceVolume.path
+        return ["DCIM", "Movies", "Pictures", "Download"].map { ($0, root + "/" + $0) }
+    }
+
+    /// 取一次设备上的存储卷。刻意按 serial 只在换设备时取：它要跑一次 `adb shell ls`，
+    /// 而每次目录跳转都取等于给浏览加一次无谓的子进程。
+    func refreshDeviceVolumes() async {
+        guard let device = monitor.activeDevice, let shell = monitor.shell(for: device) else {
+            deviceVolumes = [DeviceShell.internalVolume]
+            volumesLoadedForSerial = nil
+            return
+        }
+        guard volumesLoadedForSerial != device.serial else { return }
+
+        let volumes = await Task.detached(priority: .utility) { shell.storageVolumes() }.value
+        // 期间可能已经换了设备，写回去只会污染新设备的状态。
+        guard monitor.activeDevice?.serial == device.serial else { return }
+        deviceVolumes = volumes
+        volumesLoadedForSerial = device.serial
+    }
+
+    /// 远端隐藏项的过滤（PRD §10「显示隐藏文件」）。
+    ///
+    /// 三条判据：
+    /// 1. **判据是「名字以点开头」**。Android 文件系统没有 macOS 的 `UF_HIDDEN` 标志，
+    ///    点前缀是唯一可用的判据（`.nomedia` / `.thumbnails` / `.trash` / `.pending`）。
+    /// 2. **刻意不下沉到 `DeviceShell.list`**。`TransferPlanner` 用同一份列表做重名冲突
+    ///    检测，而隐藏文件在设备上确实存在、确实会撞名 —— 把过滤放在那儿会让冲突检测失明。
+    ///    过滤只属于**呈现层**。
+    /// 3. 列表、网格、分栏三种视图共用这一个入口，否则三种视图对同一个开关会给出不同结果。
+    static func filterHidden(_ entries: [RemoteEntry], showHidden: Bool) -> [RemoteEntry] {
+        guard !showHidden else { return entries }
+        return entries.filter { !$0.name.hasPrefix(".") }
     }
 
     var activeDevice: AndroidDevice? { monitor.activeDevice }
@@ -121,6 +168,8 @@ final class AppModel {
         if let device = monitor.activeDevice, let remembered = settings.destination(for: device.serial) {
             remoteDirectory = remembered
         }
+        await refreshDeviceVolumes()
+        fallBackToInternalVolumeIfNeeded()
         await loadRemote()
     }
 
@@ -130,7 +179,27 @@ final class AppModel {
         }
         remoteHistory = []
         remoteHistoryIndex = -1
+        await refreshDeviceVolumes()
+        fallBackToInternalVolumeIfNeeded()
         await loadRemote()
+    }
+
+    /// 记住的目标目录可能在外置卷上，而那块卡已经拔了。落到不存在的路径上会让设备窗格
+    /// 直接报错 —— 回到内部存储，比在错误信息里解释「卷不在了」有用。
+    private func fallBackToInternalVolumeIfNeeded() {
+        guard isOnUnmountedVolume(remoteDirectory) else { return }
+        remoteDirectory = DeviceShell.internalVolume.path
+    }
+
+    /// 设备窗格是不是停在某个存储卷的**根**上（还没进具体目录）。
+    private var isAtDeviceVolumeRoot: Bool {
+        deviceVolumes.contains { $0.path == remoteDirectory }
+    }
+
+    /// 路径是否落在一块**当前没挂载**的外置卷上（卡被拔了／OTG 断了）。
+    private func isOnUnmountedVolume(_ path: String) -> Bool {
+        guard path.hasPrefix("/storage/") else { return false }
+        return !deviceVolumes.contains { path == $0.path || path.hasPrefix($0.path + "/") }
     }
 
     // MARK: - Mac 窗格
@@ -255,7 +324,7 @@ final class AppModel {
 
         switch listing {
         case .success(let entries):
-            remoteEntries = entries.sorted(by: Self.remoteSort)
+            remoteEntries = Self.filterHidden(entries, showHidden: showHiddenFiles).sorted(by: Self.remoteSort)
             remoteError = nil
         case .failure(let message):
             remoteEntries = []
@@ -286,6 +355,8 @@ final class AppModel {
 
     func remoteGoUp() async {
         guard remoteDirectory != "/sdcard", remoteDirectory != "/" else { return }
+        // 存储卷的根就是尽头：再往上会到 `/storage`，那不是可浏览的位置。
+        guard !deviceVolumes.contains(where: { $0.path == remoteDirectory }) else { return }
         let parent = (remoteDirectory as NSString).deletingLastPathComponent
         guard !parent.isEmpty, parent != remoteDirectory else { return }
         await navigateRemote(to: parent)
@@ -327,16 +398,21 @@ final class AppModel {
     }
 
     func uploadDestination(for device: AndroidDevice) -> (path: String, reason: String) {
-        if let remembered = settings.destination(for: device.serial), remoteDirectory == "/sdcard" {
-            return (remembered, "上次使用的目录")
-        }
-        if remoteDirectory != "/sdcard" {
+        // 用户已经进到某个目录里了，就不该再把文件按类型挪去别处 —— 分流与「记住上次」
+        // 只在窗格停在**卷根**上时介入。
+        guard isAtDeviceVolumeRoot else {
             return (remoteDirectory, "设备窗格当前目录")
         }
+        if let remembered = settings.destination(for: device.serial),
+           !isOnUnmountedVolume(remembered) {
+            return (remembered, "上次使用的目录")
+        }
         if settings.routingEnabled, let name = uploadCandidateNames.first {
-            if name.isVideoFile { return ("/sdcard/Movies", "按文件类型分流") }
-            if name.isImageFile { return ("/sdcard/DCIM", "按文件类型分流") }
-            return ("/sdcard/Download", "按文件类型分流") 
+            // 分流目标跟随**当前卷**：在 SD 卡上就该分到 SD 卡，而不是内部存储。
+            let root = currentDeviceVolume.path
+            if name.isVideoFile { return (root + "/Movies", "按文件类型分流") }
+            if name.isImageFile { return (root + "/DCIM", "按文件类型分流") }
+            return (root + "/Download", "按文件类型分流")
         }
         return (remoteDirectory, "设备窗格当前目录")
     }
@@ -1130,15 +1206,22 @@ final class AppModel {
         }.value
 
         let indexed = outcomes.filter(\.indexed).count
-        let failed = outcomes.count - indexed
-        if failed == 0 {
-            banner = Banner(level: .info, title: "媒体库已刷新", detail: "\(indexed) 个文件已进入系统相册索引")
-        } else {
+        let notIndexed = outcomes.filter { $0.indexability == .notIndexed }.count
+        let nonMedia = outcomes.count - indexed - notIndexed
+
+        if notIndexed == 0 {
+            var parts: [String] = []
+            if indexed > 0 { parts.append("\(indexed) 个文件已进入系统相册索引") }
+            if nonMedia > 0 { parts.append("\(nonMedia) 个非媒体文件不参与相册索引") }
             banner = Banner(
-                level: .warning,
-                title: "部分文件未进入相册索引",
-                detail: "\(failed) 个文件未索引。可在手机上打开相册下拉刷新；若仍看不到，重启手机后即可出现"
+                level: .info,
+                title: indexed > 0 ? "媒体库已刷新" : "无需刷新媒体库",
+                detail: parts.isEmpty ? nil : parts.joined(separator: "；")
             )
+        } else {
+            var detail = "\(notIndexed) 个文件未索引。可在手机上打开相册下拉刷新；若仍看不到，重启手机后即可出现"
+            if nonMedia > 0 { detail += "（另有 \(nonMedia) 个非媒体文件不参与相册索引）" }
+            banner = Banner(level: .warning, title: "部分文件未进入相册索引", detail: detail)
         }
     }
 
@@ -1233,7 +1316,7 @@ final class AppModel {
     }
 
     var remoteBreadcrumbs: [(String, String)] {
-        Self.remoteBreadcrumbs(for: remoteDirectory)
+        remoteBreadcrumbs(for: remoteDirectory)
     }
 
     // MARK: - 窗格布局（PRD §10「交换两侧」）
@@ -1409,7 +1492,9 @@ final class AppModel {
                 case .failure: return []
                 }
             }.value
-            return listed.sorted(by: Self.remoteSort).map(BrowserEntry.init(remote:))
+            return Self.filterHidden(listed, showHidden: showHiddenFiles)
+                .sorted(by: Self.remoteSort)
+                .map(BrowserEntry.init(remote:))
 
         case .photo:
             // 照片图库没有目录层级，列视图对它没有意义（照片窗格会回退成列表）。
@@ -1444,7 +1529,27 @@ final class AppModel {
         return result
     }
 
-    static func remoteBreadcrumbs(for directory: String) -> [(String, String)] {
+    /// 设备端的面包屑。
+    ///
+    /// 走到哪个存储卷就**用卷标签顶掉那一层路径**：`/storage/1234-5678` 直接显示成
+    /// 「SD 卡」，`/sdcard` 显示成「内部存储」，并吞掉中间的 `/storage` —— 那个目录
+    /// 不是可浏览的「位置」，把它摆进面包屑只会让路径栏多一个无处可去的层级。
+    /// 卷之外的路径（`/`）走原本的逐层展开。
+    func remoteBreadcrumbs(for directory: String) -> [(String, String)] {
+        for volume in deviceVolumes
+        where directory == volume.path || directory.hasPrefix(volume.path + "/") {
+            var result: [(String, String)] = [("/", "/"), (volume.label, volume.path)]
+            var path = volume.path
+            if directory != volume.path {
+                let rest = directory.dropFirst(volume.path.count + 1)
+                for component in rest.split(separator: "/") where !component.isEmpty {
+                    path += "/" + component
+                    result.append((String(component), path))
+                }
+            }
+            return result
+        }
+
         var result: [(String, String)] = []
         var path = directory
         while path.count > 1 {

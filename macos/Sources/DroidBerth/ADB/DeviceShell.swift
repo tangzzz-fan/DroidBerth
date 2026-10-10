@@ -168,7 +168,44 @@ struct DeviceShell: Sendable {
         return nil
     }
 
-    func remoteTargetDirectoryDefaults() -> [String] {
-        ["/sdcard/DCIM", "/sdcard/Movies", "/sdcard/Pictures", "/sdcard/Download"]
+    /// 一个可浏览的存储卷（PRD §12.2：设备窗格的位置弹窗含「内部存储 / SD 卡（若设备有）」）。
+    struct StorageVolume: Sendable, Hashable {
+        let label: String
+        let path: String
+        let isRemovable: Bool
+    }
+
+    /// 内部共享存储。路径刻意沿用 `/sdcard` 而不是 `/storage/emulated/0`：
+    /// 本产品其余地方（默认目标目录、落点分流、`df` 查询）都用 `/sdcard`，
+    /// 两者是同一个地方的两种写法，混用只会让路径比较失效。
+    static let internalVolume = StorageVolume(label: "内部存储", path: "/sdcard", isRemovable: false)
+
+    /// 枚举可浏览的存储卷。
+    ///
+    /// 判据是 `ls /storage/` 而**不是** `sm list-volumes`：后者在 Android 10+ 上已被
+    /// 限制/移除（`sm` 的卷子命令依赖 vold 的旧接口），而 `/storage/` 下的挂载点是与
+    /// 系统版本无关的事实 —— `emulated` 是内部共享存储，其余 UUID 形态的目录是外置卷。
+    ///
+    /// `self` 是 app 自己的私有视图（`/storage/self/primary`），不是可浏览的位置，跳过。
+    /// 外置卷不只 SD 卡：USB OTG 存储也会以 UUID 形态出现在同一层。产品文案沿用 PRD 的
+    /// 「SD 卡」指第一个外置卷，多出来的按序标号。
+    ///
+    /// 失败（老设备没有 `/storage/`、命令超时）时只返回内部存储 —— 立即退化成
+    /// 加这个功能之前的样子，而不是让位置弹窗空掉。
+    func storageVolumes() -> [StorageVolume] {
+        let result = shell("ls /storage/ 2>/dev/null")
+        guard result.ok else { return [Self.internalVolume] }
+
+        var volumes: [StorageVolume] = [Self.internalVolume]
+        var externalCount = 0
+        for line in result.stdout.split(separator: "\n") {
+            let name = line.trimmingCharacters(in: .whitespaces)
+            guard !name.isEmpty, name != "emulated", name != "self" else { continue }
+            externalCount += 1
+            let label = externalCount == 1 ? "SD 卡" : "外置存储 \(externalCount)"
+            volumes.append(StorageVolume(label: label, path: "/storage/\(name)", isRemovable: true))
+        }
+        return volumes
     }
 }
+

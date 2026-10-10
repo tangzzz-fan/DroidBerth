@@ -241,6 +241,10 @@ iconutil -c iconset macos/Resources/icon.icns -o /tmp/verify.iconset   # 10 档�
 
 **图标不进版本库**（`.gitignore` 排除 `macos/Resources/icon.{png,icns}`），理由与 `macos/Sidecar/` 一样：**可从脚本完整复现**，不必把二进制塞进仓库。
 
+**尺寸对比图**：`docs/design/2026-10-10-ui-icons/app-icon-contact-sheet.png` ——
+深色底 / 浅色底各一行，从左到右是 **16 / 32（16pt 档 @2x）/ 64（32pt 档 @2x）/ 128 / 256**，
+按真实像素尺寸并排。看图能看到设计意图：64 及以上是**人字箭头**，32 及以下是 16pt 档的**实心三角**。
+
 ⚠️ `icon.icns` 必须在 `xcodegen generate` **之前**生成 —— xcodegen 要求 `project.yml` 里列出的路径存在。`scripts/build.sh` 的 `==> 1/4` 就是这个步骤，且只在脚本比产物新时才重跑（原生渲染一张 1024 母版约 50 秒）。
 
 ---

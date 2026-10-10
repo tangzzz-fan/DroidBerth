@@ -110,6 +110,27 @@ open build/dd/Build/Products/Release/DroidBerth.app
 `USER=$(id -un)` **不是装饰**：某些 shell 环境里 `USER` 未设置，
 XcodeGen 会报 `Couldn't find current username` 且**静默不生成工程**。
 
+### 在 Xcode 里调试
+
+打开 `macos/DroidBerth.xcodeproj`，scheme 的 Run 用 **Debug** 配置。两个前置条件：
+
+1. **Debug 必须带 `com.apple.security.get-task-allow`** —— 调试器 attach 的许可票。
+   `project.yml` 里它是**按配置**声明的：Debug `YES`、Release `NO`。
+   Release 绝不能带 —— 带它的包**无法公证**，会直接把公证链断掉。
+   ```bash
+   # 自检：Debug 应有 4 项、Release 应有 3 项（没有 get-task-allow）
+   codesign -d --entitlements - macos/build/dd/Build/Products/Debug/DroidBerth.app
+   codesign -d --entitlements - macos/build/dd/Build/Products/Release/DroidBerth.app
+   ```
+2. **系统开发者模式**。若 Xcode 报 `Not allowed to attach to process`，先看它：
+   ```bash
+   DevToolsSecurity -status              # 应为 "Developer mode is currently enabled."
+   sudo DevToolsSecurity -enable         # 需要管理员密码
+   ```
+   > `DevToolsSecurity -disable` 状态下，非 root 用户的 `task_for_pid` 会被额外限制。
+   > 这条与第 1 条是**两个独立的开关**，都关着时症状完全一样
+   > （`IDEDebugSessionErrorDomain Code 6` / `DBGLLDBLauncher`），排查时两条都要看。
+
 ### 签名与公证
 
 ```bash

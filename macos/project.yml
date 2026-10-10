@@ -55,7 +55,8 @@ targets:
         CODE_SIGN_IDENTITY: "Developer ID Application"
         DEVELOPMENT_TEAM: UKXWZ3FS84
         ENABLE_HARDENED_RUNTIME: YES
-        CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+        # 注意：CODE_SIGN_INJECT_BASE_ENTITLEMENTS 刻意**不在这里**声明 ——
+        # 它必须按配置区分（见下方 configs），写进 base 会造成两处事实。
         OTHER_CODE_SIGN_FLAGS: "--timestamp"
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         COMBINE_HIDPI_IMAGES: YES
@@ -63,6 +64,16 @@ targets:
         SWIFT_UPCOMING_FEATURE_EXISTENTIAL_ANY: NO
         ARCHS: arm64
         ONLY_ACTIVE_ARCH: NO
+      configs:
+        # Release 关掉基础 entitlements 注入：带 com.apple.security.get-task-allow 的包
+        # **无法公证**，会直接把 PRD §28 的公证链断掉。
+        Release:
+          CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+        # Debug 则必须开着 —— 这条是 Xcode 对 Debug 构建的默认行为，注入的
+        # get-task-allow 是调试器 attach 的许可票。base 里一刀切关掉，代价就是
+        # Xcode 里点 Run 会报「Not allowed to attach to process」（2026-10-10 实测）。
+        Debug:
+          CODE_SIGN_INJECT_BASE_ENTITLEMENTS: YES
     preBuildScripts:
       - name: Verify staged sidecar
         basedOnDependencyAnalysis: false

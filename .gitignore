@@ -1,12 +1,44 @@
+# ── 本地环境与凭据 ────────────────────────────────────────────────
+# .env 里有 NOTARY_PROFILE / 签名相关变量，绝不入库。
 .env
 .env.*
-sidecar/*/target/
-vendor/
-reports/
+
+# ── 工具链与本地状态（不入库）────────────────────────────────────
+# Rust 工具链是隔离安装的，按机器不同。
 .workbuddy-ai/
+# 项目记忆与 WorkBuddy 本地状态。
 .workbuddy/
-macos/Sidecar/
-macos/*.xcodeproj
+
+# ── 构建产物 ──────────────────────────────────────────────────
+# Xcode 的 derivedData（含 .app / .dSYM / 中间产物）。
 macos/build/
+DerivedData/
+# xcodegen 生成的工程。**工程本身是产物**，唯一真源是 macos/project.yml。
+# 改完 project.yml 或增删源文件后必须重跑 xcodegen —— 见 README「构建与运行」。
+macos/*.xcodeproj
+
+# ── 不可分发的第三方内容 ────────────────────────────────────────
+# vendor/ 是 adb 源码与 platform-tools（含 NOTICE.txt）。体积大，且
+# 许可状态待法务确认（PRD §28），**不随仓库分发**。
+vendor/
+# 暂存进 bundle 的 adb 与 sidecar 可执行文件（由 build-sidecar.sh 生成）。
+macos/Sidecar/
+# sidecar 的 cargo 产物。
+sidecar/*/target/
+
+# ── 运行期输出 ────────────────────────────────────────────────
+# doctor / spike 的报告。
+reports/
 *.log
+
+# ── Xcode 的用户级状态（每个开发者各不相同）──────────────────────
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+
+# ── 编辑器与系统杂项 ──────────────────────────────────────────
 .DS_Store
+*.swp
+*.swo
+*~

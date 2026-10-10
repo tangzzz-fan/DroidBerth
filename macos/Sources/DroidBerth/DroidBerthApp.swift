@@ -1,3 +1,5 @@
+import AppKit
+import QuickLookUI
 import SwiftUI
 
 @main
@@ -11,7 +13,38 @@ enum EntryPoint {
     }
 }
 
+/// 把 Quick Look 面板接进响应者链。
+///
+/// `QLPreviewPanel` 只认响应者链上第一个 `acceptsPreviewPanelControl:` 返回 true 的
+/// 对象；**没有它，`makeKeyAndOrderFront` 不会带上数据源，面板是空的。**
+///
+/// 挂在 App 代理而不是某个视图上：代理是**每条响应者链的终点**。挂在视图上要先保证
+/// 那个视图是当前 first responder 的祖先（`.background` 放的兄弟节点根本不在链上），
+/// 而且面板自己成为 key window 时链路会重新搜索 —— 终点不会掉出去。
+@MainActor
+final class DroidBerthAppDelegate: NSObject, NSApplicationDelegate {
+    override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool { true }
+
+    // 这三个是 `NSObject (QLPreviewPanelController)` 里的**非隔离**方法，覆写后本方法
+    // 也变成非隔离，于是碰不到 MainActor 上的 `QuickLookPresenter`。
+    // AppKit 保证它们只在主线程调用，所以 `assumeIsolated` 是成立的断言，不是掩护。
+    override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        MainActor.assumeIsolated {
+            panel.dataSource = QuickLookPresenter.shared
+            panel.delegate = QuickLookPresenter.shared
+        }
+    }
+
+    override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        MainActor.assumeIsolated {
+            panel.dataSource = nil
+            panel.delegate = nil
+        }
+    }
+}
+
 struct DroidBerthApp: App {
+    @NSApplicationDelegateAdaptor(DroidBerthAppDelegate.self) private var appDelegate
     @State private var model = AppModel()
 
     var body: some Scene {

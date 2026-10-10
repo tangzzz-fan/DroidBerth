@@ -87,8 +87,6 @@ final class AppModel {
     var banner: Banner?
     var exportPhase: ExportPhase = .idle
 
-    /// 绑定给 `.quickLookPreview(_:)`：非 nil 时系统弹出就地预览面板。
-    var previewURL: URL?
     /// 正在把远端文件拉到本机。拉取期间再按空格不重复发起。
     var previewLoading = false
     /// 超过 `previewSizeLimit` 的远端文件，等用户确认后再下载（PRD §23）。
@@ -790,13 +788,25 @@ final class AppModel {
 
     /// 空格键入口。返回值语义与 `PaneKeyMonitor.onQuickLook` 一致：
     /// true = 已消费（无论成功还是给了明确反馈），false = 交还系统。
+    ///
+    /// **第一件事是判「面板是不是开着」** —— 空格在 Finder 里是**切换**，开着的面板
+    /// 要能收回去。这里必须用 `QuickLookPresenter.isVisible`（面板自身的状态），
+    /// 不能靠「上次我们请求了什么」：用户可能用 Esc 或关闭按钮关掉了面板，
+    /// 那份记忆就过期了。
     @discardableResult
     func quickLookFocusedSelection() -> Bool {
+        if QuickLookPresenter.shared.isVisible {
+            QuickLookPresenter.shared.dismiss()
+            return true
+        }
+
         switch (focus, macSource) {
         case (.mac, .files):
-            let urls = focusedLocalURLs()
-            guard urls.count == 1, let url = urls.first else { return false }
-            previewURL = url
+            let entries = localPreviewEntries()
+            guard let index = entries.firstIndex(where: { localSelection.contains($0.id) }) else {
+                return false
+            }
+            QuickLookPresenter.shared.present(items: entries.map(\.url), startAt: index)
             return true
 
         case (.mac, .photos):
@@ -828,6 +838,33 @@ final class AppModel {
         }
     }
 
+    /// 面板开着时跟着选择走 —— 与 Finder 一致：面板不关，内容换成新选中的那个。
+    ///
+    /// 只在**本地**窗格做：设备端条目本身不在本机，跟着走意味着每换一个文件就 `adb pull`
+    /// 一次，那是个不该有的隐式下载。设备端的预览仍然只由空格显式触发。
+    func syncQuickLookToSelection() {
+        guard QuickLookPresenter.shared.isVisible else { return }
+        switch (focus, macSource) {
+        case (.mac, .files):
+            let entries = localPreviewEntries()
+            guard let index = entries.firstIndex(where: { localSelection.contains($0.id) }) else { return }
+            QuickLookPresenter.shared.follow(items: entries.map(\.url), startAt: index)
+        case (.mac, .photos), (.device, _):
+            break
+        }
+    }
+
+    /// 交给 Quick Look 的本地条目。
+    ///
+    /// **文件夹也放进来**：`QLPreviewPanel` 原生长于预览文件夹（图标 + 元数据），
+    /// 而 Finder 的预览面板同样允许停在文件夹上。所以这里不筛类型。
+    private func localPreviewEntries() -> [LocalEntry] {
+        guard let snapshot = columnSnapshot(for: .mac, selection: localSelection) else {
+            return localEntries
+        }
+        return [snapshot.asLocalEntry]
+    }
+
     /// 远端文件没法就地预览：先落到 `$TMPDIR/DroidBerth/preview/` 再交给 Quick Look。
     ///
     /// 与正式下载刻意走两条路：预览不需要进度条、不进传输面板、落地即弃，用一次
@@ -844,7 +881,7 @@ final class AppModel {
 
         // 面板开着时不清理：正在显示的文件就躺在预览目录里，删掉会让面板报错。
         // 面板已关（常见情况）时顺手清掉上一轮残留，避免临时目录在一次会话里堆积。
-        if previewURL == nil { AppPaths.clearPreviews() }
+        if !QuickLookPresenter.shared.isVisible { AppPaths.clearPreviews() }
         let target = AppPaths.makePreviewItem(named: entry.name)
         let serial = device.serial
         let remotePath = entry.path
@@ -871,7 +908,7 @@ final class AppModel {
         switch outcome {
         case .success:
             banner = nil
-            previewURL = target
+            QuickLookPresenter.shared.present(items: [target], startAt: 0)
         case .missingADB:
             banner = Banner(level: .error, title: "未找到 adb", detail: "请重新构建 app")
         case .failed(let message):

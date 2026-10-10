@@ -1,4 +1,3 @@
-import QuickLook
 import SwiftUI
 
 @MainActor
@@ -60,7 +59,9 @@ struct MainView: View {
             }
         }
         .onDisappear { keyMonitor?.stop() }
-        .quickLookPreview($model.previewURL)
+        // 预览面板开着时跟着选择走（Finder 行为）。面板关着时这个调用直接返回，
+        // 所以不会因为「选来选去」产生任何开销。
+        .onChange(of: model.localSelection) { _, _ in model.syncQuickLookToSelection() }
         .onReceive(NotificationCenter.default.publisher(for: .droidBerthNewFolder)) { _ in
             guard model.activeDevice != nil else { return }
             showNewFolder = true

@@ -35,9 +35,27 @@ final class PaneKeyMonitor {
 
     private func handle(_ event: NSEvent) -> NSEvent? {
         guard !TextEditingRelay.isEditing else { return event }
-        // 有修饰键时交还给系统（⌘⇥ 切应用、⌘Space 聚焦搜索 等）
+
+        // 有模态（sheet / 对话框 / 打开面板）时一律放行。
+        // 少了这一条：删除确认弹窗弹着的时候按空格会去切换背后的 Quick Look ——
+        // 那一刻空格属于弹窗，不属于窗格。
+        guard NSApp.modalWindow == nil else { return event }
+
         let relevant: NSEvent.ModifierFlags = [.command, .option, .control]
-        guard event.modifierFlags.intersection(relevant).isEmpty else { return event }
+        let bare = event.modifierFlags.intersection(relevant).isEmpty
+
+        // 预览面板开着时：**只有空格归我们**（收起），其余按键全部放行，交给面板自己
+        // 处理 —— 方向键在条目间切换、Esc 关闭、⌘ 系列仍然是系统快捷键。
+        // 抢走 Tab 会让正在预览的人莫名其妙（焦点被搬到另一个窗格去了）。
+        if QuickLookPresenter.shared.isVisible {
+            guard bare, !event.modifierFlags.contains(.shift),
+                  event.keyCode == Self.spaceKeyCode else { return event }
+            _ = onQuickLook?()
+            return nil
+        }
+
+        // 有修饰键时交还给系统（⌘⇥ 切应用、⌘Space 聚焦搜索 等）
+        guard bare else { return event }
 
         switch event.keyCode {
         case Self.tabKeyCode:

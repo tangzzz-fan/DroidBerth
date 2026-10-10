@@ -1,0 +1,1016 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DroidBerth 图标体系与引导插图 · 设计规格</title>
+<style>
+  :root{
+    --bg:#F5F5F7; --card:#FFFFFF; --fg:#1D1D1F; --muted:#5F5F63; --faint:#86868B;
+    --line:rgba(0,0,0,.10); --line-2:rgba(0,0,0,.06);
+    --accent:#ED8725; --accent-deep:oklch(56% .152 55); --accent-2:#1CA0AC;
+    --grad:linear-gradient(90deg,#F9A04A,#DE6B20);
+    --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
+    --r:12px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{background:var(--bg);color:var(--fg);font:14px/1.75 var(--sans);-webkit-font-smoothing:antialiased;padding:0 40px 120px}
+  .page{max-width:1120px;margin:0 auto}
+  .sprite{position:absolute;width:0;height:0;overflow:hidden}
+
+  /* ---------- 图标基类：16pt 为默认真实尺寸 ---------- */
+  .gi{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.35;stroke-linecap:round;stroke-linejoin:round;display:block}
+  .gi-lg{width:48px;height:48px;stroke-width:.9}
+  .gi-20{width:20px;height:20px;stroke-width:1.2}
+
+  /* ---------- 页头 ---------- */
+  .hero{padding:64px 0 4px}
+  .eyebrow{font:11px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--faint)}
+  h1{font-size:38px;line-height:1.2;letter-spacing:-.022em;font-weight:680;margin:18px 0 0}
+  .lede{margin-top:16px;max-width:62ch;font-size:16px;line-height:1.7;color:var(--muted)}
+  .grad-rule{height:3px;width:132px;border-radius:2px;background:var(--grad);margin:26px 0 0}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}
+  .chip{font:11px/1 var(--mono);letter-spacing:.04em;padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--muted)}
+
+  /* ---------- 章节 ---------- */
+  .sec{margin-top:78px}
+  .sec-head{display:flex;gap:14px;align-items:baseline;border-top:1px solid var(--line);padding-top:20px}
+  .sec-no{font:12px/1 var(--mono);letter-spacing:.1em;color:var(--accent-deep);padding-top:5px}
+  .sec-head h2{font-size:25px;line-height:1.3;letter-spacing:-.014em;font-weight:660}
+  .sec-sub{margin:10px 0 0 40px;max-width:66ch;color:var(--muted)}
+  h3{font-size:16px;font-weight:640;letter-spacing:-.006em;margin:36px 0 10px}
+  h4{font-size:14px;font-weight:640;margin:22px 0 8px}
+  p{max-width:74ch}
+  .body p + p{margin-top:10px}
+  .body{margin-left:40px;margin-top:14px}
+  code{font:12px/1.5 var(--mono);background:rgba(0,0,0,.045);border-radius:4px;padding:1.5px 5px;white-space:nowrap}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:20px 22px}
+  .card + .card{margin-top:14px}
+  ul.tight{margin:8px 0 0;padding-left:1.15em;max-width:76ch}
+  ul.tight li{margin:5px 0}
+  ul.tight li::marker{color:var(--faint)}
+  .rule{border:0;border-top:1px solid var(--line-2);margin:22px 0}
+
+  /* ---------- 表 ---------- */
+  .tw{overflow:hidden;border:1px solid var(--line);border-radius:var(--r);background:var(--card);margin-left:40px}
+  table{width:100%;border-collapse:collapse;table-layout:fixed}
+  th,td{text-align:left;vertical-align:top;padding:11px 14px;border-bottom:1px solid var(--line-2);font-size:13px;line-height:1.55;word-break:break-word}
+  thead th{background:#FAFAFC;font-size:11px;font-weight:640;letter-spacing:.06em;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--line)}
+  tbody tr:last-child td{border-bottom:0}
+  tr.grp td{background:#FAFAFC;font:11px/1 var(--mono);letter-spacing:.12em;color:var(--faint);padding:7px 14px;text-transform:uppercase}
+  .c-type{width:19%} .c-ext{width:39%} .c-ico{width:9%} .c-path{width:33%}
+  .t-ico{color:var(--fg)}
+  .ext{display:inline-block;font:11px/1 var(--mono);padding:3px 5px;margin:0 4px 4px 0;border-radius:3px;background:rgba(0,0,0,.05);color:var(--muted)}
+  .ext.warn{background:rgba(237,135,37,.16);color:#8A4A00}
+  .tag{display:inline-block;font:10px/1 var(--mono);letter-spacing:.08em;padding:2.5px 5px;border-radius:3px;vertical-align:1px;margin-left:4px}
+  .tag.ok{background:rgba(0,0,0,.06);color:var(--faint)}
+  .tag.new{background:oklch(56% .152 55);color:#fff}
+  .tag.ns{background:rgba(28,160,172,.14);color:#0D6C74}
+  .pth{font-size:12px;color:var(--muted)}
+  .pth b{font-weight:600;color:var(--faint);font-size:10px;letter-spacing:.08em;margin-right:3px}
+  .pth .sep{color:var(--line);margin:0 4px}
+
+  /* ---------- 16pt 一览条 ---------- */
+  .strip{display:flex;flex-wrap:wrap;gap:6px;margin-left:40px;margin-top:18px}
+  .strip div{flex:1 1 76px;min-width:76px;border:1px solid var(--line);border-radius:9px;background:var(--card);padding:12px 6px 9px;text-align:center;color:var(--fg)}
+  .strip .s-ico{display:flex;justify-content:center;height:16px}
+  .strip span{display:block;margin-top:9px;font:10px/1.3 var(--mono);color:var(--faint);word-break:break-all}
+
+  /* ---------- 结论条 ---------- */
+  .verdict{border-left:0;border-radius:var(--r);padding:18px 22px;background:var(--card);border:1px solid var(--line)}
+  .verdict .k{font:11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent-deep)}
+  .verdict strong{font-weight:660}
+  .do-dont{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}
+  .do-dont .card{padding:16px 18px}
+  .do-dont h5{font-size:12px;font-weight:660;letter-spacing:.04em;margin-bottom:8px}
+  .do-dont .yes h5{color:#1B6B4A} .do-dont .no h5{color:#9A3412}
+  .do-dont ul{padding-left:1.1em;font-size:13px;color:var(--muted);line-height:1.6}
+  .do-dont li{margin:4px 0}
+
+  /* ---------- 设备/双栏小样 ---------- */
+  .sample{margin:16px 0 0 40px}
+  .sample-cap{font:11px/1.5 var(--mono);color:var(--faint);letter-spacing:.03em;margin-bottom:9px}
+  .win{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--card);box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .win.dark{border-color:rgba(255,255,255,.12)}
+  .win-bar{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--line)}
+  .win-bar .tl{width:9px;height:9px;border-radius:50%;flex:none}
+  .win-bar .t1{background:#FF5F57}.win-bar .t2{background:#FEBC2E}.win-bar .t3{background:#28C840}
+  .win-bar .t{font-size:11px;color:var(--faint);margin-left:6px;letter-spacing:.02em}
+  .panes{display:grid;grid-template-columns:340px 340px;justify-content:center}
+  .pane{--m-bg:#FFFFFF;--m-fg:#1D1D1F;--m-muted:#6E6E73;--m-line:rgba(0,0,0,.10);--m-head:#FAFAFC;
+        background:var(--m-bg);color:var(--m-fg);border-right:1px solid var(--line)}
+  .pane:last-child{border-right:0}
+  .win.dark .pane{--m-bg:#1C1C1E;--m-fg:#F2F2F4;--m-muted:rgba(235,235,245,.62);--m-line:rgba(255,255,255,.11);--m-head:#232325}
+  .win.dark .win-bar{background:#232325;border-color:rgba(255,255,255,.11)}
+  .win.dark .win-bar .t{color:rgba(235,235,245,.5)}
+  .pane-head{padding:7px 12px;font-size:11px;color:var(--m-muted);background:var(--m-head);border-bottom:1px solid var(--m-line);display:flex;justify-content:space-between;align-items:center}
+  .row{display:flex;align-items:center;gap:8px;height:26px;padding:0 12px;font-size:13px;border-bottom:1px solid var(--m-line)}
+  .row:last-child{border-bottom:0}
+  .row .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .row .kd{font-size:11px;color:var(--m-muted);flex:none}
+  .row.on{background:oklch(56% .152 55);color:#fff}
+  .row.on .kd{color:#fff}
+  .ico-mono{color:var(--m-muted)}
+  .row.on .ico-mono{color:#fff}
+  .strat{border:1px solid var(--line);border-radius:var(--r);background:var(--card);padding:20px 22px 22px;margin-top:16px}
+  .strat > header{display:flex;justify-content:space-between;align-items:baseline;gap:16px;flex-wrap:wrap}
+  .strat h3{margin:0;font-size:15px}
+  .strat .verdictline{font:11px/1 var(--mono);letter-spacing:.08em;color:var(--faint)}
+  .strat .verdictline.bad{color:#9A3412}.strat .verdictline.good{color:#1B6B4A}
+  .strat p{font-size:13px;color:var(--muted);margin-top:12px}
+  .strat .lgd{display:flex;gap:16px;flex-wrap:wrap;font:11px/1.6 var(--mono);color:var(--faint);margin-top:10px}
+  .stack{display:grid;gap:14px;margin-left:40px}
+  .win.dark .pane{border-right-color:rgba(255,255,255,.11)}
+  .body pre{margin-left:0}
+
+  /* ---------- USB 卡片 ---------- */
+  .cards2{display:grid;grid-template-columns:300px 300px;gap:22px;margin-left:40px;align-items:start}
+  .usb{--m-bg:#FFFFFF;--m-fg:#1D1D1F;--m-muted:#6E6E73;--m-line:rgba(0,0,0,.10);--m-soft:#F5F5F7;
+       width:300px;background:var(--m-bg);color:var(--m-fg);border:1px solid var(--line);border-radius:12px;padding:16px}
+  .usb.dark{--m-bg:#1C1C1E;--m-fg:#F2F2F4;--m-muted:rgba(235,235,245,.62);--m-line:rgba(255,255,255,.11);--m-soft:#2A2A2C;
+            border-color:rgba(255,255,255,.12)}
+  .usb-h{display:flex;gap:10px;align-items:flex-start}
+  .usb-h .gi-20{color:var(--m-muted);margin-top:2px}
+  .usb-h b{display:block;font-size:13px;font-weight:640;letter-spacing:-.004em}
+  .usb-h small{display:block;font-size:11.5px;line-height:1.5;color:var(--m-muted);margin-top:3px}
+  .phone{width:232px;margin:14px auto 0;background:#0B0B0C;border-radius:24px;padding:7px;box-shadow:0 8px 22px rgba(0,0,0,.16)}
+  .usb.dark .phone{background:#3A3A3C}
+  .screen{background:var(--m-soft);border-radius:18px;padding:8px 9px 12px;position:relative;overflow:hidden}
+  .usb.dark .screen{background:#0E0E10}
+  .stat{display:flex;justify-content:space-between;align-items:center;font:9px/1 var(--mono);color:var(--m-muted);padding:2px 6px 0}
+  .stat i{display:block;width:14px;height:7px;border-radius:2px;border:1px solid currentColor;opacity:.7}
+  .dlg{background:var(--m-bg);border-radius:12px;padding:12px 13px 8px;margin-top:9px;box-shadow:0 4px 14px rgba(0,0,0,.14)}
+  .usb.dark .dlg{box-shadow:0 4px 14px rgba(0,0,0,.5)}
+  .dlg h6{font-size:13px;font-weight:640;letter-spacing:-.004em}
+  .dlg p{font-size:11px;line-height:1.55;color:var(--m-muted);margin-top:7px;max-width:none}
+  .fp{font:10px/1.5 var(--mono);letter-spacing:.02em;color:var(--m-fg);background:var(--m-soft);border-radius:4px;padding:5px 6px;margin-top:5px;word-break:break-all}
+  .cb{display:flex;gap:6px;align-items:flex-start;margin-top:9px;font-size:11px;line-height:1.45;color:var(--m-fg)}
+  .cb i{width:11px;height:11px;border-radius:3px;border:1.4px solid var(--m-muted);flex:none;margin-top:1.5px;display:grid;place-items:center;color:#1CA0AC}
+  .dlg-act{display:flex;justify-content:flex-end;gap:14px;margin-top:11px;font-size:12px;font-weight:600}
+  .dlg-act .c{color:var(--m-muted);font-weight:500}
+  .dlg-act .a{color:#1CA0AC}
+  .steps{margin-top:15px;display:grid;gap:8px}
+  .step{display:flex;gap:9px;align-items:flex-start}
+  .step b{flex:none;width:16px;height:16px;border-radius:50%;background:var(--m-soft);color:var(--m-muted);
+          font:10px/16px var(--mono);text-align:center;margin-top:1px}
+  .step span{font-size:11.5px;line-height:1.5}
+  .btn{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;height:32px;margin-top:15px;
+       border-radius:7px;background:oklch(56% .152 55);color:#fff;font-size:12.5px;font-weight:600;letter-spacing:-.004em}
+  .brandnote{margin-top:12px;padding-top:11px;border-top:1px solid var(--m-line);font-size:11px;line-height:1.6;color:var(--m-muted)}
+  .brandnote b{color:var(--m-fg);font-weight:640}
+  .brandnote a{display:inline-block;margin-top:6px;color:#0D6C74;text-decoration:none;font-weight:600}
+  .usb.dark .brandnote a{color:#3FC3CE}
+  .tech{margin-left:40px;margin-top:16px}
+
+  /* ---------- 空态 ---------- */
+  .empties{display:grid;grid-template-columns:340px 340px;gap:22px;justify-content:center;margin-top:16px}
+  .empty{--m-bg:#FFFFFF;--m-fg:#1D1D1F;--m-muted:#6E6E73;--m-icon:#8A8A8E;--m-line:rgba(0,0,0,.10);--m-head:#FAFAFC;
+         background:var(--m-bg);color:var(--m-fg);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .empty .pane-head{font-size:11px}
+  .e-body{padding:26px 20px 24px;display:flex;flex-direction:column;align-items:center;text-align:center}
+  .e-body .gi-lg{color:var(--m-icon)}
+  .e-body .attn{color:oklch(56% .152 55)}
+  .e-body strong{display:block;margin-top:14px;font-size:13px;font-weight:640;letter-spacing:-.004em}
+  .e-body small{display:block;margin-top:6px;font-size:11.5px;line-height:1.6;color:var(--m-muted);max-width:236px}
+  .e-act{display:flex;gap:8px;margin-top:16px;align-items:center}
+  .ebtn{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 13px;border-radius:7px;
+        background:oklch(56% .152 55);color:#fff;font-size:12px;font-weight:600}
+  .ebtn.ghost{background:transparent;color:var(--m-muted);border:1px solid var(--m-line);font-weight:500}
+  .e-spec{margin-left:40px;margin-top:18px}
+
+  /* ---------- 代码块 ---------- */
+  pre{background:#1C1C1E;color:#EDEDF0;border-radius:10px;padding:16px 18px;overflow:auto;
+      font:12px/1.7 var(--mono);margin-left:40px;margin-top:12px}
+  pre .c{color:#8E8E93}
+  pre .s{color:#7FD1B9}
+  pre .k{color:#F0A868}
+
+  /* ---------- 结尾 ---------- */
+  .end{margin-top:60px;padding-top:22px;border-top:1px solid var(--line);color:var(--faint);font-size:12px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+
+  @media (max-width:1080px){
+    .panes{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+    .cards2{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+    .empties{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+    .cards2 .usb{width:100%;max-width:300px}
+  }
+  @media (max-width:760px){
+    body{padding:0 18px 80px}
+    h1{font-size:28px}
+    .sec{margin-top:52px}
+    .sec-sub,.body,.tw,.strip,.sample,.cards2,.tech,.stack,.e-spec,.empties,pre{margin-left:0}
+    .do-dont{grid-template-columns:1fr}
+    .panes{grid-template-columns:1fr 1fr}
+    .row{font-size:12px;padding:0 8px;gap:6px}
+    .cards2,.empties{grid-template-columns:minmax(0,1fr);justify-items:center}
+    .cards2 .usb,.empties .empty{width:100%;max-width:340px}
+    .c-type{width:26%}.c-ext{width:34%}.c-ico{width:13%}.c-path{width:27%}
+    th,td{padding:8px 9px;font-size:11.5px}
+    th{font-size:9.5px}
+    .ext{font-size:10px}
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ 图标精灵：全部为 SF Symbol 造型的 CSS/SVG 近似 ============ -->
+<svg class="sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="g-folder" viewBox="0 0 16 16"><path d="M1.6 5.2a1.2 1.2 0 0 1 1.2-1.2h3.1l1.4 1.7h6.1a1.2 1.2 0 0 1 1.2 1.2v5.5a1.2 1.2 0 0 1-1.2 1.2H2.8a1.2 1.2 0 0 1-1.2-1.2z"/></symbol>
+  <symbol id="g-doc" viewBox="0 0 16 16"><path d="M3.6 2.6h4.9l3.9 3.9v6.9a.6.6 0 0 1-.6.6H3.6a.6.6 0 0 1-.6-.6V3.2a.6.6 0 0 1 .6-.6z"/><path d="M8.3 2.8v3.9h3.9"/></symbol>
+  <symbol id="g-doc-text" viewBox="0 0 16 16"><path d="M3.6 2.6h4.9l3.9 3.9v6.9a.6.6 0 0 1-.6.6H3.6a.6.6 0 0 1-.6-.6V3.2a.6.6 0 0 1 .6-.6z"/><path d="M8.3 2.8v3.9h3.9"/><path d="M5.4 9.1h5.2M5.4 11h5.2M5.4 12.9h3.1"/></symbol>
+  <symbol id="g-doc-rich" viewBox="0 0 16 16"><path d="M3.6 2.6h4.9l3.9 3.9v6.9a.6.6 0 0 1-.6.6H3.6a.6.6 0 0 1-.6-.6V3.2a.6.6 0 0 1 .6-.6z"/><path d="M8.3 2.8v3.9h3.9"/><path d="M5.4 9.1h5.2M5.4 11h5.2"/><rect x="5.4" y="12.3" width="3.6" height="1.5" rx=".4" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="g-doc-zip" viewBox="0 0 16 16"><path d="M3.6 2.6h4.9l3.9 3.9v6.9a.6.6 0 0 1-.6.6H3.6a.6.6 0 0 1-.6-.6V3.2a.6.6 0 0 1 .6-.6z"/><path d="M8.3 2.8v3.9h3.9"/><rect x="7.2" y="6.6" width="2.4" height="1.7" rx=".35"/><path d="M8.4 8.9v5.2" stroke-dasharray="1.15 1.15"/></symbol>
+  <symbol id="g-photo" viewBox="0 0 16 16"><rect x="2.2" y="3.4" width="11.6" height="9.2" rx="1.4"/><circle cx="10.3" cy="6.3" r="1"/><path d="M2.6 11.5 5.9 8l2.5 2.4L10.3 8.7l3.1 3"/></symbol>
+  <symbol id="g-film" viewBox="0 0 16 16"><rect x="2.2" y="3.4" width="11.6" height="9.2" rx="1.4"/><path d="M5.1 4.1v7.8M10.9 4.1v7.8" stroke-dasharray="1.5 1.6"/></symbol>
+  <symbol id="g-wave" viewBox="0 0 16 16"><path d="M3.3 6.6v2.8M5.6 5.2v5.6M8 3.6v8.8M10.4 5.8v4.4M12.7 7v2"/></symbol>
+  <symbol id="g-box" viewBox="0 0 16 16"><path d="M8 2.9 13.4 5.6v5.2L8 13.6 2.6 10.8V5.6z"/><path d="M2.6 5.6 8 8.3l5.4-2.7M8 8.3v5.3"/></symbol>
+  <symbol id="g-disc" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.6"/><circle cx="8" cy="8" r="1.7"/></symbol>
+  <symbol id="g-cells" viewBox="0 0 16 16"><rect x="2.4" y="3.6" width="11.2" height="8.8" rx="1"/><path d="M2.4 7.6h11.2M8 7.6v4.8"/></symbol>
+  <symbol id="g-code" viewBox="0 0 16 16"><path d="M5.9 5.1 2.7 8l3.2 2.9M10.1 5.1 13.3 8l-3.2 2.9M9.1 3.9 6.9 12.1"/></symbol>
+  <symbol id="g-alias" viewBox="0 0 16 16"><path d="M4.6 13.2V7.2a2.9 2.9 0 0 1 2.9-2.9h4"/><path d="M9.4 2.1 11.9 4.3 9.4 6.5"/></symbol>
+  <symbol id="g-plug" viewBox="0 0 16 16"><path d="M8 13.4V9.9"/><rect x="4.6" y="5.7" width="6.8" height="3.4" rx="1.1"/><path d="M6.4 5.7V2.9M9.6 5.7V2.9"/></symbol>
+  <symbol id="g-lock" viewBox="0 0 16 16"><rect x="4.2" y="7.2" width="7.6" height="5.6" rx="1.2"/><path d="M5.9 7.2V5.5a2.1 2.1 0 0 1 4.2 0v1.7"/></symbol>
+  <symbol id="g-search" viewBox="0 0 16 16"><circle cx="7.1" cy="7.1" r="4.2"/><path d="M10.3 10.3 13.6 13.6"/></symbol>
+  <symbol id="g-refresh" viewBox="0 0 16 16"><path d="M12.5 4.7A5.1 5.1 0 1 0 13.1 8"/><path d="M12.1 2.1 14.6 3.4 12.4 5.7z" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="g-openapp" viewBox="0 0 16 16"><path d="M12.6 9.4v2.9a1.2 1.2 0 0 1-1.2 1.2H3.8a1.2 1.2 0 0 1-1.2-1.2V4.6a1.2 1.2 0 0 1 1.2-1.2h2.9"/><path d="M9.6 2.4h4v4"/><path d="M13.6 2.4 7.8 8.2"/></symbol>
+  <symbol id="g-xc" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.6"/><path d="M6.1 6.1 9.9 9.9M9.9 6.1 6.1 9.9"/></symbol>
+  <!-- 系统彩色文件图标（示意：真实形状由 NSWorkspace 提供） -->
+  <symbol id="g-cp" viewBox="0 0 16 16"><path d="M3.4 2.2h5.2l4 4v7.6H3.4z" fill="#FFFFFF" stroke="#B4B4B9" stroke-width=".9"/><path d="M8.6 2.4v3.9h3.9z" fill="var(--b,#1CA0AC)"/></symbol>
+  <symbol id="g-cp-doc" viewBox="0 0 16 16"><path d="M3.4 2.2h5.2l4 4v7.6H3.4z" fill="#FFFFFF" stroke="#B4B4B9" stroke-width=".9"/><path d="M8.6 2.4v3.9h3.9z" fill="#DCDCE0"/></symbol>
+  <symbol id="g-cp-folder" viewBox="0 0 16 16"><path d="M1.8 5.4a1.3 1.3 0 0 1 1.3-1.3h3l1.5 1.8h5.3a1.3 1.3 0 0 1 1.3 1.3v4.9a1.3 1.3 0 0 1-1.3 1.3H3.1a1.3 1.3 0 0 1-1.3-1.3z" fill="#59A9F0" stroke="none"/><path d="M1.8 6.6h12.4" stroke="#3D8FDC" stroke-width=".8"/></symbol>
+</svg>
+
+<main class="page">
+
+  <header class="hero" data-od-id="doc-header">
+    <div class="eyebrow">DroidBerth · macOS · SwiftUI + AppKit</div>
+    <h1>图标体系与引导插图</h1>
+    <p class="lede">一份可直接落地的图标规格：文件类型如何映射到 SF Symbols、双栏如何区分来源、未授权时如何引导用户，以及四类空态该怎么写。所有图形只用系统两条路径实现——SF Symbols 与 NSWorkspace，不新增任何自绘位图。</p>
+    <div class="grad-rule"></div>
+    <div class="meta">
+      <span class="chip">净增 3 个符号</span>
+      <span class="chip">两条实现路径</span>
+      <span class="chip">16pt 真实尺寸校检</span>
+      <span class="chip">v1 · 2026-10-10</span>
+    </div>
+  </header>
+
+  <!-- ================= 00 设计原则 ================= -->
+  <section class="sec" id="principles" data-od-id="principles">
+    <div class="sec-head"><div class="sec-no">00</div><h2>设计原则</h2></div>
+    <p class="sec-sub">下面五条是这份文档里所有判断的依据。第 1 块里每一个"不值得新增"的结论，都可以回溯到其中的第 3 条。</p>
+    <div class="body">
+      <div class="card">
+        <ul class="tight">
+          <li><strong>形状承担类型，颜色承担来源，文字承担精度。</strong>图标永远不是唯一的信息载体（§8-3）：种类、大小、日期三列必须能脱离图标独立读懂这一行。</li>
+          <li><strong>只有两条实现路径。</strong>NSWorkspace 提供系统彩色文件图标，SF Symbols 提供单色矢量符号。粗细、圆角、配色全部落在系统语义里，不做自定义图标风格。</li>
+          <li><strong>16pt 下三秒可辨。</strong>两个符号若需要凑近才能分辨，就合并成一个——合并是默认答案，新增需要理由。判据见 1.4。</li>
+          <li><strong>图标不承诺运行时事实。</strong>"这个文件手机能不能打开""这个包能不能装"，由禁用态和文案回答，不由图标回答。</li>
+          <li><strong>一套符号名，两种呈现。</strong>同一个类型在本机与设备两侧用同一个 symbol 名，差别只在彩色与单色。</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 01 文件类型图标体系 ================= -->
+  <section class="sec" id="block-1" data-od-id="block-file-icons">
+    <div class="sec-head"><div class="sec-no">01</div><h2>文件类型图标体系</h2></div>
+    <p class="sec-sub">列表视图名称列行首的 16pt 图标，同时也是网格视图缩略图生成失败时的回退图形（回退时用同一 symbol 的 64pt 实例，不要放大小尺寸位图）。</p>
+
+    <div class="body">
+      <h3>1.1 两条路径，各管一栏</h3>
+      <p>左栏的文件真实存在于这台 Mac 上，交给 <code>NSWorkspace.shared.icon(forFile:)</code>：系统会给出 Finder 里那个彩色图标，装了 Office 就自动变成 Word 图标，我们零维护。右栏的条目是 adb 列出来的，本机并没有这个文件，路径返回的只会是通用文稿图标——所以右栏必须由我们自己的"扩展名 → SF Symbol"映射表接管。这张表就是 1.2。</p>
+      <pre><span class="c">// 左栏：系统彩色图标，零维护</span>
+let icon = NSWorkspace.shared.icon(forFile: url.path)
+icon.size = NSSize(width: 16, height: 16)
+
+<span class="c">// 右栏：设备侧条目，本机不存在，只能自己映射</span>
+Image(systemName: symbolFor(ext: "mp4"))   <span class="c">// → "film"</span>
+  .font(.system(size: 16))
+  .foregroundStyle(.secondary)             <span class="c">// 选中行内改为 .white</span></pre>
+      <p class="sample-cap" style="margin:14px 0 0">读法：表中的 <b>左</b> 一律是 NSWorkspace 自动结果；<b>右</b> 是右栏（设备侧）要写进代码的 symbol 名。</p>
+    </div>
+
+    <h3 style="margin-left:40px">1.2 完整对照表</h3>
+    <div class="tw">
+      <table>
+        <colgroup><col class="c-type"><col class="c-ext"><col class="c-ico"><col class="c-path"></colgroup>
+        <thead><tr><th>类型</th><th>扩展名</th><th>图标</th><th>实现路径</th></tr></thead>
+        <tbody>
+          <tr class="grp"><td colspan="4">通用与容器</td></tr>
+          <tr>
+            <td>文件夹</td>
+            <td><span class="ext">无扩展名 · isDirectory</span></td>
+            <td class="t-ico"><svg class="gi"><use href="#g-folder"/></svg></td>
+            <td class="pth"><b>左</b>NSWorkspace<span class="sep">/</span><b>右</b><code>folder</code><span class="tag ok">已有</span><br>选中态用 <code>folder.fill</code></td>
+          </tr>
+          <tr>
+            <td>替身 / 符号链接</td>
+            <td><span class="ext">isSymbolicLink · isAliasFile</span></td>
+            <td class="t-ico"><svg class="gi"><use href="#g-alias"/></svg></td>
+            <td class="pth"><b>左</b>NSWorkspace 自带箭头角标<span class="sep">/</span><b>右</b>不适用<br>右栏不会出现替身，<strong>不新增</strong>（采用策略丙才需要 <code>arrow.turn.up.right</code>）</td>
+          </tr>
+          <tr>
+            <td>无扩展名文件</td>
+            <td><span class="ext">—</span></td>
+            <td class="t-ico"><svg class="gi"><use href="#g-doc"/></svg></td>
+            <td class="pth"><b>左</b>NSWorkspace<span class="sep">/</span><b>右</b><code>doc</code><span class="tag ok">已有</span></td>
+          </tr>
+
+          <tr class="grp"><td colspan="4">图片</td></tr>
+          <tr>
+            <td>图片（位图）</td>
+            <td><span class="ext">jpg</span><span class="ext">jpeg</span><span class="ext">png</span><span class="ext">heic</span><span class="ext">heif</span><span class="ext">gif</span><span class="ext">webp</span><span class="ext">tif</span><span class="ext">tiff</span><span class="ext">bmp</span><span class="ext">avif</span></td>
+            <td class="t-ico"><svg class="gi"><use href="#g-photo"/></svg></td>
+            <td class="pth"><b>左</b>NSWorkspace<span class="sep">/</span><b>右</b><code>photo</code><span class="tag ok">已有</span><br>全部位图格式共用一个符号</td>
+          </tr>
+          <tr>
+            <td>相机原始（RAW）</td>
+            <td><span class="ext">dng</span><span class="ext">raw</span><span class="ext">cr2</span><span class="ext">nef</span><span class="ext">arw</span></td>
+            <td class="t-ico"><svg class="gi"><use href="#g-photo"/></svg></td>
+            <td class="pth"><b>左</b>NSWorkspace<span class="sep">/</span><b>右</b><code>photo</code><span class="tag ok">并入图片</span><br>理由是结论 B-1</td>
+          </tr>
+
+          <tr class="grp"><td colspan="4">视频与音频</td></tr>
+          <tr>
+            <td>视频</td>
+            <td><span class="ext">mp4</span><span class="ext">mov</span><span class="ext">m4v</span><span class="ext">mkv</span><span class="ext">avi</span><span class="ext">webm</span><span class="ext">wmv</span><span class="ext">flv</span><span class="ext">3gp</span><span class="ext warn">ts ⚠</span></td>
+            <td class="t-ico"><svg class="gi"><use href="#g-film"/></svg></td>
+            <td class="pth"><b>左</b>NSWorkspace<span class="sep">/</span><b>右</b><code>film</code><span class="tag ok">已有</span><br><code>ts</code> 与 TypeScript 冲突，见 1.5</td>
+          </tr>
+          <tr>
+            <td>音频</td>
+            <td><span class="ext">mp3</span><span class="ext">wav</span><span class="ext">aac</span><span class="ext">flac</span><span class="ext">m4a</span><span class="ext">ogg</span><span class="ext">opus</span></td>
+            <td class="t-ico"><svg class="gi"><use href="#g-wave"/></svg></td>
+            <td class="pth"><b>左</b>NSWorkspace<span class="sep">/</span><b>右</b><code>waveform</code><span class="tag ok">已有</span></td>
+          </tr>
+
+          <tr class="grp"><td colspan="4">文档</td></tr>
+          <tr>
+            <td>纯文本 / 标记</td>
+            <td><span class="ext">txt</span><span class="ext">md</span></td>
+            <td class="t-ico"><svg class="gi"><use href="#g-doc-text"/></svg></td>
+            <td class="pth"><b>左</b>NSWorkspace<span class="sep">/</span><b>右</b><code>doc.text</code><span class="tag ok">已有</span></td>
+          </tr>
+          <tr>
+            <td>PDF</td>
+            <td><span class="ext">pdf</span></td>
+            <td class="t-ico"><svg class="gi"><use href="#g-doc-rich"/></svg></td>
+            <td class="pth"><b>左</b>NSWorkspace<span class="sep">/</span><b>右</b><code>doc.richtext</code><span class="tag ok">已有</span></td>
+          </tr>
+          <tr>
+            <td>富文本 / 办公文稿</td>
+            <td><span class="ext">rtf</span><span class="ext">doc</span><span class="ext">docx</span><span class="ext">pages</span></td>
+            <td class="t-ico"><svg class="gi"><use href="#g-doc-text"/></svg></td>
+            <td class="pth"><b>左</b>NSWorkspace<span class="sep">/</span><b>右</b><code>doc.text</code><span class="tag ok">并入文本</span></td>
+          </tr>
+          <tr>
+            <td>表格</td>
+            <td><span class="ext">xls</span><span class="ext">xlsx</span><span class="ext">csv</span><span class="ext">numbers</span></td>
+            <td class="t-ico"><svg class="gi"><use href="#g-cells"/></svg></td>
+            <td class="pth"><b>左</b>NSWorkspace<span class="sep">/</span><b>右</b><code>tablecells</code><span class="tag new">新增</span></td>
+          </tr>
+          <tr>
+            <td>演示文稿</td>
+            <td><span class="ext">ppt</span><span class="ext">pptx</span><span class="ext">key</span></td>
+            <td class="t-ico"><svg class="gi"><use href="#g-doc-text"/></svg></td>
+            <td class="pth"><b>左</b>NSWorkspace<span class="sep">/</span><b>右</b><code>doc.text</code><span class="tag ok">不新增</span><br>理由是结论 B-5</td>
+          </tr>
+
+          <tr class="grp"><td colspan="4">归档与安装包</td></tr>
+          <tr>
+            <td>压缩包</td>
+            <td><span class="ext">zip</span><span class="ext">rar</span><span class="ext">7z</span><span class="ext">tar</span><span class="ext">gz</span></td>
+            <td class="t-ico"><svg class="gi"><use href="#g-doc-zip"/></svg></td>
+            <td class="pth"><b>左</b>NSWorkspace<span class="sep">/</span><b>右</b><code>doc.zipper</code><span class="tag ok">已有</span></td>
+          </tr>
+          <tr>
+            <td>磁盘映像</td>
+            <td><span class="ext">dmg</span><span class="ext">iso</span></td>
+            <td class="t-ico"><svg class="gi"><use href="#g-disc"/></svg></td>
+            <td class="pth"><b>左</b>NSWorkspace<span class="sep">/</span><b>右</b><code>opticaldisc</code><span class="tag new">新增</span></td>
+          </tr>
+          <tr>
+            <td>安装包</td>
+            <td><span class="ext">apk</span><span class="ext">aab</span><span class="ext">ipa</span><span class="ext">exe</span></td>
+            <td class="t-ico"><svg class="gi"><use href="#g-box"/></svg></td>
+            <td class="pth"><b>左</b>NSWorkspace<span class="sep">/</span><b>右</b><code>shippingbox</code><span class="tag ok">已有</span><br>aab / ipa / exe 并入 apk</td>
+          </tr>
+
+          <tr class="grp"><td colspan="4">代码与兜底</td></tr>
+          <tr>
+            <td>代码 / 配置文件</td>
+            <td><span class="ext">json</span><span class="ext">xml</span><span class="ext">yaml</span><span class="ext">yml</span><span class="ext">toml</span><span class="ext">plist</span><span class="ext">sh</span><span class="ext">py</span><span class="ext">js</span><span class="ext">swift</span><span class="ext">rs</span><span class="ext">html</span><span class="ext">css</span></td>
+            <td class="t-ico"><svg class="gi"><use href="#g-code"/></svg></td>
+            <td class="pth"><b>左</b>NSWorkspace<span class="sep">/</span><b>右</b><code>chevron.left.forwardslash.chevron.right</code><span class="tag new">新增</span></td>
+          </tr>
+          <tr>
+            <td>未知类型</td>
+            <td><span class="ext">未在上表出现的扩展名</span></td>
+            <td class="t-ico"><svg class="gi"><use href="#g-doc"/></svg></td>
+            <td class="pth"><b>左</b>NSWorkspace<span class="sep">/</span><b>右</b><code>doc</code><span class="tag ok">兜底</span><br>与「无扩展名」共用，靠种类列文字区分</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-left:40px">1.3 整套符号 · 16pt 实尺一览</h3>
+    <p class="body" style="margin-top:0">下面每一个图标都按 16pt 绘制，和列表里实际看到的一样大。把它们排在一起看：能在这个尺寸下互相区分的，才配拥有独立符号。</p>
+    <div class="strip">
+      <div><span class="s-ico"><svg class="gi"><use href="#g-folder"/></svg></span><span>folder</span></div>
+      <div><span class="s-ico"><svg class="gi"><use href="#g-doc"/></svg></span><span>doc</span></div>
+      <div><span class="s-ico"><svg class="gi"><use href="#g-photo"/></svg></span><span>photo</span></div>
+      <div><span class="s-ico"><svg class="gi"><use href="#g-film"/></svg></span><span>film</span></div>
+      <div><span class="s-ico"><svg class="gi"><use href="#g-wave"/></svg></span><span>waveform</span></div>
+      <div><span class="s-ico"><svg class="gi"><use href="#g-doc-text"/></svg></span><span>doc.text</span></div>
+      <div><span class="s-ico"><svg class="gi"><use href="#g-doc-rich"/></svg></span><span>doc.richtext</span></div>
+      <div><span class="s-ico"><svg class="gi"><use href="#g-cells"/></svg></span><span>tablecells</span></div>
+      <div><span class="s-ico"><svg class="gi"><use href="#g-doc-zip"/></svg></span><span>doc.zipper</span></div>
+      <div><span class="s-ico"><svg class="gi"><use href="#g-disc"/></svg></span><span>opticaldisc</span></div>
+      <div><span class="s-ico"><svg class="gi"><use href="#g-box"/></svg></span><span>shippingbox</span></div>
+      <div><span class="s-ico"><svg class="gi"><use href="#g-code"/></svg></span><span>chevron…right</span></div>
+    </div>
+
+    <h3 style="margin-left:40px">1.4 一条判据，决定要不要新增符号</h3>
+    <div class="body" style="margin-top:0">
+      <div class="card">
+        <p>一个类型值得拥有独立符号，当且仅当三条同时成立：</p>
+        <ul class="tight">
+          <li><strong>(a) 用户会对它做出不同的动作。</strong>dmg 是"挂载"，zip 是"解压"；替身是"跳到别处"，普通文件是"打开自己"。动作不同，才值得一个不同的图形。</li>
+          <li><strong>(b) 它在目标用户的文件里高频出现。</strong>DroidBerth 的用户是会用 adb 的人——代码与配置文件的出现频率远高于普通用户，而 pptx 在手机侧几乎不出现。</li>
+          <li><strong>(c) SF Symbols 里有一个现成的、16pt 下与已有符号可辨的符号。</strong>这一条不过，就合并；<strong>不要为了凑一个图标去自绘</strong>。</li>
+        </ul>
+        <p style="margin-top:10px;color:var(--muted)">判据 (c) 是最常被忽略的一条：找不到合适的系统符号，正确做法是继续用通用文稿图标，而不是画一个。</p>
+      </div>
+    </div>
+
+    <h3 style="margin-left:40px">1.5 必须新增映射：结论清单</h3>
+    <div class="body" style="margin-top:0">
+      <div class="verdict">
+        <div class="k">净增 3 个符号</div>
+        <p style="margin-top:8px">现有实现覆盖 folder / 视频 / 图片 / 音频 / 压缩包 / apk / pdf / 文本 共 8 个专用符号，加 1 个通用文稿兜底。<strong>新增的只有三个：<code>tablecells</code>（表格）、<code>opticaldisc</code>（磁盘映像）、<code>chevron.left.forwardslash.chevron.right</code>（代码/配置）。</strong>其余你列出的类型全部并入现有符号——这是刻意的克制，理由见 B 组。</p>
+        <p style="margin-top:10px">另外，把左栏从"自维护映射表"改回 <code>NSWorkspace</code> 之后，替身与全部办公文档类型都自动获得了正确的彩色图标，这张表就只需要维护右栏一份。</p>
+      </div>
+
+      <div class="do-dont">
+        <div class="card yes">
+          <h5>A · 值得单独给符号</h5>
+          <ul>
+            <li><strong>表格</strong> <code>tablecells</code>：对用户是"里面有格子、要横向看的数据"，与文稿的动作不同；网格形在 16pt 下与三行文本可辨。</li>
+            <li><strong>磁盘映像</strong> <code>opticaldisc</code>：dmg / iso 的动作是"挂载成一个卷"，不是"解压"；且 dmg 在 Mac 上高频到近乎系统文件。</li>
+            <li><strong>代码 / 配置</strong> <code>chevron.left.forwardslash.chevron.right</code>：目标用户就是开发者，json / plist / sh 在 adb 相关目录里高频；且 <code>&lt;/&gt;</code> 形状在 16pt 下辨识度极高，成本几乎为零。</li>
+          </ul>
+        </div>
+        <div class="card no">
+          <h5>B · 不值得单独给符号</h5>
+          <ul>
+            <li><strong>B-1 全部图片格式</strong>（heic / webp / tif / avif…）：对用户是同一件事——一张照片。heic 与 jpg 给不同图标是纯噪声。</li>
+            <li><strong>B-2 RAW 格式</strong>（dng / cr2 / nef / arw）：能不能推、手机能不能开，取决于接收端解码能力，<strong>是运行时才知道的事</strong>。要提醒就用文字或角标，不要换图标。</li>
+            <li><strong>B-3 全部视频 / 音频容器</strong>：容器与编码差异对用户不可见，flac 与 mp3 的差别是音质不是类别。</li>
+            <li><strong>B-4 无扩展名 vs 未知类型</strong>：两者对用户的含义都是"我不知道这是什么"，共用一个 <code>doc</code>，靠种类列写「无扩展名」/「未知」区分。</li>
+            <li><strong>B-5 演示文稿</strong>（ppt / pptx / key）：设备侧几乎不出现；而且找不到一个既准确、又在 16pt 下与 <code>tablecells</code> 可辨的系统符号——判据 (c) 不过，合并。</li>
+            <li><strong>B-6 办公文稿</strong>（doc / docx / pages）：左栏本来就有 NSWorkspace 给的彩色应用图标可以区分，右栏再造一个形状收益不抵认知成本。</li>
+            <li><strong>B-7 aab / ipa / exe</strong>：与 apk 共用 <code>shippingbox</code>。对 Mac 用户这四个是同一件事——给别的设备装东西的包。<strong>不要用图标表达"这个不能推到 Android"</strong>，那是禁用态与文案的职责（§8-3）。</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <h3 style="margin-left:40px">1.6 已知冲突</h3>
+    <div class="body" style="margin-top:0">
+      <div class="card">
+        <ul class="tight">
+          <li><code>ts</code>：既是 MPEG 传输流（视频）也是 TypeScript 源文件。<strong>按视频归类</strong>，与 macOS 自身的关联一致（QuickTime / VLC 抢注 .ts）。如果以后收到 TypeScript 用户的反馈，再按"同目录存在 package.json 或 tsconfig.json 时判为代码"处理——但不要现在就加这种启发式。</li>
+          <li><code>key</code>：Keynote 文稿与私钥共用扩展名。都归入 <code>doc.text</code>，可接受——私钥文件通常带 <code>.pem</code> 或没有扩展名。</li>
+          <li><code>gz</code> / <code>raw</code>：可能是单文件压缩或任意原始数据。落在同一个符号下不影响任何用户动作。</li>
+          <li>匹配必须是<strong>完整扩展名精确匹配</strong>，不能截前缀——否则 <code>m4a</code> 会被 <code>m4</code> 吞掉。</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 02 两栏来源区分 ================= -->
+  <section class="sec" id="block-2" data-od-id="block-source-strategies">
+    <div class="sec-head"><div class="sec-no">02</div><h2>两栏来源区分策略</h2></div>
+    <p class="sec-sub">同一个 <code>开支表.xlsx</code> 会同时出现在左右两栏，但它们在用户心里的分量完全不同：左边是硬盘上真实存在的文件，右边是还要过一次 adb 才碰得到的东西。下面三组小样用同一份内容，只有图标处理不同。</p>
+
+    <div class="stack">
+
+      <!-- 甲 -->
+      <div class="strat" data-od-id="strategy-a">
+        <header>
+          <h3>策略甲 · 两栏都用系统彩色图标</h3>
+          <div class="verdictline bad">不可取</div>
+        </header>
+        <div class="sample" style="margin-left:0">
+          <div class="sample-cap">浅色</div>
+          <div class="win">
+            <div class="win-bar"><i class="tl t1"></i><i class="tl t2"></i><i class="tl t3"></i><span class="t">DroidBerth</span></div>
+            <div class="panes">
+              <div class="pane">
+                <div class="pane-head"><span>这台 Mac</span><span>5 项</span></div>
+                <div class="row"><svg class="gi" style="--b:#1CA0AC"><use href="#g-cp"/></svg><span class="nm">海边日落.heic</span><span class="kd">图像</span></div>
+                <div class="row"><svg class="gi" style="--b:#D2453F"><use href="#g-cp"/></svg><span class="nm">家庭录像.mov</span><span class="kd">视频</span></div>
+                <div class="row"><svg class="gi" style="--b:#2F8F5B"><use href="#g-cp"/></svg><span class="nm">开支表.xlsx</span><span class="kd">表格</span></div>
+                <div class="row"><svg class="gi" style="--b:#A9743A"><use href="#g-cp"/></svg><span class="nm">项目备份.zip</span><span class="kd">压缩包</span></div>
+                <div class="row"><svg class="gi" style="--b:#D9453D"><use href="#g-cp"/></svg><span class="nm">报销单.pdf</span><span class="kd">PDF</span></div>
+              </div>
+              <div class="pane">
+                <div class="pane-head"><span>Pixel 8</span><span>5 项</span></div>
+                <div class="row"><svg class="gi" style="--b:#1CA0AC"><use href="#g-cp"/></svg><span class="nm">IMG_3355.jpg</span><span class="kd">图像</span></div>
+                <div class="row"><svg class="gi" style="--b:#D2453F"><use href="#g-cp"/></svg><span class="nm">VID_1933.mp4</span><span class="kd">视频</span></div>
+                <div class="row"><svg class="gi" style="--b:#2F8F5B"><use href="#g-cp"/></svg><span class="nm">开支表.xlsx</span><span class="kd">表格</span></div>
+                <div class="row"><svg class="gi"><use href="#g-cp-doc"/></svg><span class="nm">base.aab</span><span class="kd">安装包</span></div>
+                <div class="row"><svg class="gi"><use href="#g-cp-folder"/></svg><span class="nm">DCIM</span><span class="kd">文件夹</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="sample" style="margin-left:0">
+          <div class="sample-cap">深色</div>
+          <div class="win dark" style="background:#1C1C1E">
+            <div class="win-bar"><i class="tl t1"></i><i class="tl t2"></i><i class="tl t3"></i><span class="t">DroidBerth</span></div>
+            <div class="panes">
+              <div class="pane">
+                <div class="pane-head"><span>这台 Mac</span><span>5 项</span></div>
+                <div class="row"><svg class="gi" style="--b:#1CA0AC"><use href="#g-cp"/></svg><span class="nm">海边日落.heic</span><span class="kd">图像</span></div>
+                <div class="row"><svg class="gi" style="--b:#D2453F"><use href="#g-cp"/></svg><span class="nm">家庭录像.mov</span><span class="kd">视频</span></div>
+                <div class="row"><svg class="gi" style="--b:#2F8F5B"><use href="#g-cp"/></svg><span class="nm">开支表.xlsx</span><span class="kd">表格</span></div>
+                <div class="row"><svg class="gi" style="--b:#A9743A"><use href="#g-cp"/></svg><span class="nm">项目备份.zip</span><span class="kd">压缩包</span></div>
+                <div class="row"><svg class="gi" style="--b:#D9453D"><use href="#g-cp"/></svg><span class="nm">报销单.pdf</span><span class="kd">PDF</span></div>
+              </div>
+              <div class="pane">
+                <div class="pane-head"><span>Pixel 8</span><span>5 项</span></div>
+                <div class="row"><svg class="gi" style="--b:#1CA0AC"><use href="#g-cp"/></svg><span class="nm">IMG_3355.jpg</span><span class="kd">图像</span></div>
+                <div class="row"><svg class="gi" style="--b:#D2453F"><use href="#g-cp"/></svg><span class="nm">VID_1933.mp4</span><span class="kd">视频</span></div>
+                <div class="row"><svg class="gi" style="--b:#2F8F5B"><use href="#g-cp"/></svg><span class="nm">开支表.xlsx</span><span class="kd">表格</span></div>
+                <div class="row"><svg class="gi"><use href="#g-cp-doc"/></svg><span class="nm">base.aab</span><span class="kd">安装包</span></div>
+                <div class="row"><svg class="gi"><use href="#g-cp-folder"/></svg><span class="nm">DCIM</span><span class="kd">文件夹</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="lgd"><span>彩色图标为示意：真实形状由 macOS 提供，通常更丰富（照片是缩略图、影片是胶片、PDF 是红色封套）</span></div>
+        <p>完全像 Finder，用户在 Finder 里积累的识别经验 100% 可迁移。但它有两个绕不过去的问题。</p>
+        <p><strong>第一，两栏看起来一模一样</strong>，用户没有任何线索判断"这一行在我的 Mac 上，还是只在手机里"。<strong>第二，它在右栏稳定地谎报</strong>——设备侧的文件本机并不存在，彩色图标却用的是"本机文件"的视觉语言；更糟的是像 <code>base.aab</code> 这种 Android 专有扩展名，系统会回退成上面那个<em>灰页面的通用文稿图标</em>，可它混在一排彩色图标里，看起来依然像"系统认识这个类型"。彩色路径在设备侧的画质是不可控的，而我们把"类型识别"这件事押在了它身上。</p>
+      </div>
+
+      <!-- 乙 -->
+      <div class="strat" data-od-id="strategy-b" style="border-color:oklch(56% .152 55);box-shadow:0 0 0 3px oklch(56% .152 55 / .10)">
+        <header>
+          <h3>策略乙 · 本机彩色 / 设备单色 &nbsp;<span class="tag new">推荐</span></h3>
+          <div class="verdictline good">采用</div>
+        </header>
+        <div class="sample" style="margin-left:0">
+          <div class="sample-cap">浅色</div>
+          <div class="win">
+            <div class="win-bar"><i class="tl t1"></i><i class="tl t2"></i><i class="tl t3"></i><span class="t">DroidBerth</span></div>
+            <div class="panes">
+              <div class="pane">
+                <div class="pane-head"><span>这台 Mac</span><span>5 项</span></div>
+                <div class="row"><svg class="gi" style="--b:#1CA0AC"><use href="#g-cp"/></svg><span class="nm">海边日落.heic</span><span class="kd">图像</span></div>
+                <div class="row"><svg class="gi" style="--b:#D2453F"><use href="#g-cp"/></svg><span class="nm">家庭录像.mov</span><span class="kd">视频</span></div>
+                <div class="row"><svg class="gi" style="--b:#2F8F5B"><use href="#g-cp"/></svg><span class="nm">开支表.xlsx</span><span class="kd">表格</span></div>
+                <div class="row"><svg class="gi" style="--b:#A9743A"><use href="#g-cp"/></svg><span class="nm">项目备份.zip</span><span class="kd">压缩包</span></div>
+                <div class="row"><svg class="gi" style="--b:#D9453D"><use href="#g-cp"/></svg><span class="nm">报销单.pdf</span><span class="kd">PDF</span></div>
+              </div>
+              <div class="pane">
+                <div class="pane-head"><span>Pixel 8</span><span>5 项</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-photo"/></svg><span class="nm">IMG_3355.jpg</span><span class="kd">图像</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-film"/></svg><span class="nm">VID_1933.mp4</span><span class="kd">视频</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-cells"/></svg><span class="nm">开支表.xlsx</span><span class="kd">表格</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-box"/></svg><span class="nm">base.aab</span><span class="kd">安装包</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-folder"/></svg><span class="nm">DCIM</span><span class="kd">文件夹</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="sample" style="margin-left:0">
+          <div class="sample-cap">深色</div>
+          <div class="win dark" style="background:#1C1C1E">
+            <div class="win-bar"><i class="tl t1"></i><i class="tl t2"></i><i class="tl t3"></i><span class="t">DroidBerth</span></div>
+            <div class="panes">
+              <div class="pane">
+                <div class="pane-head"><span>这台 Mac</span><span>5 项</span></div>
+                <div class="row"><svg class="gi" style="--b:#1CA0AC"><use href="#g-cp"/></svg><span class="nm">海边日落.heic</span><span class="kd">图像</span></div>
+                <div class="row"><svg class="gi" style="--b:#D2453F"><use href="#g-cp"/></svg><span class="nm">家庭录像.mov</span><span class="kd">视频</span></div>
+                <div class="row"><svg class="gi" style="--b:#2F8F5B"><use href="#g-cp"/></svg><span class="nm">开支表.xlsx</span><span class="kd">表格</span></div>
+                <div class="row"><svg class="gi" style="--b:#A9743A"><use href="#g-cp"/></svg><span class="nm">项目备份.zip</span><span class="kd">压缩包</span></div>
+                <div class="row"><svg class="gi" style="--b:#D9453D"><use href="#g-cp"/></svg><span class="nm">报销单.pdf</span><span class="kd">PDF</span></div>
+              </div>
+              <div class="pane">
+                <div class="pane-head"><span>Pixel 8</span><span>5 项</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-photo"/></svg><span class="nm">IMG_3355.jpg</span><span class="kd">图像</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-film"/></svg><span class="nm">VID_1933.mp4</span><span class="kd">视频</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-cells"/></svg><span class="nm">开支表.xlsx</span><span class="kd">表格</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-box"/></svg><span class="nm">base.aab</span><span class="kd">安装包</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-folder"/></svg><span class="nm">DCIM</span><span class="kd">文件夹</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p><strong>彩色＝本机真实文件，线框＝还要经 adb 才碰得到的条目。</strong>这条规则一句话能讲完，而且不需要图例——用户看一眼两栏的质感差异就懂了。设备侧不再受系统 UTI 库摆布，<code>base.aab</code> 也能得到正确的安装包符号；两条路依然都是系统视觉，没有一处自绘（§8-1）。</p>
+        <p>诚实的代价有三条：<strong>①</strong> 需要维护 1.2 那张右栏映射表，一次性成本约 12 个符号。<strong>②</strong> 两栏视觉不对称，第一次使用需要一句解释——建议把这句话压进栏目标题（左「这台 Mac」／右「Pixel 8 · 需 USB 连接」），而不是加一个常驻图例。<strong>③</strong> 同一个扩展名在两栏可能给出不同形状：左栏 <code>report.json</code> 得到系统的彩色通用文稿，右栏得到 <code>&lt;/&gt;</code> 代码符号。这是这套策略最真实的代价，接受它的理由是——种类列的文字两侧一致，用户不会因此读错行，而"是否在本机"这个更要紧的信息被换来了。</p>
+      </div>
+
+      <!-- 丙 -->
+      <div class="strat" data-od-id="strategy-c">
+        <header>
+          <h3>策略丙 · 两栏都用单色 SF Symbol（现状）</h3>
+          <div class="verdictline">可用，但不划算</div>
+        </header>
+        <div class="sample" style="margin-left:0">
+          <div class="sample-cap">浅色</div>
+          <div class="win">
+            <div class="win-bar"><i class="tl t1"></i><i class="tl t2"></i><i class="tl t3"></i><span class="t">DroidBerth</span></div>
+            <div class="panes">
+              <div class="pane">
+                <div class="pane-head"><span>这台 Mac</span><span>5 项</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-photo"/></svg><span class="nm">海边日落.heic</span><span class="kd">图像</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-film"/></svg><span class="nm">家庭录像.mov</span><span class="kd">视频</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-cells"/></svg><span class="nm">开支表.xlsx</span><span class="kd">表格</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-doc-zip"/></svg><span class="nm">项目备份.zip</span><span class="kd">压缩包</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-doc-rich"/></svg><span class="nm">报销单.pdf</span><span class="kd">PDF</span></div>
+              </div>
+              <div class="pane">
+                <div class="pane-head"><span>Pixel 8</span><span>5 项</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-photo"/></svg><span class="nm">IMG_3355.jpg</span><span class="kd">图像</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-film"/></svg><span class="nm">VID_1933.mp4</span><span class="kd">视频</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-cells"/></svg><span class="nm">开支表.xlsx</span><span class="kd">表格</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-box"/></svg><span class="nm">base.aab</span><span class="kd">安装包</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-folder"/></svg><span class="nm">DCIM</span><span class="kd">文件夹</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="sample" style="margin-left:0">
+          <div class="sample-cap">深色</div>
+          <div class="win dark" style="background:#1C1C1E">
+            <div class="win-bar"><i class="tl t1"></i><i class="tl t2"></i><i class="tl t3"></i><span class="t">DroidBerth</span></div>
+            <div class="panes">
+              <div class="pane">
+                <div class="pane-head"><span>这台 Mac</span><span>5 项</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-photo"/></svg><span class="nm">海边日落.heic</span><span class="kd">图像</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-film"/></svg><span class="nm">家庭录像.mov</span><span class="kd">视频</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-cells"/></svg><span class="nm">开支表.xlsx</span><span class="kd">表格</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-doc-zip"/></svg><span class="nm">项目备份.zip</span><span class="kd">压缩包</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-doc-rich"/></svg><span class="nm">报销单.pdf</span><span class="kd">PDF</span></div>
+              </div>
+              <div class="pane">
+                <div class="pane-head"><span>Pixel 8</span><span>5 项</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-photo"/></svg><span class="nm">IMG_3355.jpg</span><span class="kd">图像</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-film"/></svg><span class="nm">VID_1933.mp4</span><span class="kd">视频</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-cells"/></svg><span class="nm">开支表.xlsx</span><span class="kd">表格</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-box"/></svg><span class="nm">base.aab</span><span class="kd">安装包</span></div>
+                <div class="row"><svg class="gi ico-mono"><use href="#g-folder"/></svg><span class="nm">DCIM</span><span class="kd">文件夹</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p>视觉最统一，也最省事——一套映射表管两边，深浅色自动适配。代价是放弃了系统免费提供、并且<strong>永远追不上</strong>的一份数据：装了 Office，左栏的 docx 立刻有 Word 图标；装了 IINA，mkv 立刻有对应的图标。这些都不用我们写一行代码，而单色方案会把它们全部丢掉。</p>
+        <p>另外，本机文件用线框呈现，会削弱"这是我硬盘上真实存在的文件"的分量；做摄影或剪辑的用户靠彩色图标和缩略图快速定位，单色会明显拖慢扫描速度。<strong>它把"统一"当成了目标，代价是丢掉了系统已经替我们维护好的最准的一份图标数据。</strong></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 03 USB 授权引导 ================= -->
+  <section class="sec" id="block-3" data-od-id="block-usb-guide">
+    <div class="sec-head"><div class="sec-no">03</div><h2>USB 授权引导卡片</h2></div>
+    <p class="sec-sub">设备插上但未授权时，设备栏不能只留一行灰字——用户此刻正盯着手机，而不是盯着 Mac。卡片按 300pt 宽设计，以便嵌进 340pt 的窗格；正文最小 11pt。</p>
+
+    <div class="body">
+      <h3 style="margin-top:26px">3.1 什么时候出现</h3>
+      <p>触发条件是 <code>adb devices</code> 里这台设备的状态为 <code>unauthorized</code>——即手机端尚未确认这台 Mac 的 RSA 指纹。用户点「允许」之后状态会变成 <code>device</code>；点「重新检测」等价于重跑一次 <code>adb devices</code>。</p>
+      <p>还有一个必须覆盖的死角：如果手机端<strong>根本不再弹窗</strong>（上次误点了「拒绝」，或本机的 adbkey 被重新生成过），状态会长久停在 <code>unauthorized</code>。这时卡片底部的品牌变体位要能接住——引导用户去开发者选项执行「撤销 USB 调试授权」，再重新插拔。</p>
+    </div>
+
+    <h3 style="margin-left:40px">3.2 浅色 / 深色两版</h3>
+    <div class="cards2">
+      <!-- 浅色 -->
+      <div>
+        <div class="sample-cap" style="margin-left:0">浅色 · 300 × auto</div>
+        <div class="usb" data-od-id="usb-card-light">
+          <div class="usb-h">
+            <svg class="gi gi-20"><use href="#g-plug"/></svg>
+            <div>
+              <b>手机还没授权这台 Mac</b>
+              <small>看一眼手机屏幕，上面应该有一个弹窗在等你确认。</small>
+            </div>
+          </div>
+          <div class="phone">
+            <div class="screen">
+              <div class="stat"><span>14:26</span><i></i></div>
+              <div class="dlg">
+                <h6>允许 USB 调试吗？</h6>
+                <p>计算机的 RSA 密钥指纹为：</p>
+                <div class="fp">A4:7B:9F:2C:11:E8:5D:03<br>6A:B2:44:19:7C:D5:88:31</div>
+                <div class="cb"><i><svg viewBox="0 0 12 12" style="width:9px;height:9px"><path d="M2.6 6.2 4.7 8.3 9.4 3.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></i><span>一律允许使用这台计算机进行调试</span></div>
+                <div class="dlg-act"><span class="c">取消</span><span class="a">允许</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="steps">
+            <div class="step"><b>1</b><span>用数据线连接手机与 Mac，手机上把 USB 用途选为「传输文件」。</span></div>
+            <div class="step"><b>2</b><span>手机弹出上面这个窗口时，勾选「一律允许」再点「允许」。</span></div>
+            <div class="step"><b>3</b><span>回到 DroidBerth，点下面的按钮重新检测。</span></div>
+          </div>
+          <div class="btn"><svg class="gi"><use href="#g-refresh"/></svg>已完成，重新检测</div>
+          <div class="brandnote"><b>没看到弹窗？</b>请确认「开发者选项」里的「USB 调试」已经打开。<a href="#block-3">查看详细步骤 ›</a></div>
+        </div>
+      </div>
+      <!-- 深色 -->
+      <div>
+        <div class="sample-cap" style="margin-left:0">深色 · 300 × auto</div>
+        <div class="usb dark" data-od-id="usb-card-dark">
+          <div class="usb-h">
+            <svg class="gi gi-20"><use href="#g-plug"/></svg>
+            <div>
+              <b>手机还没授权这台 Mac</b>
+              <small>看一眼手机屏幕，上面应该有一个弹窗在等你确认。</small>
+            </div>
+          </div>
+          <div class="phone">
+            <div class="screen">
+              <div class="stat"><span>14:26</span><i></i></div>
+              <div class="dlg">
+                <h6>允许 USB 调试吗？</h6>
+                <p>计算机的 RSA 密钥指纹为：</p>
+                <div class="fp">A4:7B:9F:2C:11:E8:5D:03<br>6A:B2:44:19:7C:D5:88:31</div>
+                <div class="cb"><i><svg viewBox="0 0 12 12" style="width:9px;height:9px"><path d="M2.6 6.2 4.7 8.3 9.4 3.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></i><span>一律允许使用这台计算机进行调试</span></div>
+                <div class="dlg-act"><span class="c">取消</span><span class="a">允许</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="steps">
+            <div class="step"><b>1</b><span>用数据线连接手机与 Mac，手机上把 USB 用途选为「传输文件」。</span></div>
+            <div class="step"><b>2</b><span>手机弹出上面这个窗口时，勾选「一律允许」再点「允许」。</span></div>
+            <div class="step"><b>3</b><span>回到 DroidBerth，点下面的按钮重新检测。</span></div>
+          </div>
+          <div class="btn"><svg class="gi"><use href="#g-refresh"/></svg>已完成，重新检测</div>
+          <div class="brandnote"><b>没看到弹窗？</b>请确认「开发者选项」里的「USB 调试」已经打开。<a href="#block-3">查看详细步骤 ›</a></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tech">
+      <ul class="tight" style="font-size:13px;color:var(--muted)">
+        <li>手机弹窗是<strong>放大绘制</strong>的示意图：手机框只有真实机型约 6 成宽，因此弹窗里的 10–13px 文字相当于把手机真实的 12sp 字号放大了约 1.5 倍才画得出来。它是卡片里的一张插图，不属于卡片正文；卡片正文（标题、三步、按钮）全部 ≥11.5pt。弹窗配色随用户手机主题而定，此处不跟随 DroidBerth 品牌色。</li>
+        <li>指纹码是<strong>示例值</strong>，实际显示的是本机 <code>~/.android/adbkey.pub</code> 的指纹，必须原样取自 adb 输出。</li>
+        <li>卡片头部用的是 <code>cable.connector</code>（回退 <code>bolt.horizontal</code>），与空态 1 保持同一个符号——「USB 不通」在两处是同一件事。SF Symbols 里没有 Android 专用符号：如果以后要在设备栏标题上加设备标记，系统里只有 <code>iphone</code> / <code>ipad</code> 可用，且不要对它做任何品牌化改动。</li>
+        <li>主按钮高度 30–32pt，是 macOS 上"大号控件"的量级；这是桌面控件，不适用 44pt 触控目标规则。</li>
+      </ul>
+    </div>
+
+    <h3 style="margin-left:40px">3.3 品牌变体：只换底部那一段文案</h3>
+    <p class="body" style="margin-top:0">检测方式：<code>adb shell getprop ro.product.brand</code>（回退 <code>ro.product.manufacturer</code>）。<strong>卡片其余部分完全一致</strong>——手机弹窗、三步说明、主按钮都不随品牌变化，只有底部这段"开发者选项怎么开"换掉。默认（未识别品牌）用第一行。</p>
+    <div class="tw" style="margin-top:14px">
+      <table>
+        <colgroup><col style="width:22%"><col style="width:24%"><col style="width:54%"></colgroup>
+        <thead><tr><th>品牌</th><th>getprop 值</th><th>底部次级文案</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>通用（默认）</td>
+            <td><code>其它任意值</code></td>
+            <td><b>没看到弹窗？</b>请确认「开发者选项」里的「USB 调试」已经打开，并把 USB 用途改为「传输文件 / MTP」。</td>
+          </tr>
+          <tr>
+            <td>小米 / Redmi / POCO</td>
+            <td><code>Xiaomi</code> <code>Redmi</code> <code>POCO</code></td>
+            <td><b>小米设备：</b>先到「设置 › 我的设备 › 全部参数与信息」连点「MIUI 版本」7 次，再回「设置 › 更多设置 › 开发者选项」打开「USB 调试」。部分机型需要登录小米账号并插入 SIM 卡后，才能打开「USB 调试（安全设置）」。</td>
+          </tr>
+          <tr>
+            <td>OPPO / realme / 一加</td>
+            <td><code>OPPO</code> <code>realme</code> <code>OnePlus</code></td>
+            <td><b>OPPO 系设备：</b>到「设置 › 关于手机 › 版本信息」连点「版本号」7 次，再回「设置 › 系统设置 › 开发者选项」打开「USB 调试」。部分 ColorOS 版本要求先登录 OPPO 账号。</td>
+          </tr>
+          <tr>
+            <td>vivo / iQOO</td>
+            <td><code>vivo</code> <code>iQOO</code></td>
+            <td><b>vivo 设备：</b>到「设置 › 更多设置 › 关于手机」连点「软件版本号」7 次，再回「设置 › 系统管理 › 开发者选项」打开「USB 调试」。开启前需登录 vivo 账号。</td>
+          </tr>
+          <tr>
+            <td>弹窗不再出现</td>
+            <td><code>任意品牌均可命中</code></td>
+            <td><b>还是没有弹窗？</b>到「开发者选项」里点一次「撤销 USB 调试授权」，然后拔掉数据线重新插上。</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= 04 四类空态 ================= -->
+  <section class="sec" id="block-4" data-od-id="block-empty-states">
+    <div class="sec-head"><div class="sec-no">04</div><h2>四类空态</h2></div>
+    <p class="sec-sub">空态的图标一律是 48pt 的 <code>.regular</code>，颜色 <code>.secondaryLabelColor</code>；只有「权限被拒」允许换成品牌深橙——那是一个需要用户起身去做一件事的状态，值得一点视觉重量。第 3 类必须看起来中性，不要像报错。</p>
+
+    <div class="empties">
+      <!-- 1 -->
+      <div class="empty" data-od-id="empty-no-device">
+        <div class="pane-head"><span>Pixel 8</span><span>未连接</span></div>
+        <div class="e-body">
+          <svg class="gi gi-lg"><use href="#g-plug"/></svg>
+          <strong>还没有连接 Android 设备</strong>
+          <small>用 USB 线把手机接到这台 Mac，手机上把 USB 用途选为「传输文件」。</small>
+          <div class="e-act">
+            <span class="ebtn"><svg class="gi"><use href="#g-refresh"/></svg>重新检测</span>
+            <span class="ebtn ghost">连接不上？</span>
+          </div>
+        </div>
+      </div>
+      <!-- 2 -->
+      <div class="empty" data-od-id="empty-photo-permission">
+        <div class="pane-head"><span>照片图库 · 这台 Mac</span><span>已拒绝</span></div>
+        <div class="e-body">
+          <svg class="gi gi-lg attn"><use href="#g-lock"/></svg>
+          <strong>DroidBerth 没有照片访问权限</strong>
+          <small>照片图库暂时不能浏览。文件推送、设备浏览等功能不受影响。可在「系统设置 › 隐私与安全性 › 照片」里重新打开。</small>
+          <div class="e-act">
+            <span class="ebtn"><svg class="gi"><use href="#g-openapp"/></svg>打开系统设置</span>
+            <span class="ebtn ghost">稍后再说</span>
+          </div>
+        </div>
+      </div>
+      <!-- 3 -->
+      <div class="empty" data-od-id="empty-folder">
+        <div class="pane-head"><span>这台 Mac › 影片</span><span>0 项</span></div>
+        <div class="e-body">
+          <svg class="gi gi-lg"><use href="#g-folder"/></svg>
+          <strong>这个文件夹是空的</strong>
+          <small>这里还没有文件。可以从另一栏拖进来，或直接把文件拖到这个窗口。</small>
+          <div class="e-act">
+            <span class="ebtn ghost"><svg class="gi"><use href="#g-refresh"/></svg>刷新</span>
+          </div>
+        </div>
+      </div>
+      <!-- 4 -->
+      <div class="empty" data-od-id="empty-search">
+        <div class="pane-head"><span>搜索「合同」· 这台 Mac</span><span>0 项</span></div>
+        <div class="e-body">
+          <svg class="gi gi-lg"><use href="#g-search"/></svg>
+          <strong>没有找到与「合同」匹配的文件</strong>
+          <small>试试更短的关键词，或者清除当前的筛选条件。</small>
+          <div class="e-act">
+            <span class="ebtn"><svg class="gi"><use href="#g-xc"/></svg>清除筛选条件</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h3 style="margin-left:40px">4.1 规格表</h3>
+    <div class="tw">
+      <table>
+        <colgroup><col style="width:17%"><col style="width:19%"><col style="width:20%"><col style="width:44%"></colgroup>
+        <thead><tr><th>场景</th><th>SF Symbol</th><th>颜色 / 动作</th><th>文案（主 → 辅）</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>1 · 未连接任何设备</td>
+            <td><code>cable.connector</code><br><span class="tag ok">回退 bolt.horizontal</span></td>
+            <td><code>.secondaryLabelColor</code><br>主按钮「重新检测」+ 文字链</td>
+            <td>还没有连接 Android 设备 →「用 USB 线把手机接到这台 Mac，手机上把 USB 用途选为『传输文件』。」</td>
+          </tr>
+          <tr>
+            <td>2 · 照片图库权限被拒</td>
+            <td><code>lock</code><br><span class="tag ok">备选 hand.raised</span></td>
+            <td>品牌深橙 <code>oklch(56% .152 55)</code><br>主按钮「打开系统设置」+ 文字链</td>
+            <td>DroidBerth 没有照片访问权限 →「照片图库暂时不能浏览。<strong>文件推送、设备浏览等功能不受影响。</strong>可在『系统设置 › 隐私与安全性 › 照片』里重新打开。」</td>
+          </tr>
+          <tr>
+            <td>3 · 文件夹是空的</td>
+            <td><code>folder</code><br><span class="tag ok">备选 tray</span></td>
+            <td><code>.secondaryLabelColor</code><br><strong>默认无按钮</strong>；可选次级「刷新」</td>
+            <td>这个文件夹是空的 →「这里还没有文件。可以从另一栏拖进来，或直接把文件拖到这个窗口。」</td>
+          </tr>
+          <tr>
+            <td>4 · 搜索无结果</td>
+            <td><code>magnifyingglass</code></td>
+            <td><code>.secondaryLabelColor</code><br>主按钮「清除筛选条件」</td>
+            <td>没有找到与「关键词」匹配的文件 →「试试更短的关键词，或者清除当前的筛选条件。」</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="body">
+      <ul class="tight" style="font-size:13px;color:var(--muted)">
+        <li><strong>主文案里要带上产生空态的那个具体值。</strong>搜索空态写「没有找到与『合同』匹配的文件」，比「无搜索结果」多给了一条"我搜的是什么"的确认信息。</li>
+        <li><strong>动作按钮的标签自适应。</strong>第 4 类的按钮在只有搜索词时写「清除搜索词」，只有类型筛选时写「清除类型筛选」，两者都有时写「全部清除」——始终只有一个按钮，但它清除的正是用户当前的阻碍。</li>
+        <li><strong>第 3 类不要用任何警示色或感叹号。</strong>空文件夹是正常状态，不是错误。它也不该有主按钮——把一个中性状态做成操作入口，会让人以为出了问题。</li>
+        <li><strong>第 2 类必须说清"其余功能不受影响"。</strong>权限被拒最坏的后果不是少了照片，而是用户以为整个 App 废了。</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ================= 05 结论清单 ================= -->
+  <section class="sec" id="summary" data-od-id="block-conclusion">
+    <div class="sec-head"><div class="sec-no">05</div><h2>结论清单</h2></div>
+    <p class="sec-sub">这一节是可以直接抄进代码的部分。前面所有判断都收敛到这里。</p>
+
+    <h3 style="margin-left:40px">A · 符号映射增量</h3>
+    <div class="body" style="margin-top:0">
+      <p>净增 3 个符号；右栏映射表以扩展名为键，未命中一律 <code>doc</code>。</p>
+    </div>
+    <pre><span class="c">// 现有 8 个专用符号保持不变</span>
+<span class="c">// folder · film · photo · waveform · doc.zipper · shippingbox · doc.richtext · doc.text</span>
+
+<span class="c">// 新增 3 个</span>
+<span class="k">static let</span> added = [
+    <span class="s">"sheet"</span>: <span class="s">"tablecells"</span>,                                  <span class="c">// 表格</span>
+    <span class="s">"disc"</span>:  <span class="s">"opticaldisc"</span>,                                 <span class="c">// dmg / iso</span>
+    <span class="s">"code"</span>:  <span class="s">"chevron.left.forwardslash.chevron.right"</span>,    <span class="c">// 代码 / 配置</span>
+]
+
+<span class="c">// 右栏（设备侧）扩展名 → symbol，完整可抄</span>
+<span class="k">static let</span> glyphByExtension: [String: String] = {
+    <span class="k">var</span> m: [String: String] = [:]
+    <span class="k">func</span> put(_ s: String, _ exts: [String]) { <span class="k">for</span> e <span class="k">in</span> exts { m[e] = s } }
+
+    put(<span class="s">"photo"</span>,      [<span class="s">"jpg"</span>,<span class="s">"jpeg"</span>,<span class="s">"png"</span>,<span class="s">"heic"</span>,<span class="s">"heif"</span>,<span class="s">"gif"</span>,<span class="s">"webp"</span>,<span class="s">"tif"</span>,<span class="s">"tiff"</span>,<span class="s">"bmp"</span>,<span class="s">"avif"</span>,
+                              <span class="s">"dng"</span>,<span class="s">"raw"</span>,<span class="s">"cr2"</span>,<span class="s">"nef"</span>,<span class="s">"arw"</span>])
+    put(<span class="s">"film"</span>,       [<span class="s">"mp4"</span>,<span class="s">"mov"</span>,<span class="s">"m4v"</span>,<span class="s">"mkv"</span>,<span class="s">"avi"</span>,<span class="s">"webm"</span>,<span class="s">"wmv"</span>,<span class="s">"flv"</span>,<span class="s">"3gp"</span>,<span class="s">"ts"</span>])
+    put(<span class="s">"waveform"</span>,   [<span class="s">"mp3"</span>,<span class="s">"wav"</span>,<span class="s">"aac"</span>,<span class="s">"flac"</span>,<span class="s">"m4a"</span>,<span class="s">"ogg"</span>,<span class="s">"opus"</span>])
+    put(<span class="s">"doc.text"</span>,   [<span class="s">"txt"</span>,<span class="s">"md"</span>,<span class="s">"rtf"</span>,<span class="s">"doc"</span>,<span class="s">"docx"</span>,<span class="s">"pages"</span>,<span class="s">"ppt"</span>,<span class="s">"pptx"</span>,<span class="s">"key"</span>])
+    put(<span class="s">"doc.richtext"</span>,[<span class="s">"pdf"</span>])
+    put(<span class="s">"tablecells"</span>, [<span class="s">"xls"</span>,<span class="s">"xlsx"</span>,<span class="s">"csv"</span>,<span class="s">"numbers"</span>])
+    put(<span class="s">"doc.zipper"</span>, [<span class="s">"zip"</span>,<span class="s">"rar"</span>,<span class="s">"7z"</span>,<span class="s">"tar"</span>,<span class="s">"gz"</span>])
+    put(<span class="s">"opticaldisc"</span>,[<span class="s">"dmg"</span>,<span class="s">"iso"</span>])
+    put(<span class="s">"shippingbox"</span>,[<span class="s">"apk"</span>,<span class="s">"aab"</span>,<span class="s">"ipa"</span>,<span class="s">"exe"</span>])
+    put(<span class="s">"chevron.left.forwardslash.chevron.right"</span>,
+                              [<span class="s">"json"</span>,<span class="s">"xml"</span>,<span class="s">"yaml"</span>,<span class="s">"yml"</span>,<span class="s">"toml"</span>,<span class="s">"plist"</span>,<span class="s">"sh"</span>,<span class="s">"py"</span>,<span class="s">"js"</span>,<span class="s">"swift"</span>,<span class="s">"rs"</span>,<span class="s">"html"</span>,<span class="s">"css"</span>])
+    <span class="k">return</span> m
+}()
+
+<span class="c">// 无扩展名 / 未命中 → "doc"；isDirectory → "folder"（选中 "folder.fill"）
+// 左栏一律走 NSWorkspace，不进这张表</span></pre>
+
+    <h3 style="margin-left:40px">B · 颜色与状态 token</h3>
+    <div class="tw" style="margin-top:12px">
+      <table>
+        <colgroup><col style="width:27%"><col style="width:31%"><col style="width:42%"></colgroup>
+        <thead><tr><th>用途</th><th>值（浅色 / 深色）</th><th>对比度</th></tr></thead>
+        <tbody>
+          <tr><td>选中行填充</td><td><code>oklch(56% .152 55)</code> 两模式同值</td><td>白字 4.9:1 ✅</td></tr>
+          <tr><td>选中行内文字与图标</td><td>纯白，<strong>不做任何透明度衰减</strong></td><td>4.9:1 ✅</td></tr>
+          <tr><td>列表图标（未选中）</td><td><code>.secondaryLabelColor</code></td><td>浅 3.5:1 / 深 6.0:1 ✅（图标线 ≥3:1）</td></tr>
+          <tr><td>种类 / 大小 / 日期列文字</td><td>浅 <code>#6E6E73</code>　深 <code>rgba(235,235,245,.62)</code></td><td>浅 5.1:1 / 深 6.3:1 ✅</td></tr>
+          <tr><td>48pt 空态图标</td><td><code>.secondaryLabelColor</code></td><td>浅 3.5:1 / 深 6.0:1 ✅</td></tr>
+          <tr><td>焦点环</td><td>品牌深橙，不是 <code>#ED8725</code></td><td>4.9:1 ✅</td></tr>
+          <tr><td>品牌原色 <code>#ED8725</code></td><td>只用于非文字强调与渐变，<strong>不作填充底</strong></td><td>作底时白字仅 2.6:1 ❌</td></tr>
+          <tr><td><code>.tertiaryLabelColor</code></td><td><strong>禁用</strong>于空态图标</td><td>约 1.9:1 ❌</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="body">
+      <p style="font-size:13px;color:var(--muted);margin-top:12px"><strong>两处对系统默认的有意偏离，需要明确接受：</strong>① 种类/大小/日期列没有直接用 <code>secondaryLabelColor</code>（浅色 3.95:1，低于 AA 正文要求的 4.5:1），而是提到 5.1:1。② 选中行用派生深橙而非品牌原色。两处都是一次性决定，不要一半一半。</p>
+    </div>
+
+    <h3 style="margin-left:40px">C · 文案清单</h3>
+    <div class="tw" style="margin-top:12px">
+      <table>
+        <colgroup><col style="width:20%"><col style="width:26%"><col style="width:54%"></colgroup>
+        <thead><tr><th>位置</th><th>字段</th><th>文案（原样使用）</th></tr></thead>
+        <tbody>
+          <tr><td rowspan="6">USB 授权卡片</td><td>标题</td><td>手机还没授权这台 Mac</td></tr>
+          <tr><td>副标题</td><td>看一眼手机屏幕，上面应该有一个弹窗在等你确认。</td></tr>
+          <tr><td>步骤 1</td><td>用数据线连接手机与 Mac，手机上把 USB 用途选为「传输文件」。</td></tr>
+          <tr><td>步骤 2</td><td>手机弹出上面这个窗口时，勾选「一律允许」再点「允许」。</td></tr>
+          <tr><td>步骤 3</td><td>回到 DroidBerth，点下面的按钮重新检测。</td></tr>
+          <tr><td>主按钮</td><td>已完成，重新检测</td></tr>
+          <tr><td rowspan="4">空态 1</td><td>主</td><td>还没有连接 Android 设备</td></tr>
+          <tr><td>辅</td><td>用 USB 线把手机接到这台 Mac，手机上把 USB 用途选为「传输文件」。</td></tr>
+          <tr><td>主按钮</td><td>重新检测</td></tr>
+          <tr><td>文字链</td><td>连接不上？</td></tr>
+          <tr><td rowspan="4">空态 2</td><td>主</td><td>DroidBerth 没有照片访问权限</td></tr>
+          <tr><td>辅</td><td>照片图库暂时不能浏览。文件推送、设备浏览等功能不受影响。可在「系统设置 › 隐私与安全性 › 照片」里重新打开。</td></tr>
+          <tr><td>主按钮</td><td>打开系统设置</td></tr>
+          <tr><td>文字链</td><td>稍后再说</td></tr>
+          <tr><td rowspan="3">空态 3</td><td>主</td><td>这个文件夹是空的</td></tr>
+          <tr><td>辅</td><td>这里还没有文件。可以从另一栏拖进来，或直接把文件拖到这个窗口。</td></tr>
+          <tr><td>次级按钮</td><td>刷新（可选，默认不放按钮）</td></tr>
+          <tr><td rowspan="3">空态 4</td><td>主</td><td>没有找到与「{关键词}」匹配的文件</td></tr>
+          <tr><td>辅</td><td>试试更短的关键词，或者清除当前的筛选条件。</td></tr>
+          <tr><td>主按钮</td><td>清除搜索词 / 清除类型筛选 / 全部清除（按当前生效的筛选项切换）</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-left:40px">D · 待你核对的两件事</h3>
+    <div class="body" style="margin-top:0">
+      <div class="card">
+        <ul class="tight">
+          <li><strong>符号名与最低版本请在 SF Symbols.app 里过一遍。</strong>表中的名字是按记忆写的，把握较低的是 <code>arrow.turn.up.right</code>、<code>opticaldisc</code>、<code>cable.connector</code> 三个，请优先核对。<code>chevron.left.forwardslash.chevron.right</code> 与 <code>tablecells</code> 需要 SF Symbols 4（macOS 13+）；若最低支持版本更低，退到 <code>chevron.left.slash.chevron.right</code> 与 <code>grid</code>。</li>
+          <li><strong>右栏「种类」列的文字来源。</strong>本文档假设它来自扩展名映射；如果实际是 <code>adb shell stat</code> 或 MIME，映射表的键要跟着改。图标永远不该是这个字段的唯一来源（§8-3）。</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <div class="end">
+    <span>DroidBerth 图标体系与引导插图 · v1</span>
+    <span>所有图形为内联 CSS / SVG，未引用外部图片与字体</span>
+  </div>
+
+</main>
+</body>
+</html>

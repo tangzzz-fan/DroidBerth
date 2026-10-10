@@ -96,14 +96,14 @@ struct PreviewPane: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(entry.kindLabel)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.columnText)
                     Text(ByteFormat.size(entry.size))
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.columnText)
                         .monospacedDigit()
                     Text(ByteFormat.date(entry.modified))
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.columnText)
                 }
 
                 Text(entry.path)
@@ -206,9 +206,7 @@ struct PreviewPane: View {
             if showsSpinner {
                 ProgressView().controlSize(.small)
             } else {
-                Image(systemName: entry.systemImage)
-                    .font(.system(size: 44))
-                    .foregroundStyle(entry.isDirectory ? Color.accentColor : Color.secondary)
+                EntryIconView(entry: entry, size: 52)
             }
         }
     }

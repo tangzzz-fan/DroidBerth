@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DroidBerth · App 图标设计稿 · 三个方向</title>
+<style>
+:root{
+  --bg:#1c1c1e;
+  --surface:#232326;
+  --surface-2:#2a2a2e;
+  --stage:#26262b;
+  --line:rgba(255,255,255,.09);
+  --line-2:rgba(255,255,255,.16);
+  --fg:#f2f2f4;
+  --muted:#b0b0b8;
+  --faint:#909099;
+  --brand:#ed8725;
+  --brand-dark:#b44f00;
+  --brand-2:#1ca0ac;
+  --brand-2-dark:#00828d;
+  --font-display:"Avenir Next","Helvetica Neue",sans-serif;
+  --font-body:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;
+  --font-mono:ui-monospace,"SF Mono",Menlo,Monaco,monospace;
+  --sect:104px;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--fg);
+  font-family:var(--font-body);
+  font-size:17px;
+  line-height:1.68;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+:focus-visible{outline:2px solid var(--brand);outline-offset:3px;border-radius:4px}
+.sprite{position:absolute;width:0;height:0;overflow:hidden}
+
+.wrap{max-width:1120px;margin:0 auto;padding:0 32px}
+
+/* ---------- shared bits ---------- */
+.eyebrow{
+  font-family:var(--font-mono);font-size:12px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--faint);margin:0 0 20px;
+}
+h1,h2,h3,h4{font-family:var(--font-display);font-weight:600;letter-spacing:-.018em;line-height:1.2;margin:0}
+.rule{height:1px;background:var(--line);border:0;margin:0}
+.sec{padding-top:var(--sect)}
+.sec-head{display:flex;align-items:baseline;gap:20px;margin-bottom:12px;flex-wrap:wrap}
+.sec-head h2{font-size:clamp(23px,2.5vw,30px)}
+.sec-sub{color:var(--muted);margin:0;max-width:74ch;font-size:16.5px}
+.mono{font-family:var(--font-mono)}
+
+.ico{display:block;filter:drop-shadow(0 var(--shy,0px) var(--shb,0px) rgba(0,0,0,.5))}
+.stage-bg{background:var(--stage);border:1px solid var(--line);border-radius:16px}
+
+/* ---------- header ---------- */
+header{padding:88px 0 0}
+h1{font-size:clamp(34px,4.4vw,52px);letter-spacing:-.028em}
+.lede{margin:24px 0 0;max-width:66ch;font-size:19px;line-height:1.62;color:#d6d6db}
+.lede em{font-style:normal;color:var(--brand);font-weight:600}
+.meta-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:34px}
+.chip{
+  font-family:var(--font-mono);font-size:12.5px;color:var(--muted);
+  border:1px solid var(--line-2);border-radius:999px;padding:6px 13px;white-space:nowrap;
+}
+
+/* ---------- spec ---------- */
+.spec-grid{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:56px;align-items:start;margin-top:44px}
+.spec-diagram{width:100%;height:auto;display:block}
+.spec-list{list-style:none;margin:0;padding:0;display:grid;gap:0}
+.spec-list li{display:grid;grid-template-columns:132px minmax(0,1fr);gap:20px;padding:15px 0;border-bottom:1px solid var(--line)}
+.spec-list li:first-child{border-top:1px solid var(--line)}
+.spec-list dt,.spec-list .k{font-family:var(--font-mono);font-size:12.5px;letter-spacing:.05em;color:var(--faint);padding-top:4px}
+.spec-list .v{font-size:16px;color:#dcdce1}
+.spec-list .v b{font-family:var(--font-mono);font-weight:500;color:#fff}
+.constraints{margin:52px 0 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(232px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.constraints div{background:var(--bg);padding:24px 24px 26px}
+.constraints .n{font-family:var(--font-mono);font-size:12px;color:var(--brand);letter-spacing:.1em}
+.constraints h4{font-size:16.5px;margin:12px 0 8px;font-family:var(--font-body);font-weight:600;letter-spacing:0}
+.constraints p{margin:0;font-size:14.5px;color:var(--muted);line-height:1.6}
+
+/* ---------- direction ---------- */
+.dir-head{display:flex;align-items:flex-start;gap:22px;flex-wrap:wrap}
+.dir-badge{
+  flex:0 0 auto;width:46px;height:46px;border-radius:12px;border:1px solid var(--line-2);
+  display:grid;place-items:center;font-family:var(--font-display);font-size:22px;font-weight:600;color:#fff;
+}
+.dir-title h2{font-size:clamp(23px,2.5vw,30px)}
+.dir-title .code{font-family:var(--font-mono);font-size:14px;color:var(--brand);margin-left:12px;font-weight:400;letter-spacing:0}
+.dir-title .zh{display:block;color:var(--muted);font-size:16px;font-weight:400;margin-top:7px;letter-spacing:0}
+.dir-note{margin:26px 0 0;max-width:70ch;font-size:16.5px;color:#d6d6db}
+
+.block{margin-top:44px}
+.block-label{
+  font-family:var(--font-mono);font-size:12px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--faint);margin:0 0 18px;
+}
+.block-label b{color:var(--muted);font-weight:500;text-transform:none;letter-spacing:.02em}
+
+/* master */
+.master-wrap{display:flex;justify-content:center}
+.master-stage{
+  position:relative;width:1024px;max-width:100%;aspect-ratio:1/1;
+  background:radial-gradient(circle at 50% 44%,#2e2e34 0%,#26262b 58%,#222226 100%);
+  border:1px solid var(--line);border-radius:18px;overflow:hidden;
+}
+.master-stage>svg{position:absolute;inset:0;width:100%;height:100%}
+.master-cap{margin:16px 0 0;font-family:var(--font-mono);font-size:12.5px;color:var(--faint);text-align:center}
+.master-cap b{color:var(--muted);font-weight:500}
+
+/* ladder */
+.ladder{background:var(--stage);border:1px solid var(--line);border-radius:16px;padding:40px 36px 28px}
+.rungs{display:flex;align-items:flex-end;gap:36px;flex-wrap:wrap}
+.rung{margin:0;display:flex;flex-direction:column;align-items:center;gap:16px}
+.rung figcaption{font-family:var(--font-mono);font-size:12px;color:var(--faint);letter-spacing:.05em}
+.ladder-note{margin:28px 0 0;padding-top:20px;border-top:1px solid var(--line);font-size:14px;color:var(--faint);line-height:1.62}
+.ladder-note b{color:var(--muted);font-weight:500}
+
+/* docks */
+.docks{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:28px}
+.dock-fig{margin:0}
+.dock-shell{padding:30px 22px 34px;border-radius:16px;border:1px solid var(--line);display:flex;justify-content:center}
+.shell-light{background:linear-gradient(158deg,#dfe4ee 0%,#c3cbdb 52%,#aeb8cb 100%)}
+.shell-dark{background:linear-gradient(158deg,#33384a 0%,#20232f 52%,#14161d 100%)}
+.dock{
+  display:flex;align-items:flex-end;gap:9px;padding:9px 11px;border-radius:20px;
+}
+.dock-light{background:rgba(255,255,255,.52);border:1px solid rgba(255,255,255,.62);box-shadow:0 10px 26px rgba(20,28,45,.20),inset 0 1px 0 rgba(255,255,255,.7)}
+.dock-dark{background:rgba(58,60,68,.52);border:1px solid rgba(255,255,255,.14);box-shadow:0 10px 26px rgba(0,0,0,.44),inset 0 1px 0 rgba(255,255,255,.10)}
+.dock .ico{width:62px;height:62px;--shy:3px;--shb:6px}
+.dock-fig figcaption{margin:14px 0 0;font-size:14px;color:var(--muted);text-align:center}
+.dock-fig figcaption span{color:var(--faint)}
+
+/* tradeoffs */
+.tradeoffs{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.tradeoffs li{display:grid;grid-template-columns:104px minmax(0,1fr);gap:24px;padding:20px 0;border-bottom:1px solid var(--line)}
+.tk{
+  font-family:var(--font-mono);font-size:12.5px;letter-spacing:.08em;color:var(--muted);
+  padding-top:5px;white-space:nowrap;
+}
+.tk.win{color:#7cc7a3}
+.tk.lose{color:#d8917c}
+.tradeoffs p{margin:0;font-size:16px;color:#d6d6db;line-height:1.66}
+.tradeoffs p b{color:#fff;font-weight:600}
+
+/* verdict */
+.verdict{
+  margin-top:44px;border:1px solid rgba(237,135,37,.34);border-radius:18px;
+  background:linear-gradient(180deg,rgba(237,135,37,.075) 0%,rgba(237,135,37,.018) 60%,rgba(237,135,37,0) 100%);
+  padding:44px;display:grid;grid-template-columns:200px minmax(0,1fr);gap:48px;align-items:center;
+}
+.verdict-ico{width:200px;height:200px}
+.verdict-kicker{font-family:var(--font-mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--brand);margin:0 0 14px}
+.verdict h3{font-size:clamp(24px,2.6vw,32px);margin:0 0 6px}
+.verdict .name{font-family:var(--font-mono);font-size:15px;color:var(--brand);margin:0 0 20px}
+.verdict p{margin:0;font-size:17px;line-height:1.7;color:#e2e2e7}
+
+/* palette */
+.palette{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:16px;overflow:hidden;margin-top:44px}
+.swatch{background:var(--bg);padding:0 0 30px}
+.swatch-chip{height:112px;position:relative}
+.swatch-chip .hex{
+  position:absolute;left:26px;bottom:20px;font-family:var(--font-mono);font-size:15px;
+  letter-spacing:.04em;padding:5px 11px;border-radius:8px;
+}
+.swatch-body{padding:26px 26px 0}
+.swatch-role{font-family:var(--font-mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin:0 0 10px}
+.swatch h3{font-size:21px;margin:0 0 18px}
+.swatch dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 18px;margin:0 0 20px;font-size:14.5px}
+.swatch dt{font-family:var(--font-mono);font-size:12.5px;color:var(--faint);padding-top:3px}
+.swatch dd{margin:0;font-family:var(--font-mono);font-size:14px;color:#e6e6eb}
+.swatch p{margin:0;font-size:15px;color:var(--muted);line-height:1.66}
+.swatch p+p{margin-top:12px}
+.swatch p b{color:#e6e6eb;font-weight:600}
+.badge-ok{color:#7cc7a3;font-weight:600}
+.badge-no{color:#d8917c;font-weight:600}
+
+.demo{margin-top:44px;border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.demo-row{display:grid;grid-template-columns:132px minmax(0,1fr);gap:24px;padding:26px 28px;align-items:center}
+.demo-row+.demo-row{border-top:1px solid var(--line)}
+.demo-light{background:#f4f5f7;color:#1c1c1e}
+.demo-dark{background:#141416;color:#f2f2f4}
+.demo-label{font-family:var(--font-mono);font-size:12px;letter-spacing:.08em;opacity:.72}
+.demo-stack{display:grid;gap:12px}
+.tline{display:flex;align-items:center;gap:12px;font-size:14.5px;flex-wrap:wrap}
+.tline .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+.tline .arrow{font-size:15px;line-height:1}
+.tline .small{font-family:var(--font-mono);font-size:12px}
+.tline .dim{opacity:.72}
+.tline code{font-family:var(--font-mono);font-size:12px;padding:2px 7px;border-radius:6px;border:1px solid rgba(128,128,140,.38)}
+
+footer{margin-top:var(--sect);padding:36px 0 72px;border-top:1px solid var(--line);color:var(--faint);font-size:14px}
+footer p{margin:0}
+footer p+p{margin-top:8px}
+
+@media (max-width:900px){
+  :root{--sect:76px}
+  .wrap{padding:0 22px}
+  .spec-grid{grid-template-columns:1fr;gap:36px}
+  .verdict{grid-template-columns:1fr;gap:32px;padding:32px;justify-items:start}
+  .verdict-ico{width:132px;height:132px}
+  .dock-shell{padding:24px 14px 28px}
+  .dock .ico{width:50px;height:50px}
+  .dock{gap:7px;padding:7px 9px;border-radius:16px}
+  .demo-row{grid-template-columns:1fr;gap:14px}
+  .tradeoffs li,.spec-list li{grid-template-columns:1fr;gap:8px}
+  .tk{padding-top:0}
+  .ladder{padding:28px 22px 22px}
+  .rungs{gap:26px}
+}
+@media (max-width:520px){
+  .dock .ico{width:40px;height:40px}
+  .dock{gap:5px;padding:6px 7px;border-radius:13px}
+  .dock-shell{padding:18px 10px 22px}
+}
+</style>
+</head>
+<body>
+
+<!-- ============ icon sprite ============ -->
+<svg class="sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="gBrand" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F9A04A"/>
+      <stop offset="1" stop-color="#DE6B20"/>
+    </linearGradient>
+    <linearGradient id="gFinder" x1="0.1" y1="0" x2="0.7" y2="1">
+      <stop offset="0" stop-color="#8FD6F7"/>
+      <stop offset="1" stop-color="#1E7EE2"/>
+    </linearGradient>
+    <linearGradient id="gSafari" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#63CDF8"/>
+      <stop offset="1" stop-color="#1160BE"/>
+    </linearGradient>
+    <linearGradient id="gFolderBack" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4AA8E8"/>
+      <stop offset="1" stop-color="#2C7FC9"/>
+    </linearGradient>
+    <linearGradient id="gFolderFront" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#67C6F5"/>
+      <stop offset="1" stop-color="#2E8AD8"/>
+    </linearGradient>
+    <linearGradient id="gGear" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#C2C2C8"/>
+      <stop offset="1" stop-color="#78787F"/>
+    </linearGradient>
+    <mask id="mGearHole">
+      <rect x="0" y="0" width="1024" height="1024" fill="#fff"/>
+      <circle cx="512" cy="512" r="116" fill="#000"/>
+    </mask>
+  </defs>
+
+  <!-- content-area guides -->
+  <symbol id="gGuides" viewBox="0 0 1024 1024">
+    <g fill="none">
+      <rect x="100" y="100" width="824" height="824"
+            stroke="rgba(255,255,255,.28)" stroke-width="2.5" stroke-dasharray="15 13"/>
+      <path class="sq" stroke="rgba(255,255,255,.72)" stroke-width="5"/>
+      <g stroke="rgba(255,255,255,.30)" stroke-width="2.5">
+        <line x1="512" y1="8" x2="512" y2="88"/>
+        <line x1="512" y1="936" x2="512" y2="1016"/>
+        <line x1="8" y1="512" x2="88" y2="512"/>
+        <line x1="936" y1="512" x2="1016" y2="512"/>
+      </g>
+    </g>
+  </symbol>
+
+  <!-- A · two-berths -->
+  <symbol id="icoA" viewBox="0 0 1024 1024">
+    <path class="sq" fill="url(#gBrand)"/>
+    <rect x="158" y="272" width="190" height="480" rx="56" fill="#fff"/>
+    <rect x="676" y="272" width="190" height="480" rx="56" fill="#fff"/>
+    <path d="M453 402L571 512L453 622" fill="none" stroke="#fff" stroke-width="86"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+
+  <!-- B · push-rail -->
+  <symbol id="icoB" viewBox="0 0 1024 1024">
+    <path class="sq" fill="url(#gBrand)"/>
+    <path d="M287 522H660V672H287A75 75 0 0 1 287 522Z" fill="#fff"/>
+    <rect x="212" y="287" width="260" height="260" rx="64" fill="#fff"/>
+    <path d="M612 457L812 597L612 737Z" fill="#fff"/>
+  </symbol>
+
+  <!-- C · dock-port -->
+  <symbol id="icoC" viewBox="0 0 1024 1024">
+    <path class="sq" fill="url(#gBrand)"/>
+    <circle cx="582" cy="512" r="190" fill="none" stroke="#fff" stroke-width="160"/>
+    <path d="M472 432L252 432A80 80 0 0 0 252 592L472 592Z" fill="#fff"/>
+  </symbol>
+
+  <!-- dock context: system-icon approximations -->
+  <symbol id="icoFinder" viewBox="0 0 1024 1024">
+    <path class="sq" fill="url(#gFinder)"/>
+    <rect x="392" y="330" width="46" height="150" rx="23" fill="#fff"/>
+    <rect x="586" y="330" width="46" height="150" rx="23" fill="#fff"/>
+    <path d="M320 610C400 706 624 706 704 610" fill="none" stroke="#fff"
+          stroke-width="44" stroke-linecap="round"/>
+  </symbol>
+
+  <symbol id="icoSafari" viewBox="0 0 1024 1024">
+    <circle cx="512" cy="512" r="424" fill="url(#gSafari)"/>
+    <circle cx="512" cy="512" r="352" fill="none" stroke="#fff" stroke-width="34"/>
+    <path d="M724 300 576 576 448 448Z" fill="#F4404A"/>
+    <path d="M300 724 576 576 448 448Z" fill="#fff"/>
+  </symbol>
+
+  <symbol id="icoFolder" viewBox="0 0 1024 1024">
+    <rect x="168" y="228" width="336" height="180" rx="46" fill="url(#gFolderBack)"/>
+    <rect x="168" y="322" width="688" height="452" rx="58" fill="url(#gFolderFront)"/>
+  </symbol>
+
+  <symbol id="icoSettings" viewBox="0 0 1024 1024">
+    <g mask="url(#mGearHole)">
+      <g fill="url(#gGear)">
+        <rect x="452" y="86" width="120" height="228" rx="60"/>
+        <rect x="452" y="86" width="120" height="228" rx="60" transform="rotate(45 512 512)"/>
+        <rect x="452" y="86" width="120" height="228" rx="60" transform="rotate(90 512 512)"/>
+        <rect x="452" y="86" width="120" height="228" rx="60" transform="rotate(135 512 512)"/>
+        <rect x="452" y="86" width="120" height="228" rx="60" transform="rotate(180 512 512)"/>
+        <rect x="452" y="86" width="120" height="228" rx="60" transform="rotate(225 512 512)"/>
+        <rect x="452" y="86" width="120" height="228" rx="60" transform="rotate(270 512 512)"/>
+        <rect x="452" y="86" width="120" height="228" rx="60" transform="rotate(315 512 512)"/>
+        <circle cx="512" cy="512" r="290"/>
+      </g>
+    </g>
+  </symbol>
+</svg>
+
+<div class="wrap">
+
+<!-- ============ header ============ -->
+<header data-od-id="page-header">
+  <p class="eyebrow">macOS 原生 App · 图标设计稿</p>
+  <h1>DroidBerth 图标设计<br>三个方向</h1>
+  <p class="lede">
+    DroidBerth 是一款 macOS 双栏文件管理器，核心任务是把 Mac 上的视频与照片推进 Android 手机，
+    也支持反向回传。图标要同时说清两件事：<em>这是文件管理器</em>，以及<em>东西正在往对岸推</em>。
+    下面给出三个剪影完全不同的方向，每一个都按 1024 母版、六档实尺、浅深两种 Dock 上下文完整呈现。
+  </p>
+  <div class="meta-row">
+    <span class="chip">画布 1024 × 1024</span>
+    <span class="chip">内容区 824 × 824</span>
+    <span class="chip">留白 100 pt</span>
+    <span class="chip">r ≈ 185.4 pt · continuous</span>
+    <span class="chip">纯几何 · 零依赖渲染</span>
+  </div>
+</header>
+
+<!-- ============ spec ============ -->
+<section class="sec" data-od-id="spec">
+  <hr class="rule">
+  <div style="padding-top:56px">
+    <div class="sec-head"><h2>规范</h2></div>
+    <p class="sec-sub">
+      所有尺寸沿用 Apple 的 macOS 图标网格。三个方向共用同一套网格与同一套配色，
+      这样比较的是「形」，不是「色」。
+    </p>
+
+    <div class="spec-grid">
+      <svg class="spec-diagram" viewBox="0 0 1024 1024" role="img"
+           aria-label="图标网格示意：1024 画布内的 824 内容区超矩形，四周各留 100 pt">
+        <rect x="3" y="3" width="1018" height="1018" fill="none" stroke="rgba(255,255,255,.14)" stroke-width="5"/>
+        <path class="sq" fill="rgba(237,135,37,.13)" stroke="#ed8725" stroke-width="6"/>
+        <rect x="100" y="100" width="824" height="824" fill="none"
+              stroke="rgba(255,255,255,.30)" stroke-width="3" stroke-dasharray="16 13"/>
+        <text x="512" y="486" text-anchor="middle" fill="#f2f2f4"
+              font-family="ui-monospace,Menlo,monospace" font-size="70" font-weight="500">824 × 824</text>
+        <text x="512" y="556" text-anchor="middle" fill="#b0b0b8"
+              font-family="-apple-system,Helvetica Neue,sans-serif" font-size="40">内容区 · 超矩形</text>
+        <text x="512" y="70" text-anchor="middle" fill="#909099"
+              font-family="ui-monospace,Menlo,monospace" font-size="40">100 pt</text>
+        <text x="512" y="986" text-anchor="middle" fill="#909099"
+              font-family="ui-monospace,Menlo,monospace" font-size="40">1024 × 1024 画布</text>
+      </svg>
+
+      <dl class="spec-list">
+        <li><span class="k">画布</span><span class="v"><b>1024 × 1024 px</b>，四周各 100 pt 完全透明，图标本体不越过这条线。</span></li>
+        <li><span class="k">内容区</span><span class="v">超矩形 <b>824 × 824</b>，在画布中居中。</span></li>
+        <li><span class="k">圆角</span><span class="v"><b>r ≈ 185.4 pt</b>，continuous corner，不是普通圆角。文档中用超椭圆 <b class="mono">|x|⁵+|y|⁵=r⁵</b> 逼近——它和 spec 圆角在 45° 处的内缩量只差 1 px（53.3 vs 54.3），肩部过渡更接近 Apple 的连续曲率。</span></li>
+        <li><span class="k">投影</span><span class="v">由系统在 Dock / 访达中渲染。母版预览按同量级模拟：<b>y 18 / blur 40 / 45% 黑</b>，全部落在 100 pt 留白内。</span></li>
+        <li><span class="k">绘制原语</span><span class="v">矩形 · 圆角矩形 · 圆 · 圆环 · 直线 · 单层线性渐变。没有位图、没有噪点、没有多层高光，渲染脚本可以逐条复现。</span></li>
+      </dl>
+    </div>
+
+    <div class="constraints">
+      <div>
+        <div class="n">01</div>
+        <h4>必须像原生</h4>
+        <p>和访达、Safari、文件夹、设置放在同一排 Dock 里，不能是外来物种。因此不改变 macOS 的形状语言与明度结构。</p>
+      </div>
+      <div>
+        <div class="n">02</div>
+        <h4>不放文字</h4>
+        <p>没有字母、缩写、水印，也没有「DB」之类的字标。信息全部由剪影承担。</p>
+      </div>
+      <div>
+        <div class="n">03</div>
+        <h4>16 pt 仍可辨认</h4>
+        <p>列表与网格里最常出现的尺寸。门限是：主形不塌、不糊成一团、在一排单形图标里仍能被认出来。</p>
+      </div>
+      <div>
+        <div class="n">04</div>
+        <h4>可被代码复现</h4>
+        <p>最终用零依赖脚本重画。任何一条曲线都必须能用上面那六种原语写出来，所以主动放弃了纹理与立体感。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ A ============ -->
+<section class="sec" data-od-id="direction-a">
+  <hr class="rule">
+  <div style="padding-top:56px">
+    <div class="dir-head">
+      <div class="dir-badge">A</div>
+      <div class="dir-title">
+        <h2>双栏渡口<span class="code">two-berths</span></h2>
+        <span class="zh">左右两个竖长面板，中间一条向前的箭头 —— 从这一岸推到那一岸。</span>
+      </div>
+    </div>
+    <p class="dir-note">
+      两块面板就是 App 的双栏本体；中间的粗箭头是唯一一个「动词」。为了扛住缩小，
+      箭头被做成了一支带圆头的粗人字，宽度略大于两侧面板，让「推」在视觉重量上压过「栏」。
+    </p>
+
+    <div class="block">
+      <p class="block-label">母版 · <b>1024 × 1024，含规范留白与内容区辅助线</b></p>
+      <div class="master-wrap">
+        <div class="master-stage" data-od-id="master-a">
+          <svg class="ico" viewBox="0 0 1024 1024" style="--shy:18px;--shb:40px"
+               role="img" aria-label="方向 A two-berths 的 1024 母版图标"><use href="#icoA"/></svg>
+          <svg viewBox="0 0 1024 1024" aria-hidden="true"><use href="#gGuides"/></svg>
+        </div>
+      </div>
+      <p class="master-cap"><b>虚线</b> = 824 × 824 内容区边界　·　<b>实线</b> = 超矩形轮廓（r ≈ 185.4）　·　四周 100 pt 透明留白</p>
+    </div>
+
+    <div class="block">
+      <p class="block-label">尺寸阶梯 · <b>六档实尺，1024 即上方母版</b></p>
+      <div class="ladder stage-bg" data-od-id="ladder-a">
+        <div class="rungs">
+          <figure class="rung">
+            <svg class="ico" width="256" height="256" viewBox="0 0 1024 1024" style="--shy:4px;--shb:9px"
+                 role="img" aria-label="方向 A 图标 256 像素"><use href="#icoA"/></svg>
+            <figcaption>256</figcaption>
+          </figure>
+          <figure class="rung">
+            <svg class="ico" width="128" height="128" viewBox="0 0 1024 1024" style="--shy:2px;--shb:4.5px"
+                 role="img" aria-label="方向 A 图标 128 像素"><use href="#icoA"/></svg>
+            <figcaption>128</figcaption>
+          </figure>
+          <figure class="rung">
+            <svg class="ico" width="64" height="64" viewBox="0 0 1024 1024" style="--shy:1px;--shb:2.2px"
+                 role="img" aria-label="方向 A 图标 64 像素"><use href="#icoA"/></svg>
+            <figcaption>64</figcaption>
+          </figure>
+          <figure class="rung">
+            <svg class="ico" width="32" height="32" viewBox="0 0 1024 1024"
+                 role="img" aria-label="方向 A 图标 32 像素"><use href="#icoA"/></svg>
+            <figcaption>32</figcaption>
+          </figure>
+          <figure class="rung">
+            <svg class="ico" width="16" height="16" viewBox="0 0 1024 1024"
+                 role="img" aria-label="方向 A 图标 16 像素"><use href="#icoA"/></svg>
+            <figcaption>16</figcaption>
+          </figure>
+        </div>
+        <p class="ladder-note">
+          32 与 16 两档不加投影 —— 该尺寸下投影只会把边缘糊掉。
+          <b>16 pt 时</b>：两块面板各约 3.0 px 宽，中间箭头约 3.2 px 宽、4.8 px 高，箭头与面板之间的空隙压到约 1 px。
+        </p>
+      </div>
+    </div>
+
+    <div class="block">
+      <p class="block-label">Dock 上下文 · <b>浅色 / 深色两种底</b></p>
+      <div class="docks">
+        <figure class="dock-fig" data-od-id="dock-a-light">
+          <div class="dock-shell shell-light">
+            <div class="dock dock-light">
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="访达图标（近似）" role="img"><use href="#icoFinder"/></svg>
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="Safari 图标（近似）" role="img"><use href="#icoSafari"/></svg>
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="文件夹图标（近似）" role="img"><use href="#icoFolder"/></svg>
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="系统设置图标（近似）" role="img"><use href="#icoSettings"/></svg>
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="DroidBerth 方向 A" role="img"><use href="#icoA"/></svg>
+            </div>
+          </div>
+          <figcaption>浅色 Dock <span>· 右侧为 DroidBerth</span></figcaption>
+        </figure>
+        <figure class="dock-fig" data-od-id="dock-a-dark">
+          <div class="dock-shell shell-dark">
+            <div class="dock dock-dark">
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="访达图标（近似）" role="img"><use href="#icoFinder"/></svg>
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="Safari 图标（近似）" role="img"><use href="#icoSafari"/></svg>
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="文件夹图标（近似）" role="img"><use href="#icoFolder"/></svg>
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="系统设置图标（近似）" role="img"><use href="#icoSettings"/></svg>
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="DroidBerth 方向 A" role="img"><use href="#icoA"/></svg>
+            </div>
+          </div>
+          <figcaption>深色 Dock <span>· 右侧为 DroidBerth</span></figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <div class="block">
+      <p class="block-label">取舍</p>
+      <ul class="tradeoffs">
+        <li><span class="tk win">赢</span><p>三个方向里唯一把「双栏文件管理器」的结构直接写进剪影的：<b>两块面板 = 双栏，中间箭头 = 推</b>。左右对称，重心稳稳落在中心，任何尺寸下都不会歪。</p></li>
+        <li><span class="tk lose">输</span><p>元素最多的一块白 —— 三块。中间箭头与两侧面板之间的间隔天然被挤薄，是三个方向里最依赖「间隙」的一个。</p></li>
+        <li><span class="tk">16 px</span><p>退化成「两根竖条 + 中间一个亮块」。三段式结构完整保留，在一排单形图标里辨识度不降反升；<b>但箭头的朝向基本读不出来</b>，空隙只剩约 1 px，白色会轻微渗色。需要一版 16 pt 专用微调：把间隙压到 0、箭头并进左侧面板做成实心楔形。</p></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ B ============ -->
+<section class="sec" data-od-id="direction-b">
+  <hr class="rule">
+  <div style="padding-top:56px">
+    <div class="dir-head">
+      <div class="dir-badge">B</div>
+      <div class="dir-title">
+        <h2>传输带<span class="code">push-rail</span></h2>
+        <span class="zh">一个圆角方块（素材）骑在轨道上，被推向右侧的箭头 —— 强调「推」。</span>
+      </div>
+    </div>
+    <p class="dir-note">
+      这是三个方向里唯一带时间感的一个：方块在轨道的左端，箭头在右端，构图本身就构成一次从左到右的位移。
+      轨道的右端被做成平口并直接插进箭头，避免圆角端与三角底边之间出现裂缝。
+    </p>
+
+    <div class="block">
+      <p class="block-label">母版 · <b>1024 × 1024，含规范留白与内容区辅助线</b></p>
+      <div class="master-wrap">
+        <div class="master-stage" data-od-id="master-b">
+          <svg class="ico" viewBox="0 0 1024 1024" style="--shy:18px;--shb:40px"
+               role="img" aria-label="方向 B push-rail 的 1024 母版图标"><use href="#icoB"/></svg>
+          <svg viewBox="0 0 1024 1024" aria-hidden="true"><use href="#gGuides"/></svg>
+        </div>
+      </div>
+      <p class="master-cap"><b>方块</b> 260 × 260，骑在 <b>轨道</b> 448 × 150 上（左缘对齐）　·　<b>箭头</b> 高 280、长 200，平口轨道端头收进三角内　·　整体包围盒 600 × 450，居中</p>
+    </div>
+
+    <div class="block">
+      <p class="block-label">尺寸阶梯 · <b>六档实尺，1024 即上方母版</b></p>
+      <div class="ladder stage-bg" data-od-id="ladder-b">
+        <div class="rungs">
+          <figure class="rung">
+            <svg class="ico" width="256" height="256" viewBox="0 0 1024 1024" style="--shy:4px;--shb:9px"
+                 role="img" aria-label="方向 B 图标 256 像素"><use href="#icoB"/></svg>
+            <figcaption>256</figcaption>
+          </figure>
+          <figure class="rung">
+            <svg class="ico" width="128" height="128" viewBox="0 0 1024 1024" style="--shy:2px;--shb:4.5px"
+                 role="img" aria-label="方向 B 图标 128 像素"><use href="#icoB"/></svg>
+            <figcaption>128</figcaption>
+          </figure>
+          <figure class="rung">
+            <svg class="ico" width="64" height="64" viewBox="0 0 1024 1024" style="--shy:1px;--shb:2.2px"
+                 role="img" aria-label="方向 B 图标 64 像素"><use href="#icoB"/></svg>
+            <figcaption>64</figcaption>
+          </figure>
+          <figure class="rung">
+            <svg class="ico" width="32" height="32" viewBox="0 0 1024 1024"
+                 role="img" aria-label="方向 B 图标 32 像素"><use href="#icoB"/></svg>
+            <figcaption>32</figcaption>
+          </figure>
+          <figure class="rung">
+            <svg class="ico" width="16" height="16" viewBox="0 0 1024 1024"
+                 role="img" aria-label="方向 B 图标 16 像素"><use href="#icoB"/></svg>
+            <figcaption>16</figcaption>
+          </figure>
+        </div>
+        <p class="ladder-note">
+          32 与 16 两档不加投影。
+          <b>16 pt 时</b>：方块约 4.1 px，轨道高约 2.3 px，箭头高约 4.4 px。方块与轨道本来就是融合的一整块白，缩到 16 pt 后轨道只剩一条细颈 —— 真正还在发号施令的只有右侧那个三角。
+        </p>
+      </div>
+    </div>
+
+    <div class="block">
+      <p class="block-label">Dock 上下文 · <b>浅色 / 深色两种底</b></p>
+      <div class="docks">
+        <figure class="dock-fig" data-od-id="dock-b-light">
+          <div class="dock-shell shell-light">
+            <div class="dock dock-light">
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="访达图标（近似）" role="img"><use href="#icoFinder"/></svg>
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="Safari 图标（近似）" role="img"><use href="#icoSafari"/></svg>
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="文件夹图标（近似）" role="img"><use href="#icoFolder"/></svg>
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="系统设置图标（近似）" role="img"><use href="#icoSettings"/></svg>
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="DroidBerth 方向 B" role="img"><use href="#icoB"/></svg>
+            </div>
+          </div>
+          <figcaption>浅色 Dock <span>· 右侧为 DroidBerth</span></figcaption>
+        </figure>
+        <figure class="dock-fig" data-od-id="dock-b-dark">
+          <div class="dock-shell shell-dark">
+            <div class="dock dock-dark">
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="访达图标（近似）" role="img"><use href="#icoFinder"/></svg>
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="Safari 图标（近似）" role="img"><use href="#icoSafari"/></svg>
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="文件夹图标（近似）" role="img"><use href="#icoFolder"/></svg>
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="系统设置图标（近似）" role="img"><use href="#icoSettings"/></svg>
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="DroidBerth 方向 B" role="img"><use href="#icoB"/></svg>
+            </div>
+          </div>
+          <figcaption>深色 Dock <span>· 右侧为 DroidBerth</span></figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <div class="block">
+      <p class="block-label">取舍</p>
+      <ul class="tradeoffs">
+        <li><span class="tk win">赢</span><p>「推」这件事讲得最直白，也最贴近产品的真实使用分布（Mac → Android 占绝大多数）。方块 + 轨道 + 箭头三个形状各自承担一个语义，不需要解释。</p></li>
+        <li><span class="tk lose">输</span><p>剪影是斜向的 L 形，视觉重心落在左上，不如另外两个在圆角方形里坐得稳；而且它没有回答「这是什么 App」——任何同步、备份、传输工具都能用同一个形。</p></li>
+        <li><span class="tk">16 px</span><p>轨道只剩约 2.3 px，方块与轨道之间的层级消失，整体退化成一个向右的钝角块。仍能读出「朝右」，<b>但读不出「传输」</b>——更像一个尖角形状而不是一个动作。</p></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ C ============ -->
+<section class="sec" data-od-id="direction-c">
+  <hr class="rule">
+  <div style="padding-top:56px">
+    <div class="dir-head">
+      <div class="dir-badge">C</div>
+      <div class="dir-title">
+        <h2>泊位<span class="code">dock-port</span></h2>
+        <span class="zh">一个粗圆环作为端口，一条线从左侧接入并停在环的内缘 —— 连接与停靠。</span>
+      </div>
+    </div>
+    <p class="dir-note">
+      最简的一个：只有一条线和一个环。线是平口，正好切在圆环内圆的左切点上，
+      所以接入处严丝合缝、没有缝也没有重叠的尖角。这一版几乎是为 16 pt 而设计的。
+    </p>
+
+    <div class="block">
+      <p class="block-label">母版 · <b>1024 × 1024，含规范留白与内容区辅助线</b></p>
+      <div class="master-wrap">
+        <div class="master-stage" data-od-id="master-c">
+          <svg class="ico" viewBox="0 0 1024 1024" style="--shy:18px;--shb:40px"
+               role="img" aria-label="方向 C dock-port 的 1024 母版图标"><use href="#icoC"/></svg>
+          <svg viewBox="0 0 1024 1024" aria-hidden="true"><use href="#gGuides"/></svg>
+        </div>
+      </div>
+      <p class="master-cap"><b>圆环</b> 外径 540 / 内径 220 / 环宽 160　·　<b>引导线</b> 300 × 160，平口切在内圆左切点</p>
+    </div>
+
+    <div class="block">
+      <p class="block-label">尺寸阶梯 · <b>六档实尺，1024 即上方母版</b></p>
+      <div class="ladder stage-bg" data-od-id="ladder-c">
+        <div class="rungs">
+          <figure class="rung">
+            <svg class="ico" width="256" height="256" viewBox="0 0 1024 1024" style="--shy:4px;--shb:9px"
+                 role="img" aria-label="方向 C 图标 256 像素"><use href="#icoC"/></svg>
+            <figcaption>256</figcaption>
+          </figure>
+          <figure class="rung">
+            <svg class="ico" width="128" height="128" viewBox="0 0 1024 1024" style="--shy:2px;--shb:4.5px"
+                 role="img" aria-label="方向 C 图标 128 像素"><use href="#icoC"/></svg>
+            <figcaption>128</figcaption>
+          </figure>
+          <figure class="rung">
+            <svg class="ico" width="64" height="64" viewBox="0 0 1024 1024" style="--shy:1px;--shb:2.2px"
+                 role="img" aria-label="方向 C 图标 64 像素"><use href="#icoC"/></svg>
+            <figcaption>64</figcaption>
+          </figure>
+          <figure class="rung">
+            <svg class="ico" width="32" height="32" viewBox="0 0 1024 1024"
+                 role="img" aria-label="方向 C 图标 32 像素"><use href="#icoC"/></svg>
+            <figcaption>32</figcaption>
+          </figure>
+          <figure class="rung">
+            <svg class="ico" width="16" height="16" viewBox="0 0 1024 1024"
+                 role="img" aria-label="方向 C 图标 16 像素"><use href="#icoC"/></svg>
+            <figcaption>16</figcaption>
+          </figure>
+        </div>
+        <p class="ladder-note">
+          32 与 16 两档不加投影。
+          <b>16 pt 时</b>：环外径约 8.4 px、环宽约 2.5 px、内孔约 3.4 px，引导线高约 2.5 px、长约 4.7 px —— 结构完整，是三个方向里退化最小的一个。
+        </p>
+      </div>
+    </div>
+
+    <div class="block">
+      <p class="block-label">Dock 上下文 · <b>浅色 / 深色两种底</b></p>
+      <div class="docks">
+        <figure class="dock-fig" data-od-id="dock-c-light">
+          <div class="dock-shell shell-light">
+            <div class="dock dock-light">
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="访达图标（近似）" role="img"><use href="#icoFinder"/></svg>
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="Safari 图标（近似）" role="img"><use href="#icoSafari"/></svg>
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="文件夹图标（近似）" role="img"><use href="#icoFolder"/></svg>
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="系统设置图标（近似）" role="img"><use href="#icoSettings"/></svg>
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="DroidBerth 方向 C" role="img"><use href="#icoC"/></svg>
+            </div>
+          </div>
+          <figcaption>浅色 Dock <span>· 右侧为 DroidBerth</span></figcaption>
+        </figure>
+        <figure class="dock-fig" data-od-id="dock-c-dark">
+          <div class="dock-shell shell-dark">
+            <div class="dock dock-dark">
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="访达图标（近似）" role="img"><use href="#icoFinder"/></svg>
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="Safari 图标（近似）" role="img"><use href="#icoSafari"/></svg>
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="文件夹图标（近似）" role="img"><use href="#icoFolder"/></svg>
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="系统设置图标（近似）" role="img"><use href="#icoSettings"/></svg>
+              <svg class="ico" viewBox="0 0 1024 1024" aria-label="DroidBerth 方向 C" role="img"><use href="#icoC"/></svg>
+            </div>
+          </div>
+          <figcaption>深色 Dock <span>· 右侧为 DroidBerth</span></figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <div class="block">
+      <p class="block-label">取舍</p>
+      <ul class="tradeoffs">
+        <li><span class="tk win">赢</span><p>16 pt 下表现最好，没有之一；几何也最简 —— 一个圆环加一个圆角矩形，两条代码就能写完，是三个方向里最不可能在渲染脚本里画错的。</p></li>
+        <li><span class="tk lose">输</span><p>它说的是「连接 / 停靠」，既没说「文件」也没说「双栏」。和产品最核心的双栏结构没有直接关系，抽象度最高，容易和任何一款配对、投屏、设备管理工具撞脸。</p></li>
+        <li><span class="tk">16 px</span><p>几乎不退化：环 + 线的双形结构完整保留，孔洞清晰可辨。<b>代价是「泊位」这层隐喻在 16 px 下完全读不到</b>——看到的是一个圆环和一条线，而不是「素材靠岸」。</p></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ verdict ============ -->
+<section class="sec" data-od-id="verdict">
+  <hr class="rule">
+  <div style="padding-top:56px">
+    <div class="sec-head"><h2>推荐</h2></div>
+
+    <div class="verdict">
+      <svg class="ico verdict-ico" viewBox="0 0 1024 1024" style="--shy:5px;--shb:11px"
+           role="img" aria-label="推荐方向 A two-berths"><use href="#icoA"/></svg>
+      <div>
+        <p class="verdict-kicker">推荐方向</p>
+        <h3>方向 A · 双栏渡口</h3>
+        <p class="name">two-berths</p>
+        <p>
+          选 A。理由很直接：图标的第一职责是成为这个 App 的身份，而 DroidBerth 的身份恰好就是「双栏 + 往对岸推」，
+          三个方向里只有 A 把这两件事同时写进了剪影。C 在 16 pt 下确实最干净，但它讲的是「连接」——任何同步、
+          配对、投屏工具都能用同一个形，放进 Dock 也认不出是文件管理器；B 把「推」讲得最响，可它的斜向 L 形
+          在圆角方形里重心不稳，而且 16 pt 下会糊成一个没有方向的钝角块。A 的代价是中间箭头与面板之间只剩
+          约 1 px 间隙，但它退化之后仍然是「两栏 + 中间推进」的三段式 —— 在一排几乎都是单形图标的 Dock 里，
+          这个三段式反而成了辨识度。落地时给 16 pt 单独出一档：把间隙压到 0、箭头并进左侧面板做成实心楔形，
+          其余档位共用同一份几何。
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ palette ============ -->
+<section class="sec" data-od-id="palette">
+  <hr class="rule">
+  <div style="padding-top:56px">
+    <div class="sec-head"><h2>品牌强调色</h2></div>
+    <p class="sec-sub">
+      两个色分别承担两个传输方向。它们同时用在 App 图标和界面里的方向标识上，
+      所以除了「好不好看」，还要过小面积高亮时的对比度这一关。
+    </p>
+
+    <div class="palette">
+      <article class="swatch" data-od-id="palette-primary">
+        <div class="swatch-chip" style="background:#ed8725">
+          <span class="hex" style="background:rgba(0,0,0,.34);color:#fff">#ED8725</span>
+        </div>
+        <div class="swatch-body">
+          <p class="swatch-role">主色 · Mac → Android</p>
+          <h3>Amber</h3>
+          <dl>
+            <dt>HEX</dt><dd>#ED8725</dd>
+            <dt>OKLCH</dt><dd>oklch(0.72 0.16 58)</dd>
+            <dt>深色底对比</dt><dd><span class="badge-ok">6.6 : 1</span> · #1c1c1e</dd>
+            <dt>浅色底对比</dt><dd><span class="badge-no">2.6 : 1</span> · #FFFFFF</dd>
+          </dl>
+          <p>
+            暖橙色，取自「港口灯」而不是「Android 绿」：Dock 里访达、Safari、文件夹全是蓝的，
+            暖色是唯一能在一排蓝里立刻跳出来的那一档，也天然贴合「推出去」的动能感。
+          </p>
+          <p>
+            <b>深色模式直接用原色</b>，6.6:1 已经远超门限，不需要换更亮的一档 —— 深色下真正的问题从来不是不够亮，
+            而是过亮导致大面积发光。若想要更「透亮」的观感，只把 L 提到 0.78、色相不动，那是风格选择，不是可读性需要。
+          </p>
+          <p>
+            <b>浅色模式必须分档</b>：作为大面积填充（图标底、主按钮底）没问题，
+            但用作小字号文本或 1 px 细线时白底只有 2.6:1，不达标 —— 降到 <b>#B44F00</b>（oklch 0.55 0.15 48），白底 5.2:1。
+          </p>
+        </div>
+      </article>
+
+      <article class="swatch" data-od-id="palette-secondary">
+        <div class="swatch-chip" style="background:#1ca0ac">
+          <span class="hex" style="background:rgba(0,0,0,.34);color:#fff">#1CA0AC</span>
+        </div>
+        <div class="swatch-body">
+          <p class="swatch-role">辅色 · Android → Mac</p>
+          <h3>Teal</h3>
+          <dl>
+            <dt>HEX</dt><dd>#1CA0AC</dd>
+            <dt>OKLCH</dt><dd>oklch(0.645 0.105 205)</dd>
+            <dt>深色底对比</dt><dd><span class="badge-ok">5.4 : 1</span> · #1c1c1e</dd>
+            <dt>浅色底对比</dt><dd><span class="badge-no">3.1 : 1</span> · #FFFFFF</dd>
+          </dl>
+          <p>
+            冷青色，专门给反向回传。和主色在色相上差 147°，即使在 12 px 的小箭头上也不会被认错；
+            明度刻意压低到和主色接近，这样两个色块并排时不会有一边显得更「重」。
+          </p>
+          <p>
+            <b>深色模式直接用原色</b>，5.4:1 合格，同样不需要换档。
+          </p>
+          <p>
+            <b>浅色模式下 3.1:1</b> —— 够大字形和图标（≥3:1），但小字不够；
+            小字场景降到 <b>#00828D</b>（oklch 0.55 0.10 205），白底 4.6:1。
+          </p>
+        </div>
+      </article>
+    </div>
+
+    <div class="demo" data-od-id="palette-demo">
+      <div class="demo-row demo-light">
+        <div class="demo-label">浅色模式</div>
+        <div class="demo-stack">
+          <div class="tline">
+            <span class="dot" style="background:#b44f00"></span>
+            <span class="arrow" style="color:#b44f00">→</span>
+            <span>Mac → Pixel 8 · 传输中</span>
+            <code style="color:#b44f00">#B44F00</code>
+            <span class="dim small">小字档</span>
+          </div>
+          <div class="tline">
+            <span class="dot" style="background:#00828d"></span>
+            <span class="arrow" style="color:#00828d">←</span>
+            <span>Pixel 8 → Mac · 回传</span>
+            <code style="color:#00828d">#00828D</code>
+            <span class="dim small">小字档</span>
+          </div>
+        </div>
+      </div>
+      <div class="demo-row demo-dark">
+        <div class="demo-label">深色模式</div>
+        <div class="demo-stack">
+          <div class="tline">
+            <span class="dot" style="background:#ed8725"></span>
+            <span class="arrow" style="color:#ed8725">→</span>
+            <span>Mac → Pixel 8 · 传输中</span>
+            <code style="color:#ed8725">#ED8725</code>
+            <span class="dim small">原色，无需换档</span>
+          </div>
+          <div class="tline">
+            <span class="dot" style="background:#1ca0ac"></span>
+            <span class="arrow" style="color:#1ca0ac">←</span>
+            <span>Pixel 8 → Mac · 回传</span>
+            <code style="color:#1ca0ac">#1CA0AC</code>
+            <span class="dim small">原色，无需换档</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="block">
+      <p class="block-label">图标底色渐变 · <b>由主色派生，单层线性，两档</b></p>
+      <div class="ladder stage-bg">
+        <div style="display:flex;align-items:center;gap:32px;flex-wrap:wrap">
+          <div style="flex:1 1 320px;min-width:240px">
+            <div style="height:74px;border-radius:12px;background:linear-gradient(180deg,#F9A04A 0%,#DE6B20 100%);border:1px solid rgba(255,255,255,.14)"></div>
+            <p class="master-cap" style="text-align:left;margin-top:14px">
+              <b>#F9A04A</b> oklch(0.78 0.145 62)　→　<b>#DE6B20</b> oklch(0.655 0.165 48)
+            </p>
+          </div>
+          <p style="flex:1 1 320px;min-width:240px;margin:0;font-size:14.5px;color:var(--muted);line-height:1.66">
+            竖直方向的单层线性渐变，上浅下深，色相从 62° 走到 48°。没有内发光、没有顶部高光条、没有噪点 ——
+            这些都能让母版更好看，但也会让渲染脚本从「六个原语」变成「一堆特例」。白色图形保持纯 #FFFFFF，
+            在渐变最浅与最深的两端对比度都足够。
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>DroidBerth · App 图标设计稿 · 方向 A two-berths / B push-rail / C dock-port</p>
+  <p>所有图形为内联 SVG，几何由超椭圆路径 + 矩形 / 圆角矩形 / 圆环 / 直线构成，无外部资源。Dock 中的访达、Safari、文件夹、系统设置为近似示意，仅用于对比语境。</p>
+</footer>
+
+</div>
+
+<script>
+(function () {
+  // Continuous-corner squircle approximated by a superellipse: |x|^n + |y|^n = r^n, n = 5.
+  // At 45° it sits 53.3px from the corner of the 824 box, versus 54.3px for a circular
+  // corner of r = 185.4 — visually the same cut, with the fuller shoulder Apple uses.
+  function squircle(cx, cy, size, n, steps) {
+    var a = size / 2, pts = [], i, t, c, s, x, y;
+    for (i = 0; i < steps; i++) {
+      t = (i / steps) * Math.PI * 2;
+      c = Math.cos(t);
+      s = Math.sin(t);
+      x = cx + a * Math.sign(c) * Math.pow(Math.abs(c), 2 / n);
+      y = cy + a * Math.sign(s) * Math.pow(Math.abs(s), 2 / n);
+      pts.push(Math.round(x * 100) / 100 + ' ' + Math.round(y * 100) / 100);
+    }
+    return 'M' + pts.join('L') + 'Z';
+  }
+
+  var d = squircle(512, 512, 824, 5, 256);
+  var nodes = document.querySelectorAll('.sq');
+  for (var k = 0; k < nodes.length; k++) nodes[k].setAttribute('d', d);
+})();
+</script>
+</body>
+</html>

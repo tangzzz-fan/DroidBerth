@@ -19,18 +19,7 @@ struct RemoteEntry: Identifiable, Hashable, Sendable {
     }
 
     var systemImage: String {
-        if isDirectory { return "folder.fill" }
-        if name.isVideoFile { return "film" }
-        if name.isImageFile { return "photo" }
-        if name.isAudioFile { return "music.note" }
-        let ext = name.pathExtensionLowercased
-        switch ext {
-        case "zip", "rar", "7z", "tar", "gz": return "doc.zipper"
-        case "apk": return "shippingbox"
-        case "pdf": return "doc.richtext"
-        case "txt", "md", "log", "json", "xml", "csv": return "doc.text"
-        default: return "doc"
-        }
+        FileTypeIcon.symbol(forName: name, isDirectory: isDirectory)
     }
 }
 

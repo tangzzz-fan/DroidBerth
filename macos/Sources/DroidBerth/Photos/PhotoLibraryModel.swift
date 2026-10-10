@@ -39,6 +39,9 @@ struct PhotoItem: Identifiable, Hashable, Sendable {
             size: byteCount,
             modified: creationDate,
             kindLabel: isVideo ? "视频" : "照片",
+            // 刻意**不**走 `FileTypeIcon`：图库条目的媒体类型是 PhotoKit 权威给出的，
+            // 比从文件名猜扩展名更准（文件名可能没有扩展名）。
+            // 正常文件（`.HEIC` → photo、`.MOV` → film）两条路径结果一致。
             systemImage: isVideo ? "film" : "photo",
             photoIdentifier: localIdentifier,
             isVideo: isVideo

@@ -3,7 +3,9 @@ import SwiftUI
 struct EntryTable: View {
     let entries: [BrowserEntry]
     @Binding var selection: Set<String>
-    let emptyMessage: String
+    /// 空态的结构化描述（图标 + 文案 + 可选动作）。改造前这里是一个字符串，
+    /// 于是四类语义不同的空态共用一个 `tray` 图标，且**挂不上按钮**。
+    let emptyState: PaneEmptyState
     let onOpen: (BrowserEntry) -> Void
     var onReveal: ((BrowserEntry) -> Void)?
     var onDelete: (() -> Void)?
@@ -26,18 +28,14 @@ struct EntryTable: View {
 
     var body: some View {
         if entries.isEmpty {
-            ContentUnavailableView {
-                Label(emptyMessage, systemImage: "tray")
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            PaneEmptyStateView(state: emptyState)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             Table(sortedEntries, selection: $selection, sortOrder: sortOrderBinding) {
                 TableColumn("名称", value: \.name) { entry in
                     draggableCell(entry) {
                         HStack(spacing: 6) {
-                            Image(systemName: entry.systemImage)
-                                .foregroundStyle(entry.isDirectory ? Color.accentColor : Color.secondary)
-                                .frame(width: 16)
+                            EntryIconView(entry: entry, size: 16)
                             Text(entry.name).lineLimit(1)
                         }
                     }
@@ -46,7 +44,7 @@ struct EntryTable: View {
 
                 TableColumn("种类", value: \.kindLabel) { entry in
                     draggableCell(entry) {
-                        Text(entry.kindLabel).foregroundStyle(.secondary)
+                        Text(entry.kindLabel).foregroundStyle(Color.columnText)
                     }
                 }
                 .width(min: 70, ideal: 90)
@@ -55,7 +53,7 @@ struct EntryTable: View {
                     draggableCell(entry) {
                         Text(ByteFormat.size(entry.size))
                             .monospacedDigit()
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.columnText)
                     }
                 }
                 .width(min: 70, ideal: 90)
@@ -63,7 +61,7 @@ struct EntryTable: View {
                 TableColumn("修改日期", value: \.sortableModified) { entry in
                     draggableCell(entry) {
                         Text(ByteFormat.date(entry.modified))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.columnText)
                     }
                 }
                 .width(min: 110, ideal: 140)
@@ -181,7 +179,7 @@ struct EntryTable: View {
     /// 多选时在拖拽预览上显示数量徽章（PRD §24）。
     private func dragPreview(for entry: BrowserEntry, count: Int) -> some View {
         HStack(spacing: 6) {
-            Image(systemName: entry.systemImage)
+            EntryIconView(entry: entry, size: 16)
             Text(count == 1 ? entry.name : "\(count) 个项目")
                 .font(.callout)
                 .lineLimit(1)

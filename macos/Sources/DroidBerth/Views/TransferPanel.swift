@@ -144,7 +144,7 @@ private struct TransferRow: View {
     private var mainLine: some View {
         HStack(spacing: 10) {
             Image(systemName: job.direction.symbol)
-                .foregroundStyle(job.direction == .upload ? Color.accentColor : Color.teal)
+                .foregroundStyle(TransferDirectionTint.color(for: job.direction))
                 .frame(width: 18)
 
             VStack(alignment: .leading, spacing: 3) {

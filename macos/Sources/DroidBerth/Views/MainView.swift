@@ -183,7 +183,7 @@ struct MainView: View {
                     EntryTable(
                         entries: macEntries,
                         selection: localSelectionBinding,
-                        emptyMessage: macEmptyMessage,
+                        emptyState: macEmptyState,
                         onOpen: openMacEntry,
                         onReveal: revealMacEntry,
                         onUpload: { Task { await model.uploadSelection() } },
@@ -195,7 +195,7 @@ struct MainView: View {
                     EntryGrid(
                         entries: macEntries,
                         selection: localSelectionBinding,
-                        emptyMessage: macEmptyMessage,
+                        emptyState: macEmptyState,
                         iconSize: model.settings.gridIconSize,
                         thumbnails: model.thumbnails,
                         onOpen: openMacEntry,
@@ -323,10 +323,14 @@ struct MainView: View {
         model.visibleLocalEntries.map(\.asBrowserEntry)
     }
 
-    private var macEmptyMessage: String {
-        if let error = model.localError { return error }
-        if model.hiddenBySearchCount(in: .mac) > 0 { return "没有匹配「\(model.searchQuery)」的项目" }
-        return "这个文件夹是空的"
+    private var macEmptyState: PaneEmptyState {
+        if let error = model.localError {
+            return .failed(error) { model.reloadLocal() }
+        }
+        if model.hiddenBySearchCount(in: .mac) > 0 {
+            return .noSearchMatch(query: model.searchQuery) { model.clearSearch() }
+        }
+        return .folderIsEmpty()
     }
 
     // MARK: - 设备窗格
@@ -393,7 +397,7 @@ struct MainView: View {
                 EntryTable(
                     entries: model.visibleRemoteEntries.map(BrowserEntry.init(remote:)),
                     selection: remoteSelectionBinding,
-                    emptyMessage: deviceEmptyMessage,
+                    emptyState: deviceEmptyState,
                     onOpen: openRemoteEntry,
                     onDelete: { showDeleteConfirm = true },
                     onDownload: { Task { await model.downloadSelection() } },
@@ -407,7 +411,7 @@ struct MainView: View {
                 EntryGrid(
                     entries: model.visibleRemoteEntries.map(BrowserEntry.init(remote:)),
                     selection: remoteSelectionBinding,
-                    emptyMessage: deviceEmptyMessage,
+                    emptyState: deviceEmptyState,
                     iconSize: model.settings.gridIconSize,
                     thumbnails: model.thumbnails,
                     onOpen: openRemoteEntry,
@@ -526,24 +530,114 @@ struct MainView: View {
         }
     }
 
-    private var deviceEmptyMessage: String {
-        if let remoteError = model.remoteError { return remoteError }
-        if model.hiddenBySearchCount(in: .device) > 0 { return "没有匹配「\(model.searchQuery)」的项目" }
-        if model.activeDevice != nil { return "这个文件夹是空的" }
+    /// 设备栏的空态。三条**连接引导**优先于「空文件夹」——
+    /// 改造前这一整块只是返回一个字符串，PRD §17.1 要求的图示、三步说明、
+    /// 「重新检测」按钮与品牌差异**一项都没有**。
+    private var deviceEmptyState: PaneEmptyState {
+        if let remoteError = model.remoteError {
+            return .failed(remoteError) { Task { await model.loadRemote() } }
+        }
+        if model.hiddenBySearchCount(in: .device) > 0 {
+            return .noSearchMatch(query: model.searchQuery) { model.clearSearch() }
+        }
+        if model.activeDevice != nil {
+            return .folderIsEmpty()
+        }
+
         switch model.monitor.status {
         case .sidecarMissing:
-            return "找不到 sidecar，请重新构建 app"
+            return PaneEmptyState(
+                systemImage: "exclamationmark.triangle",
+                title: "找不到 sidecar",
+                message: "app 包内缺少 droidberth-adb。重新运行 scripts/build.sh 会把它暂存进去。"
+            )
         case .adbMissing:
-            return "app 包内缺少 adb 可执行文件"
+            return PaneEmptyState(
+                systemImage: "exclamationmark.triangle",
+                title: "app 包内缺少 adb",
+                message: "重新运行 scripts/build.sh 会把 vendor/platform-tools/adb 暂存进包里。"
+            )
         case .failed(let message):
-            return message
+            return .failed(message) { Task { await model.monitor.refresh() } }
         case .idle:
-            if let unauthorized = model.monitor.devices.first(where: { $0.state == .unauthorized }) {
-                return "\(unauthorized.displayName) 未授权：请在手机上勾选「始终允许」后点确定"
-            }
-            return "未检测到 Android 设备，请用数据线连接并在手机上允许 USB 调试"
+            break
         }
+
+        // 设备插着但没在手机上点「允许」——PRD §17.1 要的就是这一张卡片。
+        if let unauthorized = model.monitor.devices.first(where: { $0.state == .unauthorized }) {
+            return unauthorizedGuide(for: unauthorized)
+        }
+        // PRD §17.2：手机重启后 tcpip 端口失效，需要插线重新激活一次。
+        if model.activeDevice == nil, !model.settings.rememberedWirelessDevices.isEmpty {
+            return wirelessReactivationGuide()
+        }
+        return noDeviceState()
     }
+
+    private func unauthorizedGuide(for device: AndroidDevice) -> PaneEmptyState {
+        PaneEmptyState(
+            systemImage: "lock",
+            title: "手机还没授权这台 Mac",
+            guide: DeviceGuide(
+                kind: .usbAuthorization,
+                title: "手机还没授权这台 Mac",
+                subtitle: "看一眼手机屏幕，上面应该有一个弹窗在等你确认。",
+                steps: [
+                    "用数据线连接手机与 Mac，手机上把 USB 用途选为「传输文件」。",
+                    "手机弹出上面这个窗口时，勾选「一律允许」再点「允许」。",
+                    "回到 DroidBerth，点下面的按钮重新检测。",
+                ],
+                primaryTitle: "已完成，重新检测",
+                primaryAction: { Task { await model.monitor.refresh() } },
+                brandNote: device.brandFamily?.authorizationNote,
+                troubleshooting: Self.usbTroubleshooting
+            )
+        )
+    }
+
+    private func wirelessReactivationGuide() -> PaneEmptyState {
+        PaneEmptyState(
+            systemImage: "wifi.slash",
+            title: "无线连接需要重新激活一次",
+            guide: DeviceGuide(
+                kind: .wirelessReactivation,
+                title: "无线连接需要重新激活一次",
+                subtitle: "手机重启之后无线端口会失效 —— 这是 Android 的限制，不是故障。",
+                steps: [
+                    "用数据线把手机接到这台 Mac，并在手机上确认授权。",
+                    "在「设备」菜单里选「启用无线连接」。",
+                    "看到可以拔线的提示后就拔掉，之后会自动无线续连。",
+                ],
+                primaryTitle: "重新检测",
+                primaryAction: { Task { await model.monitor.refresh() } },
+                brandNote: nil,
+                troubleshooting: Self.wirelessTroubleshooting
+            )
+        )
+    }
+
+    private func noDeviceState() -> PaneEmptyState {
+        PaneEmptyState(
+            systemImage: "cable.connector",
+            title: "还没有连接 Android 设备",
+            message: "用 USB 线把手机接到这台 Mac，手机上把 USB 用途选为「传输文件」。",
+            primary: .init(title: "重新检测") { Task { await model.monitor.refresh() } },
+            troubleshooting: Self.usbTroubleshooting
+        )
+    }
+
+    private static let usbTroubleshooting = [
+        "手机上把 USB 用途从「仅充电」改成「传输文件」——不少机型默认只充电。",
+        "换一根数据线或换一个 USB 口：有些线只供电、不传数据。",
+        "手机从没弹出过授权窗口时，先去「开发者选项」确认「USB 调试」是开着的。",
+        "小米 / OPPO / vivo 的部分机型还需要额外的「USB 调试（安全设置）」，并等倒计时结束。",
+    ]
+
+    private static let wirelessTroubleshooting = [
+        "先确认手机和这台 Mac 在同一个 Wi-Fi 下。",
+        "无线端口在手机每次重启后都会失效，需要插线重新激活一次。",
+        "仍然连不上时，在设备菜单里「断开连接」，再用数据线走一遍「启用无线连接」。",
+    ]
 
     // MARK: - 工具栏与提示
 

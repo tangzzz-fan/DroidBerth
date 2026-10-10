@@ -14,7 +14,8 @@ import SwiftUI
 struct EntryGrid: View {
     let entries: [BrowserEntry]
     @Binding var selection: Set<String>
-    let emptyMessage: String
+    /// 空态的结构化描述（图标 + 文案 + 可选动作），与列表视图共用同一个类型。
+    let emptyState: PaneEmptyState
     /// 网格图标边长（pt），由 ⌘+ / ⌘- 调整（PRD §13.3）。
     let iconSize: Double
     let thumbnails: ThumbnailStore
@@ -42,10 +43,8 @@ struct EntryGrid: View {
 
     var body: some View {
         if entries.isEmpty {
-            ContentUnavailableView {
-                Label(emptyMessage, systemImage: "tray")
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            PaneEmptyStateView(state: emptyState)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ScrollView {
                 LazyVGrid(columns: columns, spacing: spacing) {
@@ -118,7 +117,7 @@ struct EntryGrid: View {
 
             Text(entry.isDirectory ? "文件夹" : ByteFormat.size(entry.size))
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.columnText)
         }
         .padding(6)
         .frame(width: cellWidth)
@@ -158,9 +157,7 @@ struct EntryGrid: View {
             if showsSpinner {
                 ProgressView().controlSize(.small)
             } else {
-                Image(systemName: entry.systemImage)
-                    .font(.system(size: iconSide * 0.4))
-                    .foregroundStyle(entry.isDirectory ? Color.accentColor : Color.secondary)
+                EntryIconView(entry: entry, size: iconSide * 0.56)
             }
         }
     }
@@ -268,7 +265,7 @@ struct EntryGrid: View {
 
     private func dragPreview(for entry: BrowserEntry, count: Int) -> some View {
         HStack(spacing: 6) {
-            Image(systemName: entry.systemImage)
+            EntryIconView(entry: entry, size: 16)
             Text(count == 1 ? entry.name : "\(count) 个项目")
                 .font(.callout)
                 .lineLimit(1)

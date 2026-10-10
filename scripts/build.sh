@@ -58,17 +58,31 @@ for v in APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID \
   unset "$v"
 done
 
-echo "==> 1/3 stage the Rust sidecar into macos/Sidecar/"
+echo "==> 1/4 generate the app icon"
+# 必须在 `xcodegen generate` **之前** —— xcodegen 要求 project.yml 里列出的路径存在，
+# 缺了 macos/Resources/icon.icns 它会直接报错（与 sidecar 暂存同一个形状的前置条件）。
+# 纯 Python 渲染一张 1024 母版约 50 秒，所以只在脚本比产物新时才重跑。
+ICON_ICNS="$SWIFT_DIR/Resources/icon.icns"
+ICON_SCRIPT="$ROOT/scripts/make-icon.py"
+PYTHON="${PYTHON:-$(command -v python3 || echo /usr/bin/python3)}"
+if [ ! -f "$ICON_ICNS" ] || [ "$ICON_SCRIPT" -nt "$ICON_ICNS" ]; then
+  "$PYTHON" "$ICON_SCRIPT" "$SWIFT_DIR/Resources"
+else
+  echo "    up to date, skipping (make-icon.py 未变)"
+fi
+
+echo
+echo "==> 2/4 stage the Rust sidecar into macos/Sidecar/"
 TARGET_TRIPLE="$TRIPLE" "$ROOT/macos/Scripts/build-sidecar.sh"
 
 echo
-echo "==> 2/3 generate the Xcode project"
+echo "==> 3/4 generate the Xcode project"
 # USER 未设置时 XcodeGen 报 "Couldn't find current username" 且静默不生成工程。
 cd "$SWIFT_DIR"
 USER="$(id -un)" "$XCODEGEN" generate
 
 echo
-echo "==> 3/3 xcodebuild ($CONFIGURATION)"
+echo "==> 4/4 xcodebuild ($CONFIGURATION)"
 xcodebuild \
   -project "$SWIFT_DIR/DroidBerth.xcodeproj" \
   -scheme DroidBerth \

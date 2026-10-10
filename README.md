@@ -36,7 +36,7 @@ ADB 二进制内嵌在 app 内 —— 用户不需要装 Android SDK、不需要
 | 产品定义 | 完成（`docs/0926_01_PRD.md`，**v2.1**） |
 | 技术路线验证 | **完成，判 Go**（`docs/0926_02_swift-native-spike-plan.md`） |
 | Swift 原生外壳 MVP | **已实现，核心链路真机验证通过**（`docs/0926_03_swift-native-mvp-implementation.md`） |
-| 视觉与交互 | **部分**：视觉基调已定（系统控件 + 原生材质）；**PRD 正文里计划要做的事项已全部落地**（聚焦态描边 / Tab 循环 / 四向拖拽 / ⌘C⌘V 跨栏 / ⌘X 剪切 / 空格 Quick Look / 列头排序 / 搜索 / 失败重试 / 位置弹窗 + 最近使用 / 三种视图齐全 / 缩略图 / ⌘± 图标尺寸 / View + Device 菜单 / 设备端重命名与移动 / Reduce Motion / 预览窗格 ⇧⌘P / **设备端存储卷（内部存储 / SD 卡）**），**运行时行为待人工验收**。VoiceOver 按要求跳过；动态字体与对比度只做到部分；仍缺照片图库缩略图，方案见 `docs/1009_01_uiux-revamp-plan.md` |
+| 视觉与交互 | **已补齐（2026-10-11）**：交互层早于 2026-10-10 全绿；随后一轮视觉与图标审计补上三条 P0 —— **应用图标**（原来完全缺失，`scripts/make-icon.py` 是个从未被调用的孤儿脚本）、**文件类型图标单一来源**（原来两栏各写一遍 switch 且已分叉）、**PRD §17.1 的连接引导卡片**（原来只是一行字符串）。另补品牌色定义、空态结构（四类各有图标与动作）与 WCAG AA 的数据列文字。**运行时行为与图标观感待人工验收**；VoiceOver 按要求跳过；动态字体与对比度只做到部分。审计与设计稿见 `docs/1010_01_ui-icon-design-report.md`，**设计令牌唯一来源**是 `docs/design/DESIGN.md` |
 | 公证与分发 | **未做**（架构范围已决策：**arm64-only**，放弃 Intel，见 PRD §5.1） |
 
 ---
@@ -46,14 +46,16 @@ ADB 二进制内嵌在 app 内 —— 用户不需要装 Android SDK、不需要
 ```
 macos/                    Swift 原生外壳（唯一应用工程）
   project.yml               xcodegen 工程定义
-  Sources/DroidBerth/       44 个 Swift 文件 / 8572 行
-  Resources/                Info.plist + entitlements
+  Sources/DroidBerth/       49 个 Swift 文件
+  Resources/                Info.plist + entitlements + icon.icns（**生成物，不入库**）
   Scripts/build-sidecar.sh  编译 Rust sidecar 并暂存到 macos/Sidecar/
 sidecar/droidberth-adb/   Rust sidecar（1788 行 / 5 文件，零第三方依赖）
                           version / doctor / resolve / exec / raw 五个子命令
 scripts/                  构建、签名、公证脚本（Swift 路线）
+  make-icon.py              App 图标生成器（零依赖；几何与投影参数见 docs/design/DESIGN.md §6）
 vendor/                   adb 源码与 platform-tools（见「依赖与许可」）
-docs/                     产品文档、验证方案、实现文档、UI/UX 改造方案
+docs/                     产品文档、验证方案、实现文档、UI/UX 改造方案、视觉审计报告
+  design/                  设计令牌（DESIGN.md，唯一来源）+ open-design 稿快照
 reports/                  doctor 报告输出
 ```
 
@@ -88,12 +90,19 @@ SidecarLocator.locate()          相对 Bundle.main.executableURL 的同级目�
 ./scripts/build.sh
 ```
 
-它会依次：暂存 sidecar → `xcodegen generate` → `xcodebuild`。
+它会依次：**生成 App 图标** → 暂存 sidecar → `xcodegen generate` → `xcodebuild`。
 产物：`macos/build/dd/Build/Products/Release/DroidBerth.app`。
+
+> 图标这一步必须在 `xcodegen generate` **之前** —— xcodegen 要求 `project.yml` 里列出的路径
+> 存在，缺了 `macos/Resources/icon.icns` 它会直接报错。纯 Python 渲染一张 1024 母版约 50 秒，
+> 所以只在 `scripts/make-icon.py` 比产物新时才重跑。
 
 ### 分步（等价，便于调试）
 
 ```bash
+# 0. 生成 App 图标 —— 必须在 xcodegen 之前
+python3 scripts/make-icon.py macos/Resources
+
 # 1. 暂存 sidecar —— 必须先跑，否则 Xcode 的 preBuildScript 直接 fail
 ./macos/Scripts/build-sidecar.sh
 
@@ -184,6 +193,22 @@ swiftc -typecheck -target arm64-apple-macos14.0 \
 去掉 `-typecheck` 换成 `-o /tmp/x` 还能顺带验证链接（能确认 `_QuickLook_SwiftUI` 这类
 Swift overlay 框架被正确自动链接）。
 
+**文件类型图标映射的回归核对**（约 5 秒，29 条断言）：
+
+```bash
+mkdir -p /tmp/iconcheck && cp scripts/check-icon-mapping.swift /tmp/iconcheck/main.swift
+swiftc -O -o /tmp/iconcheck/run -target arm64-apple-macos14.0 \
+  -sdk "$(xcrun --show-sdk-path --sdk macosx)" \
+  -swift-version 6 -strict-concurrency=complete -Xfrontend -disable-sandbox \
+  macos/Sources/DroidBerth/Support/FileTypeIcon.swift \
+  macos/Sources/DroidBerth/Support/ByteFormat.swift /tmp/iconcheck/main.swift
+/tmp/iconcheck/run
+```
+
+它守的是一类**静默**缺陷：同一份事实写两遍之后分叉。它挡的是
+`.apk` 在 Mac 栏显示成通用文稿、`.app` 在设备栏显示成通用文稿这类问题 ——
+这些都不会被编译器或任何既有测试发现。
+
 ### 验证面板
 
 把技术验证的判据逐条重跑（不依赖 UI）：
@@ -218,7 +243,9 @@ build/dd/Build/Products/Release/DroidBerth.app/Contents/MacOS/DroidBerth --spike
 
 | 项 | 原因 |
 |---|---|
-| 视觉与交互验收（双击、拖拽、布局、Quick Look、跨栏粘贴、排序、搜索、网格选择、分栏铺列、菜单、重命名、移动、预览窗格） | 开发环境无法截图 / 无法模拟点击，**需要人工操作**。双击 / 右键打开已人工确认可用；**Phase 1–4 与预览窗格的新增交互仍未验收** |
+| 视觉与交互验收（双击、拖拽、布局、Quick Look、跨栏粘贴、排序、搜索、网格选择、分栏铺列、菜单、重命名、移动、预览窗格、**空态与设备引导卡片、系统彩色文件图标、数据列文字**） | 开发环境无法截图 / 无法模拟点击，**需要人工操作**。双击 / 右键打开已人工确认可用；**Phase 1–4、预览窗格与 2026-10-11 的视觉层改动仍未验收** |
+| **图标观感**（App 图标是否与 Finder 并排无异物感、系统彩色文件图标在深色模式下的表现、16pt 档在 Finder 列表里的可辨识度） | 本机不能截图。几何与投影已用数值核对过（与系统图标的实测剖面均方误差约 0.77/255），**人眼结论需实测** |
+| **设备厂商文案的准确性** | 小米 / OPPO / vivo / 三星 / 华为的额外授权步骤来自各家公开文档，**未逐机型真机核对**（本机只有一台华为 Android 10） |
 | **网格缩略图的远端成品率** | 只拉 64 KB 文件头再交给 `QLThumbnailGenerator`。**截断数据能否解码没有真机验证**：JPEG 通常可解出部分图像，HEIC / `moov` 在文件尾的 MP4 很可能解不出 ⇒ 回退类型图标。「一律拉完整文件」已被 PRD §23 明确拒绝 |
 | 分栏视图的运行时行为 | `NSBrowser` 的铺列、异步补行、单选、双击预览、底部路径栏均未运行过；**行内类型图标**还多一层不确定 —— `willDisplayCell` 在 item-based 浏览器里是否被调用，Apple 文档没有明确承诺（不调用则退化为纯文本行，功能不受影响） |
 | Quick Look 面板本身 | 改用 `QLPreviewPanel` 后，**面板能否真的被带出（响应者链那一步）在本机无法实测**；面板内方向键切换、跟随选择同样未验。见 PRD §23 |

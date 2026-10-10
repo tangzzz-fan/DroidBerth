@@ -24,20 +24,6 @@ struct LocalEntry: Identifiable, Hashable, Sendable {
         return ext.uppercased() + " 文稿"
     }
 
-    var systemImage: String {
-        if isDirectory { return "folder.fill" }
-        if name.isVideoFile { return "film" }
-        if name.isImageFile { return "photo" }
-        if name.isAudioFile { return "music.note" }
-        switch name.pathExtensionLowercased {
-        case "zip", "rar", "7z", "tar", "gz": return "doc.zipper"
-        case "app": return "app"
-        case "pdf": return "doc.richtext"
-        case "txt", "md", "log", "json", "xml", "csv": return "doc.text"
-        default: return "doc"
-        }
-    }
-
     var asBrowserEntry: BrowserEntry {
         BrowserEntry(
             origin: .local,
@@ -48,7 +34,7 @@ struct LocalEntry: Identifiable, Hashable, Sendable {
             size: size,
             modified: modified,
             kindLabel: kindLabel,
-            systemImage: systemImage
+            systemImage: FileTypeIcon.symbol(forName: name, isDirectory: isDirectory)
         )
     }
 }

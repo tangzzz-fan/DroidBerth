@@ -32,6 +32,12 @@ targets:
     platform: macOS
     sources:
       - path: Sources/DroidBerth
+      # App 图标。**由 scripts/make-icon.py 生成**（唯一来源是那份脚本 + 设计稿），
+      # 不进版本库 —— 与 Sidecar/ 同一个理由：可复现的产物不必入库。
+      # ⚠️ xcodegen 在 generate 时会要求列在这里的路径**存在**，所以 build.sh
+      #    必须在 `xcodegen generate` 之前先生成它。
+      - path: Resources/icon.icns
+        buildPhase: resources
       - path: Sidecar/droidberth-adb
         buildPhase:
           copyFiles:

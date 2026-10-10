@@ -25,6 +25,12 @@ vendor/
 macos/Sidecar/
 # sidecar 的 cargo 产物。
 sidecar/*/target/
+# App 图标（由 scripts/make-icon.py 生成）。
+# 不入库的理由与 Sidecar/ 一样：**可从脚本完整复现**，不必把二进制塞进版本库。
+# 唯一来源是 scripts/make-icon.py + docs/design/ 下的设计稿。
+# icon.icns 由 build.sh 在 `xcodegen generate` **之前**生成（xcodegen 要求路径存在）。
+macos/Resources/icon.icns
+macos/Resources/icon.png
 
 # ── 运行期输出 ────────────────────────────────────────────────
 # doctor / spike 的报告。

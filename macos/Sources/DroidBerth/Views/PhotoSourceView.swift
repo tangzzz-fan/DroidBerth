@@ -43,7 +43,7 @@ struct PhotoSourceView: View {
                         EntryTable(
                             entries: model.photos.items.map(\.asBrowserEntry),
                             selection: $selection,
-                            emptyMessage: photosEmptyMessage,
+                            emptyState: photosEmptyState,
                             onOpen: { _ in },
                             onUpload: { Task { await model.uploadSelection() } },
                             onRefresh: { Task { await model.photos.loadItems() } }
@@ -52,7 +52,7 @@ struct PhotoSourceView: View {
                         EntryGrid(
                             entries: model.photos.items.map(\.asBrowserEntry),
                             selection: $selection,
-                            emptyMessage: photosEmptyMessage,
+                            emptyState: photosEmptyState,
                             iconSize: model.settings.gridIconSize,
                             thumbnails: model.thumbnails,
                             onOpen: { _ in },
@@ -173,27 +173,35 @@ struct PhotoSourceView: View {
         .background(.quaternary.opacity(0.4))
     }
 
+    /// 权限被拒。
+    ///
+    /// 文案里那句「其余功能不受影响」是**必需的**（PRD §18.2）：权限被拒最坏的后果
+    /// 不是少了照片，而是用户以为整个 app 废了。次级动作因此不是「稍后再说」这种
+    /// 什么都不做的措辞，而是**真的把人带到还在工作的那一侧**。
     private var deniedView: some View {
-        ContentUnavailableView {
-            Label("没有照片图库访问权限", systemImage: "photo.on.rectangle.angled")
-        } description: {
-            Text(model.photos.access == .restricted
-                 ? "系统策略限制了照片访问，无法读取图库。"
-                 : "在「系统设置 → 隐私与安全性 → 照片」里勾选 DroidBerth 后重新打开窗口。")
-        } actions: {
-            Button("打开系统设置") { openPrivacySettings() }
-        }
+        PaneEmptyStateView(
+            state: PaneEmptyState(
+                systemImage: "lock",
+                title: "DroidBerth 没有照片访问权限",
+                message: model.photos.access == .restricted
+                    ? "系统策略限制了照片访问，无法读取图库。文件推送、设备浏览等功能不受影响。"
+                    : "照片图库暂时不能浏览。文件推送、设备浏览等功能不受影响 —— 可在「系统设置 › 隐私与安全性 › 照片」里重新打开。",
+                primary: .init(title: "打开系统设置") { openPrivacySettings() },
+                secondary: .init(title: "先用 Finder 位置") { model.macSource = .files }
+            )
+        )
     }
 
     private var promptView: some View {
-        ContentUnavailableView {
-            Label("需要照片图库权限", systemImage: "photo.on.rectangle.angled")
-        } description: {
-            Text("读取照片与视频原始文件需要你的授权。授权后即可把图库里的内容直接推送到 Android 设备。")
-        } actions: {
-            Button("授权访问") { Task { await model.photos.requestAccess() } }
-                .buttonStyle(.borderedProminent)
-        }
+        PaneEmptyStateView(
+            state: PaneEmptyState(
+                systemImage: "photo.on.rectangle.angled",
+                title: "需要照片图库权限",
+                message: "读取照片与视频的原始文件需要你的授权。授权后就能把图库里的内容直接推送到 Android 设备。",
+                primary: .init(title: "授权访问") { Task { await model.photos.requestAccess() } },
+                secondary: .init(title: "先用 Finder 位置") { model.macSource = .files }
+            )
+        )
     }
 
     // MARK: - 绑定
@@ -207,8 +215,19 @@ struct PhotoSourceView: View {
 
     // MARK: - 动作
 
-    private var photosEmptyMessage: String {
-        model.photos.loadError ?? (model.photos.loadingItems ? "正在载入…" : "这个相簿是空的")
+    private var photosEmptyState: PaneEmptyState {
+        if let error = model.photos.loadError {
+            return PaneEmptyState(
+                systemImage: "exclamationmark.triangle",
+                title: "读不到这个相簿",
+                message: error,
+                primary: .init(title: "重试") { Task { await model.photos.loadItems() } }
+            )
+        }
+        if model.photos.loadingItems {
+            return PaneEmptyState(systemImage: "photo.stack", title: "正在载入照片…")
+        }
+        return .folderIsEmpty()
     }
 
     private func openPrivacySettings() {

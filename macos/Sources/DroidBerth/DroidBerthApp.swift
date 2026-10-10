@@ -17,7 +17,9 @@ struct DroidBerthApp: App {
     var body: some Scene {
         WindowGroup("DroidBerth") {
             MainView(model: model)
-                .frame(minWidth: 900, minHeight: 600)
+                // 预览栏占一栏常驻宽度，窗口下限要跟着抬 —— 否则 900 减去预览栏会把
+                // 两个窗格压到各自 340pt 的下限之下（宽度分配本身没有弹性）。
+                .frame(minWidth: model.settings.showPreviewPane ? 1180 : 900, minHeight: 600)
         }
         .defaultSize(width: 1080, height: 720)
         .commands {
@@ -119,6 +121,9 @@ struct DroidBerthApp: App {
 
                 Toggle("显示隐藏文件", isOn: $model.showHiddenFiles)
                     .keyboardShortcut(".", modifiers: [.command, .shift])
+
+                Toggle("显示预览窗格", isOn: Bindable(model.settings).showPreviewPane)
+                    .keyboardShortcut("p", modifiers: [.command, .shift])
 
                 Button("交换两侧") { model.swapPanes() }
                     .keyboardShortcut("x", modifiers: [.command, .shift])

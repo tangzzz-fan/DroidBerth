@@ -4,6 +4,8 @@ import SwiftUI
 
 struct PhotoSourceView: View {
     @Bindable var model: AppModel
+    /// 选择绑定由外面给：改选择要同时把焦点移到 Mac 窗格（见 `MainView` 的说明）。
+    @Binding var selection: Set<String>
 
     var body: some View {
         switch model.photos.access {
@@ -40,7 +42,7 @@ struct PhotoSourceView: View {
                     case .list, .column:
                         EntryTable(
                             entries: model.photos.items.map(\.asBrowserEntry),
-                            selection: $model.photoSelection,
+                            selection: $selection,
                             emptyMessage: photosEmptyMessage,
                             onOpen: { _ in },
                             onUpload: { Task { await model.uploadSelection() } },
@@ -49,7 +51,7 @@ struct PhotoSourceView: View {
                     case .grid:
                         EntryGrid(
                             entries: model.photos.items.map(\.asBrowserEntry),
-                            selection: $model.photoSelection,
+                            selection: $selection,
                             emptyMessage: photosEmptyMessage,
                             iconSize: model.settings.gridIconSize,
                             thumbnails: model.thumbnails,

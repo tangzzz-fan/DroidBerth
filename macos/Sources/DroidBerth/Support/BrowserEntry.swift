@@ -69,4 +69,31 @@ struct BrowserEntry: Identifiable, Hashable, Sendable {
             systemImage: remote.systemImage
         )
     }
+
+    /// 还原成设备端条目。
+    ///
+    /// 为什么要能反着转：列视图与预览窗格手上只有 `BrowserEntry`（统一的展示类型），
+    /// 而打开 / 预览 / 移动这些动作要的是 `RemoteEntry`。有了它就不必再去
+    /// `remoteEntries` 里按 id 反查 —— 那个列表里**没有子目录里的条目**。
+    var asRemoteEntry: RemoteEntry {
+        RemoteEntry(
+            name: name,
+            path: path,
+            isDirectory: isDirectory,
+            isSymlink: isSymlink,
+            size: size,
+            modified: modified
+        )
+    }
+
+    var asLocalEntry: LocalEntry {
+        LocalEntry(
+            name: name,
+            url: URL(fileURLWithPath: path),
+            isDirectory: isDirectory,
+            isSymlink: isSymlink,
+            size: size,
+            modified: modified
+        )
+    }
 }

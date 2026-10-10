@@ -305,8 +305,9 @@ final class AppModel {
 
     // MARK: - 上传
 
+    /// Mac 窗格选中的本地文件 URL（列视图也能还原子目录里的选中项）。
     var selectedLocalURLs: [URL] {
-        localEntries.filter { localSelection.contains($0.id) }.map(\.url)
+        focusedLocalURLs()
     }
 
     var selectedPhotoItems: [PhotoItem] {
@@ -467,7 +468,7 @@ final class AppModel {
             return
         }
 
-        let entries = remoteEntries.filter { remoteSelection.contains($0.id) }
+        let entries = focusedRemoteEntries()
         guard !entries.isEmpty else {
             banner = Banner(level: .info, title: "请先选择要下载的项目", detail: "在右侧设备窗格里选中文件或文件夹")
             return
@@ -619,12 +620,12 @@ final class AppModel {
                 )
                 return
             }
-            let urls = selectedLocalURLs
+            let urls = focusedLocalURLs()
             guard !urls.isEmpty else { return }
             payload = TransferDragPayload(side: .local, origin: .pane, paths: urls.map(\.path))
 
         case .device:
-            let entries = remoteEntries.filter { remoteSelection.contains($0.id) }
+            let entries = focusedRemoteEntries()
             guard !entries.isEmpty else { return }
             payload = TransferDragPayload(side: .remote, origin: .pane, paths: entries.map(\.path))
         }
@@ -650,7 +651,7 @@ final class AppModel {
             )
             return
         }
-        let entries = remoteEntries.filter { remoteSelection.contains($0.id) }
+        let entries = focusedRemoteEntries()
         guard !entries.isEmpty else {
             banner = Banner(level: .info, title: "请先选择要移动的项目", detail: "在设备窗格里选中文件或文件夹")
             return
@@ -793,9 +794,9 @@ final class AppModel {
     func quickLookFocusedSelection() -> Bool {
         switch (focus, macSource) {
         case (.mac, .files):
-            let picked = localEntries.filter { localSelection.contains($0.id) }
-            guard picked.count == 1, let entry = picked.first else { return false }
-            previewURL = entry.url
+            let urls = focusedLocalURLs()
+            guard urls.count == 1, let url = urls.first else { return false }
+            previewURL = url
             return true
 
         case (.mac, .photos):
@@ -808,7 +809,7 @@ final class AppModel {
             return true
 
         case (.device, _):
-            let picked = remoteEntries.filter { remoteSelection.contains($0.id) }
+            let picked = focusedRemoteEntries()
             guard picked.count == 1, let entry = picked.first else { return false }
             guard !entry.isDirectory else {
                 banner = Banner(
@@ -922,8 +923,7 @@ final class AppModel {
     }
 
     func deleteRemoteSelection() async {
-        let entries = remoteEntries.filter { remoteSelection.contains($0.id) }
-        await deleteRemoteEntries(entries)
+        await deleteRemoteEntries(focusedRemoteEntries())
     }
 
     /// 删除给定的设备端条目。
@@ -1080,7 +1080,7 @@ final class AppModel {
     }
 
     func scanRemoteSelection() async {
-        let entries = remoteEntries.filter { remoteSelection.contains($0.id) }
+        let entries = focusedRemoteEntries()
         let paths = entries.filter { !$0.isDirectory }.map(\.path)
         guard !paths.isEmpty else {
             banner = Banner(level: .info, title: "请先选择要扫描的文件", detail: nil)
@@ -1248,6 +1248,102 @@ final class AppModel {
     func shrinkGridIcons() { settings.adjustGridIconSize(by: -AppSettings.gridIconSizeStep) }
     var canEnlargeGridIcons: Bool { settings.canEnlargeGridIcons }
     var canShrinkGridIcons: Bool { settings.canShrinkGridIcons }
+
+    // MARK: - 聚焦窗格的选中项（统一解析入口）
+
+    /// 列视图选中项的**快照**。
+    ///
+    /// 列表 / 网格的选择能由当前列表直接还原；**列视图不能** —— 它选中的条目可能位于
+    /// **子目录**里（`/sdcard/DCIM/Camera/x.jpg` 根本不在 `/sdcard/DCIM` 的列表里）。
+    /// 所以列视图在选中时把条目记在这里，供预览窗格、Quick Look、⌘C/⌘V 还原。
+    private var columnSnapshots: [Pane: BrowserEntry] = [:]
+
+    func rememberColumnSelection(_ entry: BrowserEntry?, in pane: Pane) {
+        if let entry {
+            columnSnapshots[pane] = entry
+        } else {
+            columnSnapshots.removeValue(forKey: pane)
+        }
+    }
+
+    /// 聚焦窗格选中的条目。三种视图形态在这里归一，调用方不必各自判断。
+    func focusedBrowserSelection() -> [BrowserEntry] {
+        switch (focus, macSource) {
+        case (.mac, .files):
+            if let snapshot = columnSnapshot(for: .mac, selection: localSelection) { return [snapshot] }
+            return localEntries.filter { localSelection.contains($0.id) }.map(\.asBrowserEntry)
+
+        case (.mac, .photos):
+            return photos.items.filter { photoSelection.contains($0.id) }.map(\.asBrowserEntry)
+
+        case (.device, _):
+            if let snapshot = columnSnapshot(for: .device, selection: remoteSelection) { return [snapshot] }
+            return remoteEntries.filter { remoteSelection.contains($0.id) }.map(BrowserEntry.init(remote:))
+        }
+    }
+
+    /// 设备窗格选中的条目。
+    ///
+    /// 刻意**不看焦点**：右键菜单、弹窗里的「删除」都可能在设备窗格未聚焦时触发，
+    /// 那时要的仍然是「设备窗格选中了什么」。
+    func focusedRemoteEntries() -> [RemoteEntry] {
+        if let snapshot = columnSnapshot(for: .device, selection: remoteSelection) {
+            return [snapshot.asRemoteEntry]
+        }
+        return remoteEntries.filter { remoteSelection.contains($0.id) }
+    }
+
+    /// Mac 窗格选中的本地文件 URL。照片图库不在此列 —— 它的条目不是文件路径。
+    ///
+    /// 同样不看焦点（上传按钮作用于 Mac 窗格，与焦点无关）。
+    func focusedLocalURLs() -> [URL] {
+        if let snapshot = columnSnapshot(for: .mac, selection: localSelection) {
+            return [snapshot.asLocalEntry.url]
+        }
+        return localEntries.filter { localSelection.contains($0.id) }.map(\.url)
+    }
+
+    /// 只有快照**恰好等于当前的单选**时才采用它 —— 否则宁可按当前列表还原，
+    /// 免得拿一份过期快照去操作错的条目。
+    private func columnSnapshot(for pane: Pane, selection: Set<String>) -> BrowserEntry? {
+        guard viewMode(for: pane) == .column,
+              let snapshot = columnSnapshots[pane],
+              selection == [snapshot.id] else { return nil }
+        return snapshot
+    }
+
+    // MARK: - 预览窗格（PRD §11 的「显示预览窗格 ⇧⌘P」）
+
+    /// 预览窗格要展示的内容。一次算好，视图直接用，避免在 View 里散着算。
+    struct PreviewSummary {
+        let owner: String
+        let pane: Pane
+        let entries: [BrowserEntry]
+
+        var count: Int { entries.count }
+        var single: BrowserEntry? { entries.count == 1 ? entries.first : nil }
+        var directoryCount: Int { entries.filter(\.isDirectory).count }
+        var fileCount: Int { entries.count - directoryCount }
+        /// 已知大小的条目之和。**大小未知的不混进合计**，否则会给一个偏小的数字让人误判。
+        var knownBytes: Int64 { entries.compactMap(\.size).reduce(0, +) }
+        var unknownSizeCount: Int { entries.filter { $0.size == nil }.count }
+    }
+
+    var previewSummary: PreviewSummary {
+        PreviewSummary(owner: previewOwner, pane: focus, entries: focusedBrowserSelection())
+    }
+
+    var previewOwner: String {
+        switch (focus, macSource) {
+        case (.mac, .files): "这台 Mac"
+        case (.mac, .photos): "照片图库"
+        case (.device, _): activeDevice?.displayName ?? "Android 设备"
+        }
+    }
+
+    func togglePreviewPane() {
+        settings.showPreviewPane.toggle()
+    }
 
     // MARK: - 分栏视图（PRD §13.2）
 

@@ -28,6 +28,11 @@ struct EntryColumns: NSViewRepresentable {
     let listChildren: (String) async -> [BrowserEntry]
     /// 双击一个**文件**时调用（文件夹由 `NSBrowser` 自己展开）。
     let onOpenFile: (BrowserEntry) -> Void
+    /// 选中项变化时回调（nil = 没有选中）。
+    ///
+    /// 存在的理由：列视图选中的条目可能位于**子目录**，不在窗格当前的条目列表里，
+    /// 所以预览窗格 / Quick Look / ⌘C 没法从列表反查出来。外面据此记一份快照。
+    var onSelectEntry: ((BrowserEntry?) -> Void)?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -93,6 +98,7 @@ struct EntryColumns: NSViewRepresentable {
             } else {
                 parent.selection = []
                 parent.currentDirectory = parent.rootPath
+                parent.onSelectEntry?(nil)
             }
             return proposedSelectionIndexes
         }
@@ -117,6 +123,7 @@ struct EntryColumns: NSViewRepresentable {
             parent.currentDirectory = entry.isDirectory
                 ? entry.path
                 : (entry.path as NSString).deletingLastPathComponent
+            parent.onSelectEntry?(entry)
         }
 
         @objc func handleDoubleClick(_ sender: NSBrowser) {

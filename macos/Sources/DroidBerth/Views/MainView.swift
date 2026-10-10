@@ -22,11 +22,20 @@ struct MainView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HSplitView {
-                pane(model.leftPane)
-                    .frame(minWidth: 340)
-                pane(model.rightPane)
-                    .frame(minWidth: 340)
+            HStack(spacing: 0) {
+                HSplitView {
+                    pane(model.leftPane)
+                        .frame(minWidth: 340)
+                    pane(model.rightPane)
+                        .frame(minWidth: 340)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                // 预览栏在窗口右缘，只占内容区高度（不侵入底部传输面板）。
+                if model.settings.showPreviewPane {
+                    Divider()
+                    PreviewPane(model: model)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -169,7 +178,7 @@ struct MainView: View {
                 case .list:
                     EntryTable(
                         entries: macEntries,
-                        selection: $model.localSelection,
+                        selection: localSelectionBinding,
                         emptyMessage: macEmptyMessage,
                         onOpen: openMacEntry,
                         onReveal: revealMacEntry,
@@ -181,7 +190,7 @@ struct MainView: View {
                 case .grid:
                     EntryGrid(
                         entries: macEntries,
-                        selection: $model.localSelection,
+                        selection: localSelectionBinding,
                         emptyMessage: macEmptyMessage,
                         iconSize: model.settings.gridIconSize,
                         thumbnails: model.thumbnails,
@@ -195,12 +204,13 @@ struct MainView: View {
                 case .column:
                     EntryColumns(
                         rootPath: model.localDirectory.path,
-                        selection: $model.localSelection,
+                        selection: localSelectionBinding,
                         currentDirectory: $model.localColumnDirectory,
                         listChildren: { path in
                             await model.browserChildren(path: path, origin: .local)
                         },
-                        onOpenFile: openMacEntry
+                        onOpenFile: openMacEntry,
+                        onSelectEntry: { model.rememberColumnSelection($0, in: .mac) }
                     )
                 }
                 // PRD §13.2：分栏视图的路径栏在窗格**底部**。列表 / 网格沿用顶栏面包屑。
@@ -209,7 +219,7 @@ struct MainView: View {
                 }
                 localStatusBar
             } else {
-                PhotoSourceView(model: model)
+                PhotoSourceView(model: model, selection: photoSelectionBinding)
             }
         }
         .modifier(PaneFocusStyle(isFocused: model.focus == .mac))
@@ -365,7 +375,7 @@ struct MainView: View {
             case .list:
                 EntryTable(
                     entries: model.visibleRemoteEntries.map(BrowserEntry.init(remote:)),
-                    selection: $model.remoteSelection,
+                    selection: remoteSelectionBinding,
                     emptyMessage: deviceEmptyMessage,
                     onOpen: openRemoteEntry,
                     onDelete: { showDeleteConfirm = true },
@@ -379,7 +389,7 @@ struct MainView: View {
             case .grid:
                 EntryGrid(
                     entries: model.visibleRemoteEntries.map(BrowserEntry.init(remote:)),
-                    selection: $model.remoteSelection,
+                    selection: remoteSelectionBinding,
                     emptyMessage: deviceEmptyMessage,
                     iconSize: model.settings.gridIconSize,
                     thumbnails: model.thumbnails,
@@ -395,12 +405,13 @@ struct MainView: View {
             case .column:
                 EntryColumns(
                     rootPath: model.remoteDirectory,
-                    selection: $model.remoteSelection,
+                    selection: remoteSelectionBinding,
                     currentDirectory: $model.remoteColumnDirectory,
                     listChildren: { path in
                         await model.browserChildren(path: path, origin: .remote)
                     },
-                    onOpenFile: openRemoteFile
+                    onOpenFile: openRemoteFile,
+                    onSelectEntry: { model.rememberColumnSelection($0, in: .device) }
                 )
             }
 
@@ -615,6 +626,36 @@ struct MainView: View {
         Binding(
             get: { model.focusedViewMode },
             set: { model.setViewMode($0, for: model.focus) }
+        )
+    }
+
+    // MARK: - 选择绑定（顺带聚焦）
+
+    /// **改选择即聚焦该窗格**，与 Finder 一致：操作哪个窗格，焦点就在哪个。
+    ///
+    /// 这不只是体感问题。预览窗格、⌘C/⌘V、⌘⌫ 都以「聚焦窗格」为准。若点选行不设焦点，
+    /// 用户点完设备栏再按 ⌘⌫ 会什么都不发生（菜单项按旧焦点被禁用）—— 静默的错。
+    ///
+    /// 只拦「用户改选择」这一条路：`navigateLocal` 之类的程序化清空直接写属性，不过绑定，
+    /// 因此换目录不会把焦点抢走。
+    private var localSelectionBinding: Binding<Set<String>> {
+        Binding(
+            get: { model.localSelection },
+            set: { model.localSelection = $0; model.focus = .mac }
+        )
+    }
+
+    private var remoteSelectionBinding: Binding<Set<String>> {
+        Binding(
+            get: { model.remoteSelection },
+            set: { model.remoteSelection = $0; model.focus = .device }
+        )
+    }
+
+    private var photoSelectionBinding: Binding<Set<String>> {
+        Binding(
+            get: { model.photoSelection },
+            set: { model.photoSelection = $0; model.focus = .mac }
         )
     }
 

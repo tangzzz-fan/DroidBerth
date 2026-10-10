@@ -110,6 +110,12 @@ final class AppSettings {
         didSet { defaults.set(gridIconSize, forKey: Key.gridIconSize) }
     }
 
+    /// 预览窗格（PRD §11「显示预览窗格 ⇧⌘P」）。**默认关** —— 它是一栏常驻宽度，
+    /// 不该替用户决定要不要占。开关状态跨启动保留。
+    var showPreviewPane: Bool {
+        didSet { defaults.set(showPreviewPane, forKey: Key.showPreviewPane) }
+    }
+
     /// 图标尺寸的上下限与步进。
     ///
     /// 下限 72 保证文件名还能读；上限 240 是「一屏正好铺 8～10 个」的素材浏览档位。
@@ -171,6 +177,7 @@ final class AppSettings {
         deviceViewMode = ViewMode(rawValue: defaults.string(forKey: Key.deviceViewMode) ?? "") ?? .list
         let storedIconSize = defaults.double(forKey: Key.gridIconSize)
         gridIconSize = storedIconSize > 0 ? storedIconSize : 112
+        showPreviewPane = defaults.object(forKey: Key.showPreviewPane) as? Bool ?? false
         recentLocalFolders = defaults.stringArray(forKey: Key.recentLocalFolders) ?? []
         lastDestination = defaults.dictionary(forKey: Key.lastDestination) as? [String: String] ?? [:]
         wirelessAddress = defaults.dictionary(forKey: Key.wirelessAddress) as? [String: String] ?? [:]
@@ -214,6 +221,7 @@ final class AppSettings {
         static let macViewMode = "view.mac"
         static let deviceViewMode = "view.device"
         static let gridIconSize = "view.gridIconSize"
+        static let showPreviewPane = "view.showPreviewPane"
         static let recentLocalFolders = "list.recentLocalFolders"
         static let lastDestination = "device.lastDestination"
         static let wirelessAddress = "device.wirelessAddress"

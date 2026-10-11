@@ -260,3 +260,115 @@ S6  首次提交 → 应对审核反馈（预留 1–3 个来回）
 | U5 | Hardened Runtime 那三条例外是否还能去掉 | 要实测 |
 | U6 | 中国大陆上架需要的额外资质 | **我没有可靠判据，必须你或代理确认** |
 | U7 | MAS 版本的**体积**限制（我们要内嵌约 40 MB 的 platform-tools） | 各方资料口径不一，提交时以 App Store Connect 的提示为准 |
+
+---
+
+## 9. 证书链路与自动化工具选型（fastlane / match 值不值得上）
+
+> 2026-10-12 记录。起因是「涉及多套证书链路时，fastlane + match 是否能提高管理效率」。
+
+### 9.1 先答「现在支持 MAS 了吗」：**没有，一行代码都没动**
+
+这一条要用证据回答，不能靠印象。仓库当前状态（2026-10-12 实查）：
+
+| 查什么 | 结果 |
+|---|---|
+| `macos/` 下的 `app-sandbox` | **0 处** —— 沙盒是 MAS 的硬性要求（Guideline 2.4.5(i)），这条不成立就谈不上「支持」 |
+| entitlements 文件 | 只有 `Resources/DroidBerth.entitlements` 一个，内容是三条 **Hardened Runtime 例外**（`allow-jit` / `allow-unsigned-executable-memory` / `disable-library-validation`），**不是沙盒权限** |
+| `project.yml` 的配置 | 只有 **Debug / Release 两个**；签名写死 `CODE_SIGN_IDENTITY: "Developer ID Application"` + `CODE_SIGN_STYLE: Manual`，**没有** `PROVISIONING_PROFILE_SPECIFIER`（MAS 必须有 profile） |
+| 证书 | Apple Development / Developer ID Application / **Apple Distribution** 三张。缺 `Mac Installer Distribution`（签 `.pkg` 用） |
+| 打包形态 | 只有 `package-release.sh`（DMG + zip）。**没有** `productbuild` 的 `.pkg` 那条路 |
+| fastlane / Gemfile | 不存在 |
+
+**目前存在的只有两样东西**：一份**方案**（本文档）与一个**可行性探针**（`scripts/spike-sandbox-adb.sh`）。
+而那个探针的结论**还没出来** —— 它需要不受限的终端 + 一台真机。
+
+⇒ 所以准确的说法是：**MAS 是一条已论证清楚、但尚未开工、且可行性未验证的路。**
+
+### 9.2 现在到底有几条证书链
+
+把两条渠道摊开数一遍（这是判断「要不要工具」的前提）：
+
+| 渠道 | 需要的东西 | 现在有没有 |
+|---|---|---|
+| **侧载（Developer ID）** | ① `Developer ID Application` 证书 | ✅ |
+| | ② 公证凭据：App Store Connect API key，或 Apple ID + app-specific password | ✅（`.env` 三件套） |
+| | ③ profile：**不需要**（Developer ID 不走描述文件） | — |
+| **MAS** | ④ `Apple Distribution` 证书 | ✅ **已有** |
+| | ⑤ `Mac Installer Distribution` 证书（签 `.pkg`） | ⬜ 待申请 |
+| | ⑥ Mac App Store **distribution profile** | ⬜ 待建 |
+| | ⑦ Mac App Development profile（本地自测要另配一套） | ⬜ 待建 |
+| | ⑧ 上传凭据：App Store Connect API key —— **可与 ② 共用同一把** | ✅（若统一） |
+
+**合计 4 张证书 + 2 个 profile，且是单人单机。** 这个规模是判断的关键。
+
+### 9.3 `match` 解决的是**分发**问题 —— 而本项目现在没有这个问题
+
+`match` 的定位说得很明白（原文）：*"An Apple Distribution certificate belongs to the team...
+Its private key, though, is created on one Mac. So the question every team hits is:
+**how do the other Macs, and the build server, get that key?**"*
+
+它给的是这个答案：把证书 + 私钥 + profile 放进一个**加密的私有 git 仓库（或 S3/GCS）**，
+用**一个共享口令**（OpenSSL 加密）保护，任何机器 `match` 一下就能取到。
+
+本项目的现实是：**1 个人、1 台 Mac、仓库只有 1 个协作者。**
+「key 怎么到别的机器上」这个问题**不存在** ⇒ `match` 的收益 ≈ 0。
+
+而它带来的成本在这个项目里是**实打实**的，而且第 1 条正好撞上一个已经做过的决定：
+
+| # | 成本 | 为什么在这里格外贵 |
+|---|---|---|
+| 1 | **它要求把签名私钥放进一个 git 仓库** | 本项目**刚刚明确决定过**「签名凭据一步都不离开本机」，README 里为此写了整段理由（Developer ID 私钥给的不是「读你的数据」，是「以你的名义签发任何 macOS 都信任的软件」）。上 `match` 等于**把这个决定重新打开**，而且现在还要多放一套 MAS 的私钥。这是**新增攻击面**，不是中性动作 |
+| 2 | 单一口令，**丢了无法恢复** | 只能 `match nuke` 重建；口令得进密码管理器 —— 又多一件必须保管的秘密 |
+| 3 | `match nuke` 会**吊销它管理的所有证书** | 会打断正在进行的构建；而 Apple 对分发证书有**数量上限（3 张）**，反复 nuke/重建很容易撞上限 |
+| 4 | 多一个仓库（或 bucket）+ `MATCH_PASSWORD` 的保管链路 | 单人维护两处凭据，比维护一处更费神 |
+| 5 | 引入 Ruby / bundler 到仓库与 CI | 现在的 CI 是刻意极简的（装工具链 → 取 adb → 构建 → 跑守卫） |
+
+**什么时候它会开始划算？** 三条触发条件，命中任意一条再谈：
+① 出现**第二台 Mac**（家里 + 公司）；② **CI 要签名**（而不是像现在只做验证）；
+③ 出现**第二个人**参与签名/发版。
+
+> 顺带一句：即便要上，也应让 `match` 跑 `--readonly` 供取用，只在一处读写下发新证书 ——
+> 在新鲜 runner 上跑读写模式会**悄悄新签一张证书**，吃掉 Apple 那 3 个名额里的一个。
+
+### 9.4 `fastlane`（不含 `match`）逐项评估
+
+它不是一个整体，要拆开看。结论是：**只有 MAS 的元数据/TestFlight 那一块有实质收益。**
+
+| 组件 | 在本项目值不值 | 理由 |
+|---|---|---|
+| `deliver`（ASC 元数据 / 截图） | ✅ **值**（仅当走 MAS） | 元数据变成仓库里的一组文本文件，可 review、可回滚、可 diff —— 比在网页上一个一个填强得多。这是 fastlane 对本项目**唯一**明显省事的部分 |
+| `pilot`（TestFlight） | ✅ **值**（仅当走 MAS） | 同上，上传与分发测试版 |
+| `gym`（构建） | ❌ **不值** | 它只是包一层 `xcodebuild`。而 `build.sh` 是**四步链**（图标 → NOTICE 暂存 → sidecar → xcodegen → xcodebuild），`gym` 顶多替最后一步。更关键的是 `build.sh` 里攒着一批踩过的坑（bash 3.2 空数组展开、`XCODEBUILD_ARGS` 这个唯一可靠的口子）。换掉它 = **同一件事两份实现**，正是这个仓库反复修过的形状 |
+| `scan`（测试） | ❌ **接不上** | 本项目**没有测试 target**；四道守卫是独立编译的脚本（`check-all.sh`），不是 XCTest |
+| `notarize` | ❌ **不值** | `notarize.sh` 已经做了 app + DMG **双**公证 + staple，并带三条踩过的坑（`zip -X -y`、`ditto` vs `cp -R`、DMG 本身的签名）。替换的风险 > 收益 |
+| `snapshot`（截图） | ❌ 不适用 | 不是 iOS；macOS 截图必须人工操作（本机无法截图，见 README） |
+
+⚠️ 还有一个**容易忽略的冲突**：`match` 会把证书装进钥匙串并**改动 Xcode 的签名设置**，
+而本项目是 `CODE_SIGN_STYLE: Manual` + 写死 `CODE_SIGN_IDENTITY`。
+「profile 与 entitlements 在 Xcode 管理与 match 管理之间漂移」是已知痛点 ——
+一旦两套机制并存，签名问题会变得难以定位，而签名问题恰恰是**最难排查**的一类。
+
+### 9.5 推荐的路径（比 fastlane 更省事，且不与既有决定冲突）
+
+1. **证书与 profile 交给 Apple 自己的工具**：证书用 Xcode → Settings → Accounts →
+   Manage Certificates；profile 在开发者网站建好后**不落盘到仓库**。
+   单人单机时，`xcodebuild -allowProvisioningUpdates` + `PROVISIONING_PROFILE_SPECIFIER`
+   是最少活动的方案 —— **密钥不出本机**，与既有决定一致。
+2. **把「App Store Connect API key」变成唯一的密钥。** 同一把 `.p8`（+ Key ID + Issuer ID）
+   既给 `notarytool --key` 用，也能给 ASC 上传用 ⇒ **一把钥匙替掉 Apple ID + app-specific
+   password 两件秘密**。这同时补上 README 里记着的那个缺口：`env.sh` / `build.sh` 早就预留了
+   `APPLE_API_KEY` / `APPLE_API_ISSUER`，但 **`notarize.sh` 目前只实现了 profile 与 Apple-ID 两条路** ——
+   要用得先补。这是**当前就能做、且立刻减少秘密数量**的一步。
+3. **要上 MAS 且嫌元数据填报烦**：只引入 fastlane 的 `deliver`（+ `pilot`），
+   收敛成**一个 lane**；**不引入 `match`，不用 `gym` 替 `build.sh`**。
+4. **别做的事**：不要让 fastlane 接管 `build.sh` / `notarize.sh` / `check-all.sh` / `check-release.sh`。
+   这四个脚本里每一条都是踩出来的，换掉等于把知识从代码里赶回到人的记忆里。
+
+### 9.6 顺序上的提醒
+
+**现在讨论工具链优化，前提还没成立。** S1（沙盒里 adb 能否看见真机）**还没跑出结论**，
+而它有可能直接判「MAS 这条路走不通」。给一条还没确认要走的路配工具，是典型的过早优化。
+
+⇒ 顺序应该是：**先跑 S1 → 再决定要不要做 MAS → 要做的话再选工具**。
+唯一现在就该做、且无论走不走 MAS 都受益的，是上面第 2 条（把凭据收敛成一把 ASC API key）。

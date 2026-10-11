@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""诊断包的回归守卫。
+r"""诊断包的回归守卫。
 
 ## 为什么需要它
 
@@ -14,7 +14,9 @@
 2. **中文名的 UTF-8 标志位**（`0x0800`）—— 没有它，Windows / Linux / 7-Zip 会按
    `cp437` 解释而得到乱码名（macOS 自家工具假定 UTF-8，看不出问题，所以本地很容易漏）。
 3. **没有 `__MACOSX/` 垃圾项** —— 那是 `ditto --sequesterRsrc` 的副产品，不是我们的内容。
-4. **没有用户名泄露** —— 包里任何一处都不该出现真实的家目录用户名。
+4. **没有真实用户名 / 家目录路径泄露** —— 注意系统 `.ips` 自己会把用户名匿成字面量
+   `USER`、把中间层匿成 `*`（`\/Users\/USER\/*\/…`），那是**已脱敏**的内容，必须放行；
+   判据只看**真实**的家目录路径与用户名（详见判据 4 处的长注释）。
 
 用法：
 
@@ -82,13 +84,26 @@ def main() -> int:
             junk = [n for n in names if "__MACOSX" in n or "/._" in n]
             check("没有 __MACOSX / ._ 垃圾项", not junk, f"多出：{junk[:3]}")
 
-            # 判据 4：不泄露用户名 / 家目录绝对路径
+            # 判据 4：不泄露**真实**家目录路径 / **真实**用户名
             #
-            # ⚠️ 判据要精确，否则会误报：bundle 标识符本身就含用户名
-            # （`dev.<用户名>.droidberth`），那是**产品标识**、公开且排障时有用，
-            # 不该被当成隐私。所以先把标识符替掉再找。
+            # ⚠️ 两条都是「把判据写宽了就等于没有判据」的例子，都真的误报过：
+            #
+            # ① bundle 标识符本身就含用户名（`dev.<用户名>.droidberth`）。那是**产品标识**、
+            #    公开且排障时有用，不该被当成隐私。所以先把标识符替掉再找。
+            #
+            # ② **不能拿 `/Users/` 前缀当隐私判据**。系统崩溃报告（`.ips`）自己就会做匿名化 ——
+            #    实测里面的形态是 `\/Users\/USER\/*\/DroidBerth.app\/…`：用户名被换成了字面量
+            #    `USER`、中间层被换成了 `*`。那是**已经脱敏过**的内容，看到它是正常的。
+            #    按 `/Users/` 判，会让「用户机器上崩过一次」这个再普通不过的情况永远 FAIL ——
+            #    而**持续误报等于没有判据**（仓库里同一句话已经因为 bundle id 那件事写过一遍）。
+            #
+            # 所以这里判两件**具体**的事：真实家目录路径（含 JSON 转义形态）与真实用户名，
+            # 占位符 `USER` / `Shared` / `*` 放行。
             username = pathlib.Path.home().name
             bundle_id = f"dev.{username}.droidberth"
+            home = str(pathlib.Path.home())
+            home_escaped = home.replace("/", "\\/")
+            placeholder_users = {"USER", "Shared", "*"}
             leaked: list[str] = []
             for info in infos:
                 if info.is_dir():
@@ -99,13 +114,20 @@ def main() -> int:
                     continue
                 probe = blob.replace(bundle_id, "<bundle-id>")
                 reasons = []
-                if "/Users/" in probe or "\\/Users\\/" in probe:
-                    reasons.append("出现 /Users/ 绝对路径")
+                if home in probe or home_escaped in probe:
+                    reasons.append("出现真实家目录路径")
+                # `/Users/<名字>` 里凡是**不是**系统占位符的名字，都算泄露（含别的用户名）。
+                outsiders = {
+                    name for name in re.findall(r"/Users/([^/\s\"\\]+)", probe)
+                    if name not in placeholder_users
+                }
+                if outsiders:
+                    reasons.append("出现 /Users/ 下的真实用户名：" + "、".join(sorted(outsiders)))
                 if re.search(rf"(?<![\w.]){re.escape(username)}(?![\w])", probe):
                     reasons.append("出现用户名")
                 if reasons:
                     leaked.append(f"{info.filename}（{'、'.join(reasons)}）")
-            check(f"包里不出现用户名「{username}」或 /Users/ 路径",
+            check(f"包里不出现真实家目录路径或用户名「{username}」",
                   not leaked, f"命中：{leaked}")
 
             print(f"\n（包内 {len(infos)} 项）")

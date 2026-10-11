@@ -96,10 +96,15 @@ cat > "$OUT/RELEASE-NOTES.md" <<'TPL'
 | **`DroidBerth-__VERSION__.dmg`** | **推荐**。已签名 + 已公证 + 已 staple。打开后把 DroidBerth 拖进左边的「应用程序」即可 |
 | `DroidBerth-__VERSION__.zip` | 同一份 app 的压缩包；习惯直接拖 app 的人用这个 |
 | `NOTICE.txt` | `adb`（Android platform-tools）的 Apache-2.0 声明。它也在 app 包内（`Contents/Resources/NOTICE.txt`） |
+| `LICENSE` | 本项目自己的 **MIT** 许可 —— 与 `adb` 的许可是两件事，互不影响 |
+| `CHANGELOG.md` | 变更记录 |
 | `SHA256SUMS.txt` | 上面各文件的 SHA-256 |
 | Source code (zip / tar.gz) | GitHub 自动附带的源码快照 |
 
 **需要 Apple Silicon（M 系列）**，macOS 14 或更高。本项目不发 Intel 版本。
+
+**Android 端：已在 Android 10 上完整验证；Android 11–16 未验证**（未发现不兼容，但没有实测证据）。
+首次连接需要在手机上确认 USB 调试授权。
 
 ## 安装
 

@@ -187,6 +187,25 @@ CONFIGURATION=Release-MAS ./scripts/check-mas-readiness.sh      # PASS 23 · FAI
 > 沙盒初始化只看签名里的 entitlements；profile 是给**受限** entitlements（`com.apple.developer.*`）
 > 与 App Store 校验用的，我们一条都没用到。
 
+### 4.3 第一轮视觉验收量到的两条（2026-10-12）
+
+完整的报告与证据在 **`docs/1012_01_mas-visual-acceptance.md`** + `docs/mas-acceptance/2026-10-12/`。
+两条都是**新发现**，都会影响 E7 的形态：
+
+**F1 · 沙盒版开局就站在自己的容器里。** 路径栏实测
+`/ ▸ Users ▸ tango ▸ Library ▸ Containers ▸ dev.tango.droidberth ▸ Data`。
+用户第一次打开看到的是**自己容器的内容**，不是家目录。
+⇒ **E7 不是「可做可不做的优化」，是 MAS 版的必需件** —— §2.1 那条 Guideline 2.5.2 的代价
+从纸面变成了画面。
+
+**F2 · 沙盒下符号链接被显示成「文稿」，还带一个假的大小。** 实测：
+`Desktop 文稿 19 B`、`Downloads 文稿 21 B`、`Movies 文稿 18 B`、`Music 文稿 17 B`、
+`Pictures 文稿 20 B`（而真目录 `Documents/Library` 正常显示「文件夹」）。
+原因：`LocalEntry.kindLabel` 只看 `isDirectory`，而沙盒下 `isDirectoryKey` **不跟随符号链接**；
+大小那列读到的是**符号链接自身**的长度。
+⚠️ 这与 `places()` 的过滤是**两件事**：过滤管「弹窗里列不列它」，F2 管「在列表里长什么样」——
+而因为 F1，列表里**一定会看到这五项**，所以 F2 不是理论问题。
+
 ---
 
 ## 5. App Store Connect 侧要准备的材料
@@ -230,7 +249,8 @@ CONFIGURATION=Release-MAS ./scripts/check-mas-readiness.sh      # PASS 23 · FAI
 | 项 | 要求 | 谁 |
 |---|---|---|
 | App 图标（1024×1024） | 已有（`scripts/make-icon.py` 的母版） | ✅ |
-| **macOS 截图** | App Store 要求若干张，且**必须是真实运行界面**。⚠️ 更正（2026-10-12）：不是「本机无法截图」，而是**缺「屏幕录制」权限** —— 工具已就绪（`scripts/ui-shot.sh`，按窗口 id 精确截图，避开整屏）。**权限一开，这一项我能做** | **授权后我出图**；否则才需要你 |
+| **macOS 截图** | App Store 要求若干张，且**必须是真实运行界面**。⚠️ 更正（2026-10-12）：不是「本机无法截图」，而是**缺「屏幕录制」权限** —— 工具已就绪（`scripts/ui-shot.sh`，按窗口 id 精确截图，避开整屏）。**权限已到位，这一项我能做** | **我** |
+| **视觉验收** | 沙盒版**第一次真的看过界面**（2026-10-12）。方法与结果见 `docs/1012_01_mas-visual-acceptance.md`，证据在 `docs/mas-acceptance/2026-10-12/`（像素 + UI 树两份） | ✅ 已做第一轮 |
 | 预览视频（可选） | | 你 |
 
 > 截图这一项要设计几个脚本：**双栏主界面**、**网格视图带缩略图**、**传输进行中**、

@@ -37,7 +37,7 @@ ADB 二进制内嵌在 app 内 —— 用户不需要装 Android SDK、不需要
 | 技术路线验证 | **完成，判 Go**（`docs/0926_02_swift-native-spike-plan.md`） |
 | Swift 原生外壳 MVP | **已实现，核心链路真机验证通过**（`docs/0926_03_swift-native-mvp-implementation.md`） |
 | 视觉与交互 | **已补齐（2026-10-11）**：交互层早于 2026-10-10 全绿；随后一轮视觉与图标审计补上三条 P0 —— **应用图标**（原来完全缺失，`scripts/make-icon.py` 是个从未被调用的孤儿脚本）、**文件类型图标单一来源**（原来两栏各写一遍 switch 且已分叉）、**PRD §17.1 的连接引导卡片**（原来只是一行字符串）。另补品牌色定义、空态结构（四类各有图标与动作）与 WCAG AA 的数据列文字。**运行时行为与图标观感待人工验收**；VoiceOver 按要求跳过；动态字体与对比度只做到部分。审计与设计稿见 `docs/1010_01_ui-icon-design-report.md`，**设计令牌唯一来源**是 `docs/design/DESIGN.md`。2026-10-11 还把 P1 的 **Finder 服务菜单**从一条 09-26 的老分支移植进来（**按当前代码重写**，不是 merge），并补上交互层最后两处脱节 —— **网格视图的键盘导航**（方向键 / ⇧ 扩展 / 字母跳转）与 **`⏎` 重命名**，判据见 `Support/GridNavigation.swift` 与 `scripts/check-grid-navigation.swift` |
-| 公证与分发 | **链已跑通，发版方式已定型（2026-10-11）**：`build.sh` → `notarize.sh`（app zip 与 DMG 双双 `Accepted`、staple 通过）→ `checklist.sh`；发版收成**本机一条命令**（`./scripts/release-local.sh <版本> --publish`，实测干跑 2 分 11 秒），GitHub Actions 的 `ci.yml` 只负责验证（**实跑全绿**），签名凭据**不离开本机**（见「发行与发布」）。**尚未正式发版** —— 只差一个版本号。架构范围已决策 **arm64-only**（放弃 Intel，PRD §5.1） |
+| 公证与分发 | **链已跑通，发版方式已定型（2026-10-11）**：`build.sh` → `notarize.sh`（app zip 与 DMG 双双 `Accepted`、staple 通过）→ `checklist.sh`；发版收成**本机一条命令**（`./scripts/release-local.sh <版本> --publish`，实测干跑 2 分 11 秒），GitHub Actions 的 `ci.yml` 只负责验证（**实跑全绿**），签名凭据**不离开本机**（见「发行与发布」）。**尚未正式发版** —— 技术上只差一个版本号，但离「敢承诺 1.0.0」还差验收与发布工程两块，清单见 `docs/1011_03_1.0-roadmap.md`。架构范围已决策 **arm64-only**（放弃 Intel，PRD §5.1） |
 
 ---
 
@@ -74,7 +74,7 @@ shasum -a 256 -c SHA256SUMS.txt
 ```
 macos/                    Swift 原生外壳（唯一应用工程）
   project.yml               xcodegen 工程定义
-  Sources/DroidBerth/       59 个 Swift 文件
+  Sources/DroidBerth/       60 个 Swift 文件
   Resources/                Info.plist + entitlements + icon.{icns,png}（**图标入库**，见「图标不生效」）
                             + NOTICE.txt（**构建期从 vendor/ 暂存**，不入库；PRD §28 要求随包分发）
   Scripts/build-sidecar.sh  编译 Rust sidecar 并暂存到 macos/Sidecar/
@@ -390,7 +390,9 @@ swiftc -O -o /tmp/transfercheck/run -target arm64-apple-macos14.0 \
 （远端 64 KB 通道对视频必失败）。断言直接由**实测表**驱动，理由与证据见
 `docs/1011_01_device-acceptance-report.md` §2 与 §9。
 
-> 代价要认：这两个脚本**不会**在构建或 CI 里自动跑，靠人记得跑。
+> 这些脚本全都挂在 `scripts/check-all.sh` 里，而 **CI 每次 push 都会强制跑它**
+> （`.github/workflows/ci.yml` → `check-all.sh`）。**本地不是自动的** —— 改完先 `build.sh`
+> 再跑一次 `./scripts/check-all.sh`（第四个守卫要驱动 app 自己的导出命令，所以顺序不能反）。
 
 ### 验证面板
 
@@ -754,6 +756,7 @@ MotionEvent` —— 这不是某个 app 的 bug，是**系统整体跑不动**�
 | `docs/design/1011_01-design-compliance.md` | **设计稿符合性审计（78 条：一致 53 / 偏离 16 / 未实现 9）**：逐条比对 `DESIGN.md` 与实现，给出偏离与未实现清单 |
 | `docs/1011_01_device-acceptance-report.md` | **设备端验收报告（API 37 模拟器）**：远端缩略图成品率 3/8、设备卷大小写 / NFC 语义、文件名合法字符集与长度判据、媒体入库、测不到的项 |
 | `docs/1011_02_observability-report.md` | **可观测性方案**：日志 / 崩溃取证 / 一键诊断包的取舍，四类故障如何分开收，脱敏判据 |
+| `docs/1011_03_1.0-roadmap.md` | **到 1.0.0 的路线图**：把全仓的「未实现 / 未验证 / 未定论」归类成验收 / 发布工程 / 功能缺口 / 已决策不做四类，含**人工验收清单**（§8）与 ticket 队列（§6） |
 | `docs/device-acceptance/2026-10-11/` | 上述报告的**原始日志与可重跑脚本**（5 份日志 + 5 个脚本） |
 | `docs/design/DESIGN.md` | 设计常量唯一来源（色 / 尺寸 / 图标判据 / 图标几何契约 / 投影参数 / 已否决清单） |
 | `.scratch/ui-simplification-tickets.md` | UI 精简（方案 A）+ P0 第一批 ticket 队列 |

@@ -18,6 +18,14 @@ struct LocalEntry: Identifiable, Hashable, Sendable {
     var id: String { url.path }
 
     var kindLabel: String {
+        // 符号链接先判 —— 与 `RemoteEntry.kindLabel` **保持同一个顺序与同一个词**。
+        //
+        // ⚠️ 设备侧一直是对的（`if isSymlink { return "替身" }`），本地侧漏了这一支，
+        // 于是**同一个概念在两个窗格里显示得不一样**（这台项目反复栽的那一类）。
+        // 2026-10-12 在沙盒版里量到它的具体后果：容器里那五个符号链接
+        // （`Desktop`/`Downloads`/… 指向真实目录）显示成 **「文稿」**，
+        // 因为沙盒下 `isDirectoryKey` 不跟随链接 ⇒ 掉进了「按扩展名判种类」的兜底分支。
+        if isSymlink { return "替身" }
         if isDirectory { return "文件夹" }
         let ext = name.pathExtensionLowercased
         if ext.isEmpty { return "文稿" }
@@ -160,12 +168,18 @@ enum LocalFileSystem {
 
             let entries: [LocalEntry] = urls.compactMap { url in
                 guard let values = try? url.resourceValues(forKeys: Set(keys)) else { return nil }
+                let isLink = values.isSymbolicLink ?? false
+                let isDir = values.isDirectory ?? false
                 return LocalEntry(
                     name: url.lastPathComponent,
                     url: url,
-                    isDirectory: values.isDirectory ?? false,
-                    isSymlink: values.isSymbolicLink ?? false,
-                    size: values.isDirectory == true ? nil : values.fileSize.flatMap { Int64($0) },
+                    isDirectory: isDir,
+                    isSymlink: isLink,
+                    // 符号链接**不报大小**：`fileSizeKey` 给的是**链接自身**的长度。
+                    // 实测 `Desktop → ../../../../Desktop` 报 **19 B**、`Downloads` 报 **21 B** ——
+                    // 那正是目标路径字符串的字节数。它既不是文件大小也不是目录大小，
+                    // 摆在那儿只会让人以为那是个十几字节的文件。
+                    size: (isDir || isLink) ? nil : values.fileSize.flatMap { Int64($0) },
                     modified: values.contentModificationDate
                 )
             }

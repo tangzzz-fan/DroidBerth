@@ -159,10 +159,35 @@ checkEqual("typeSelect ﬁ↔fi 折叠", GridNavigation.typeSelectIndex("fi", in
 // 而设备端**不**折叠的（é 与 e、全角与半角）在这里同样不该命中 —— 判据与上传冲突检测一致
 checkEqual("typeSelect é↔e 不折叠", GridNavigation.typeSelectIndex("e", in: [entry("é.txt")], from: 0), nil)
 
+// ── 顺带：本地条目的「种类」标签与设备端**用同一个词、同一个顺序** ──────────────
+//
+// 放这一份里，是因为它是**唯一**同时链了 `LocalFileSystem` 与 `RemoteEntry` 的检查
+// （两者都要一长串依赖）。判据本身属于「同一个概念两端语义不同」那一类：
+// 2026-10-12 实测到的后果是 —— 本地侧漏了 `isSymlink` 那一支，容器里的符号链接显示成「文稿」。
+func localEntry(_ name: String, isDirectory: Bool = false, isSymlink: Bool = false) -> LocalEntry {
+    LocalEntry(name: name, url: URL(fileURLWithPath: "/x/\(name)"),
+               isDirectory: isDirectory, isSymlink: isSymlink, size: nil, modified: nil)
+}
+func remoteEntry(_ name: String, isDirectory: Bool = false, isSymlink: Bool = false) -> RemoteEntry {
+    RemoteEntry(name: name, path: "/x/\(name)",
+                isDirectory: isDirectory, isSymlink: isSymlink, size: nil, modified: nil)
+}
+checkEqual("符号链接：本地侧是「替身」", localEntry("Desktop", isSymlink: true).kindLabel, "替身")
+checkEqual("符号链接：两端同一个词",
+           localEntry("Desktop", isSymlink: true).kindLabel,
+           remoteEntry("Desktop", isSymlink: true).kindLabel)
+checkEqual("目录：本地侧是「文件夹」", localEntry("a", isDirectory: true).kindLabel, "文件夹")
+checkEqual("目录：两端同一个词",
+           localEntry("a", isDirectory: true).kindLabel,
+           remoteEntry("a", isDirectory: true).kindLabel)
+checkEqual("普通文件：按扩展名", localEntry("a.jpg").kindLabel, "JPG 文稿")
+checkEqual("无扩展名：文稿", localEntry("README").kindLabel, "文稿")
+
 // ─────────────────────────────────────────────────────────────
 
 print("覆盖：order（文件夹优先 / 名称序 / 纯粹性）· columnCount（7 档宽度）· "
-      + "targetIndex（左右线性、上下整行、两端夹住）· typeSelect（大小写 / 起点 / 折叠 / 无命中）")
+      + "targetIndex（左右线性、上下整行、两端夹住）· typeSelect（大小写 / 起点 / 折叠 / 无命中）· "
+      + "kindLabel（本地/设备两端的符号链接、目录、文件）")
 if failures.isEmpty {
     print("ALL OK")
 } else {

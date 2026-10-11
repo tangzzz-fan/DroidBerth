@@ -206,6 +206,11 @@ CONFIGURATION=Release-MAS ./scripts/check-mas-readiness.sh      # PASS 23 · FAI
 ⚠️ 这与 `places()` 的过滤是**两件事**：过滤管「弹窗里列不列它」，F2 管「在列表里长什么样」——
 而因为 F1，列表里**一定会看到这五项**，所以 F2 不是理论问题。
 
+**F2 已修（2026-10-12）**：挖下去发现它是**「同一个概念两端语义不同」**那个老毛病 ——
+设备侧 `RemoteEntry.kindLabel` **一直有** `isSymlink → 替身`，本地侧 `LocalEntry` 漏了这一支。
+两端顺序与用词已统一，符号链接也**不再报大小**（`fileSizeKey` 给的是链接自身长度）。
+实测行：`DroidBerth-symlink-test  替身  —`（证据 `docs/mas-acceptance/2026-10-12/07-*.ax.txt`）。
+
 ### 4.4 沙盒版当前**能访问哪些文件夹**（2026-10-12 实测）
 
 用户问的就是这个。下面每一条都是**在这台机器上量出来的**，不是从 entitlements 推的：

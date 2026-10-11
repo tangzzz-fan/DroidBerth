@@ -1,0 +1,19 @@
+F2 修复后的实测行（沙盒版 Release-MAS，AX 树，2026-10-12 07:51）
+
+测试物：`~/Downloads/DroidBerth-symlink-test -> /Applications`
+（造在「下载」里，因为那是沙盒版唯一可浏览的固定位置；验完已删）
+
+    AXStaticText value=「android-studio-rabbit1-mac_arm.dmg」
+    AXStaticText value=「DMG 文稿」
+    AXStaticText value=「1.5 GB」
+    AXStaticText value=「1天前」
+    AXStaticText value=「DroidBerth-symlink-test」
+    AXStaticText value=「替身」          ← 修复前是「文稿」
+    AXStaticText value=「—」             ← 修复前是「13 B」（`/Applications` 正好 13 字符 —— 那是链接自身的长度）
+    AXStaticText value=「13秒前」
+    AXStaticText value=「IMG_9095.JPG」
+    AXStaticText value=「JPG 文稿」
+    AXStaticText value=「683 KB」
+    AXStaticText value=「2026年9月13日 16:10」
+
+结论：符号链接显示为「替身」、大小显示为「—」，普通文件与目录不受影响。

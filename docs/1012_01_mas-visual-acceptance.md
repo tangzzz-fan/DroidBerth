@@ -67,6 +67,27 @@ Music      文稿   17 B    |  Pictures   文稿  20 B
 而 F2 管的是**在列表里长什么样**。因为 F1（开局在容器里），列表里**一定会看到这五项** ——
 所以 F2 不是理论问题。
 
+**已修（同日）**：根因挖出来之后发现它其实是那个老毛病 —— **同一个概念两端语义不同**：
+`RemoteEntry.kindLabel`（设备侧）**一直有** `if isSymlink { return "替身" }`，
+而 `LocalEntry.kindLabel`（本地侧）**漏了这一支**。修法：
+
+1. 本地侧补上 `isSymlink → 替身`，并让**两端的判断顺序与用词逐字一致**（设备侧也把
+   `isSymlink` 提到 `isDirectory` 前面，免得以后各改一边）；
+2. 符号链接**不报大小** —— `fileSizeKey` 给的是**链接自身**的长度。
+
+**实测验证**（证据 `07-symlink-kind-fixed.ax.txt`）：造一个
+`~/Downloads/DroidBerth-symlink-test -> /Applications` 后读 UI 树：
+
+```
+DroidBerth-symlink-test   替身   —   13秒前
+```
+
+`替身` ✅、`—` ✅（修复前是「文稿」与「13 B」——`/Applications` 正好 13 字符，
+那个数字**就是链接自身的长度**），左右邻居 `.dmg`/`.JPG` 不受影响。
+
+守卫：`check-grid-navigation` 补了 6 条两端的 `kindLabel` 对照用例
+（放这一份里是因为它是唯一同时链了本地与设备两侧条目类型的检查）。
+
 ## F3（新发现）列目录**穿过容器符号链接会失败** —— 换个 API 就通
 
 同一个目录，两种列法结果相反（2026-10-12 实测）：

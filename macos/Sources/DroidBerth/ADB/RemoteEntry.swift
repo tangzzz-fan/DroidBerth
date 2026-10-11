@@ -11,8 +11,12 @@ struct RemoteEntry: Identifiable, Hashable, Sendable {
     var id: String { path }
 
     var kindLabel: String {
-        if isDirectory { return "文件夹" }
+        // 顺序与 `LocalEntry.kindLabel`（本地侧）**逐字一致** —— 这是刻意的：
+        // 两端各写一份是不得已（数据结构不同），但**判断顺序与用词必须一样**，
+        // 否则同一个概念在两个窗格里会显示得不一样（本项目反复栽的那一类缺陷）。
+        // 实测过的具体后果：本地侧漏了 `isSymlink` 那一支，符号链接显示成了「文稿」。
         if isSymlink { return "替身" }
+        if isDirectory { return "文件夹" }
         let ext = name.pathExtensionLowercased
         if ext.isEmpty { return "文稿" }
         return ext.uppercased() + " 文稿"

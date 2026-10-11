@@ -1,0 +1,35 @@
+设备：emulator-5554
+
+=== 1. 建目录并推送素材 ===
+/tmp/probe/media/./: 8 files pushed, 0 skipped. 276.4 MB/s (23498853 bytes in 0.081s)
+
+远端实际内容：
+total 23000
+-rw-rw---- 1 u0_a212 media_rw   730251 2026-10-11 13:52 photo.gif
+-rw-rw---- 1 u0_a212 media_rw   119756 2026-10-11 13:52 photo.heic
+-rw-rw---- 1 u0_a212 media_rw  1582286 2026-10-11 13:52 photo.jpg
+-rw-rw---- 1 u0_a212 media_rw  1075588 2026-10-11 13:52 photo.png
+-rw-rw---- 1 u0_a212 media_rw 15732696 2026-10-11 13:52 photo.tiff
+-rw-rw---- 1 u0_a212 media_rw  1778671 2026-10-11 13:52 video-faststart.mp4
+-rw-rw---- 1 u0_a212 media_rw  1778289 2026-10-11 13:53 video-moovlast.mp4
+-rw-rw---- 1 u0_a212 media_rw   701316 2026-10-11 13:52 video.mov
+
+=== 2. 逐文件：只取 64 KB 头 → QL 判定；再完整拉取做对照 ===
+文件                  远端(B) 取头(B) 耗时(ms)  64KB 头的结果                  完整文件的结果
+--------------------------------------------------------------------------------------------------------------
+photo.gif                  730251    65536        99  FAIL [QLThumbnailErrorDomain 0] Th OK 384x512
+photo.heic                 119756    65536        96  OK 384x512                         OK 384x512
+photo.jpg                 1582286    65536       107  OK 384x512                         OK 384x512
+photo.png                 1075588    65536       195  OK 384x512                         OK 384x512
+photo.tiff               15732696    65536       115  FAIL [QLThumbnailErrorDomain 0] Th OK 384x512
+video-faststart.mp4       1778671    65536       101  FAIL [QLThumbnailErrorDomain 0] Th OK 400x258
+video-moovlast.mp4        1778289    65536       111  FAIL [QLThumbnailErrorDomain 0] Th OK 400x258
+video.mov                  701316    65536       110  FAIL [QLThumbnailErrorDomain 0] Th OK 400x258
+
+=== 3. 结论 ===
+远端缩略图成品率 = 3 / 8
+（对照：完整文件成品率 = 8 / 8 —— 若这条不是满分，说明失败与截断无关，要另查）
+
+=== 4. 清理设备上的测试素材 ===
+removed
+(已删除)

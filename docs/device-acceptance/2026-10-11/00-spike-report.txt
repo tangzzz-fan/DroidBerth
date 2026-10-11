@@ -1,0 +1,56 @@
+DroidBerth swift-native spike report
+time:       2026-10-11T06:00:31Z
+executable: /Users/tango/Developments/DroidBerth/macos/build/dd/Build/Products/Release/DroidBerth.app/Contents/MacOS/DroidBerth
+bundle:     /Users/tango/Developments/DroidBerth/macos/build/dd/Build/Products/Release/DroidBerth.app
+
+== V1 [PASS] sidecar 定位与执行
+   路径: /Users/tango/Developments/DroidBerth/macos/build/dd/Build/Products/Release/DroidBerth.app/Contents/MacOS/droidberth-adb
+   App Translocation: 否
+   退出码: 0
+   耗时: 106 ms
+   输出: droidberth-adb 0.1.0 (aarch64 macos)
+   exe: /Users/tango/Developments/DroidBerth/macos/build/dd/Build/Products/Release/DroidBerth.app/Contents/MacOS/droidberth-adb
+
+== V2 [FAIL] 签名链（doctor）
+   tool: droidberth-adb 0.1.0
+   verdict: fail  (9 pass / 2 fail / 3 manual / 0 skip of 14)
+   
+   [fail] #1 sidecar.notarization
+           Gatekeeper accepts the signed bundle (spctl --assess -t open)
+           detail: spctl rejected. Inspect every nested Mach-O signature below; on macOS 15 nested ad-hoc or foreign-TeamID signatures fail the whole bundle.
+           evidence: /Users/tango/Developments/DroidBerth/macos/build/dd/Build/Products/Release/DroidBerth.app: rejected
+   source=Unnotarized Developer ID
+   origin=Developer ID Application: zhenzhi Tang (UKXWZ3FS84)
+   [manual] #5 wifi.tcpip_5555_reconnect
+           adb tcpip 5555 survives screen-off / network change
+           detail: Needs a physical device. Use the Wireless tab: enable tcpip 5555, unplug USB, then run the reconnect matrix.
+   [manual] #6 wifi.after_reboot
+           adb tcpip 5555 after phone reboot
+           detail: Known limitation: the port is lost on reboot and the device must be re-attached over USB. The app must guide the user through this.
+   [manual] #9 adb.port_5037
+           ADB server port 5037 is free, ours, or a foreign adb we can see
+           detail: Held by a different adb server (pid 27723, /Users/tango/Library/Android/sdk/platform-tools/adb). An adb client reuses whatever is on 5037, so a version mismatch would silently change behaviour — kill it or point the app at that same binary.
+           evidence: 127.0.0.1:5037 <- pid 27723 /Users/tango/Library/Android/sdk/platform-tools/adb
+   [fail] #14 host.installed_in_applications
+           Bundle is installed at /Applications for a meaningful Gatekeeper result
+           detail: /Users/tango/Developments/DroidBerth/macos/build/dd/Build/Products/Release/DroidBerth.app
+           evidence: spctl is only conclusive on an installed copy on a machine that has never run the app.
+
+== V3 [PASS] 进程封装（双路抽干 + 超时）
+   大 stdout: 20000/20000 行, 退出码 0 -> pass
+   大 stderr: 20000/20000 行, 退出码 0 -> pass
+   超时: timedOut=true, 耗时 2107 ms, 退出码 15 -> pass
+
+== V4 [PASS] 端到端（真实设备）
+   adb: /Users/tango/Developments/DroidBerth/macos/build/dd/Build/Products/Release/DroidBerth.app/Contents/MacOS/adb
+   来源: bundled:Contents/MacOS/adb
+   devices -l:
+     List of devices attached
+     emulator-5554          device product:sdk_gphone16k_arm64 model:sdk_gphone16k_arm64 device:emu64a16k transport_id:2
+   serial: emulator-5554
+   model: sdk_gphone16k_arm64
+   push 退出码: 0, ok=true
+   push 输出: 
+   复核 ls -l: -rw-rw---- 1 u0_a212 media_rw 3200 2026-10-11 14:00 /sdcard/Download/droidberth-spike-281B8859-8888-4BF0-A244-0FD5264112C3.txt
+
+SUMMARY: V1=pass V2=fail V3=pass V4=pass

@@ -1,0 +1,31 @@
+设备：emulator-5554   远端目录：/sdcard/DCIM/DroidBerthProbeSweep
+
+注意：每个变体存在各自的子目录里，文件名**保持原扩展名** ——
+QLThumbnailGenerator 是按扩展名挑缩略图器的，改成 .64k 之类的后缀它直接放弃
+（这个坑我踩了一次，也正是 app 的 makeThumbnailScratchFile 保留原名的原因）。
+
+文件                      64KB     128KB     256KB     512KB    1024KB    4096KB    完整
+----------------------------------------------------------------------------------------------------
+photo.jpg                     OK        OK        OK        OK        OK        OK        OK
+photo.png                     OK        OK        OK        OK        OK        OK        OK
+photo.heic                    OK        OK        OK        OK        OK        OK        OK
+photo.gif                    —       —       —       —        OK        OK        OK
+photo.tiff                   —       —       —       —       —       —        OK
+video-faststart.mp4          —       —       —       —        OK        OK        OK
+video-moovlast.mp4           —       —       —       —       —        OK        OK
+video.mov                    —       —       —       —        OK        OK        OK
+
+OK = QLThumbnailGenerator 能出图；— = 出不了（app 会回退类型图标）
+
+=== 对照：完整文件一律 OK ⇒ 失败必然与「取回来的字节数」有关 ===
+
+=== 远端文件大小（判读用）===
+  photo.gif                730251
+  photo.heic               119756
+  photo.jpg                1582286
+  photo.png                1075588
+  photo.tiff               15732696
+  video-faststart.mp4      1778671
+  video-moovlast.mp4       1778289
+  video.mov                701316
+(已清理远端)

@@ -1,0 +1,70 @@
+
+==============================================================================
+复核 1：被拒名称的**错误原文**（区分文件系统拒绝 vs 命令写错）
+==============================================================================
+'a:b.txt'    touch rc=1 存在=NO  err=touch: '/sdcard/Download/DroidBerthProbe2/a:b.txt': Operation not permitted
+             push  rc=1 存在=NO  msg=adb: error: failed to copy '/tmp/probe/one.txt' to '/sdcard/Download/DroidBert
+'a*b.txt'    touch rc=1 存在=NO  err=touch: '/sdcard/Download/DroidBerthProbe2/a*b.txt': Operation not permitted
+             push  rc=1 存在=NO  msg=adb: error: failed to copy '/tmp/probe/one.txt' to '/sdcard/Download/DroidBert
+'a?b.txt'    touch rc=1 存在=NO  err=touch: '/sdcard/Download/DroidBerthProbe2/a?b.txt': Operation not permitted
+             push  rc=1 存在=NO  msg=adb: error: failed to copy '/tmp/probe/one.txt' to '/sdcard/Download/DroidBert
+'a"b.txt'    touch rc=1 存在=NO  err=touch: '/sdcard/Download/DroidBerthProbe2/a"b.txt': Operation not permitted
+             push  rc=1 存在=NO  msg=adb: error: failed to copy '/tmp/probe/one.txt' to '/sdcard/Download/DroidBert
+'a<b.txt'    touch rc=1 存在=NO  err=touch: '/sdcard/Download/DroidBerthProbe2/a<b.txt': Operation not permitted
+             push  rc=1 存在=NO  msg=adb: error: failed to copy '/tmp/probe/one.txt' to '/sdcard/Download/DroidBert
+'a>b.txt'    touch rc=1 存在=NO  err=touch: '/sdcard/Download/DroidBerthProbe2/a>b.txt': Operation not permitted
+             push  rc=1 存在=NO  msg=adb: error: failed to copy '/tmp/probe/one.txt' to '/sdcard/Download/DroidBert
+'a|b.txt'    touch rc=1 存在=NO  err=touch: '/sdcard/Download/DroidBerthProbe2/a|b.txt': Operation not permitted
+             push  rc=1 存在=NO  msg=adb: error: failed to copy '/tmp/probe/one.txt' to '/sdcard/Download/DroidBert
+'a\\b.txt'   touch rc=1 存在=NO  err=touch: '/sdcard/Download/DroidBerthProbe2/a\b.txt': Operation not permitted
+             push  rc=1 存在=NO  msg=adb: error: failed to copy '/tmp/probe/one.txt' to '/sdcard/Download/DroidBert
+'a\tb.txt'   touch rc=1 存在=NO  err=touch: '/sdcard/Download/DroidBerthProbe2/a	b.txt': Operation not permitted
+             push  rc=1 存在=NO  msg=adb: error: failed to copy '/tmp/probe/one.txt' to '/sdcard/Download/DroidBert
+
+==============================================================================
+复核 2：上一轮「设备端实际文件数」对不上的 2 个文件是谁
+==============================================================================
+预期被拒 10 个，预期成功 19 个
+
+（上面没输出 = 全部与预期一致）
+设备端条目数（含 . 与 ..）：19
+
+==============================================================================
+复核 3：字符数 vs 字节数（app 用 name.count 判 255，设备用字节）
+==============================================================================
+说明                           app 判定(name.count≤255)   设备端实际        错误原文
+----------------------------------------------------------------------------------------------------
+100 个 CJK（300 字节）            放行（104 字符）               失败           touch: '/sdcard/Download/DroidBerthProbe2/中中
+80 个 CJK（240 字节）             放行（84 字符）                成功           
+200 个 emoji（800 字节）          放行（204 字符）               失败           touch: '/sdcard/Download/DroidBerthProbe2/😀😀
+250 个 ASCII（254 字节）          放行（254 字符）               成功           
+
+==============================================================================
+复核 4：Android/data 写入边界（换成真实存在的目录）
+==============================================================================
+设备上现有的应用外部目录（0 个）：
+/sdcard/Android/data                                     可写 ✓  
+/sdcard/Android/data/..                                  可写 ✓  
+
+==============================================================================
+复核 5：/sdcard 的大小写语义（上一轮用 test -f 判的，这次用「能不能共存」判）
+==============================================================================
+先建 Case.txt，再建 case.txt：rc=0  err=
+目录里匹配 ^case.txt 的条数（不区分大小写地数）：1
+实际名字：['Case.txt']  ⇒ 只有一个 ⇒ 不区分大小写（Case.txt 与 case.txt 是同一个文件）
+
+同一条路再验 adb push：
+  push Case.txt 与 case.txt 之后，目录里的 case 条目：['case.txt']
+
+==============================================================================
+复核 6：NFC vs NFD（上一轮 grep 模式写错，恒为 0）
+==============================================================================
+NFC('café' 单码点) rc=0 / NFD('cafe'+组合重音) rc=0
+ls | grep -c '^caf' = 1  ⇒ 被归一化/覆盖 ⇒ 只留一个
+0000000   c   a   f 303 251   .   t   x   t  \n
+0000012
+
+==============================================================================
+清理
+==============================================================================
+GONE

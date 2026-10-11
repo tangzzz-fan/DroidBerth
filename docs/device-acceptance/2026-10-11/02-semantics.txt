@@ -1,0 +1,121 @@
+
+==============================================================================
+A. 文件名合法字符集（§16）—— 设备：emulator-5554
+==============================================================================
+名称                     说明                         touch(设备端 mkdir/touch)       adb push
+--------------------------------------------------------------------------------------------------------------
+a:b.txt                冒号（FAT32 禁止）               失败 RC=1                      FAIL(1)
+a*b.txt                星号（FAT32 禁止）               失败 RC=1                      FAIL(1)
+a?b.txt                问号（FAT32 禁止）               失败 RC=1                      FAIL(1)
+a"b.txt                双引号（FAT32 禁止）              失败 RC=1                      FAIL(1)
+a<b.txt                小于号（FAT32 禁止）              失败 RC=1                      FAIL(1)
+a>b.txt                大于号（FAT32 禁止）              失败 RC=1                      FAIL(1)
+a|b.txt                竖线（FAT32 禁止）               失败 RC=1                      FAIL(1)
+a\b.txt                反斜杠                        失败 RC=1                      FAIL(1)
+a'b.txt                单引号                        成功 RC=0                      OK
+a`b.txt                反引号（shell 元字符）             成功 RC=0                      OK
+a$b.txt                美元号（shell 元字符）             成功 RC=0                      OK
+a;b.txt                分号（shell 元字符）              成功 RC=0                      OK
+a&b.txt                与号（shell 元字符）              成功 RC=0                      OK
+a b.txt                空格                         成功 RC=0                      OK
+a	b.txt                制表符                        失败 RC=1                      FAIL(1)
+中文名.txt                中日韩字符                      成功 RC=0                      OK
+😀emoji.txt             emoji（代理对）                 成功 RC=0                      OK
+.hidden.txt            点前缀（隐藏）                    成功 RC=0                      OK
+-dash.txt              前导减号（易被当参数）                成功 RC=0                      OK
+~tilde.txt             波浪号                        成功 RC=0                      OK
+#hash.txt              井号                         成功 RC=0                      OK
+%pct.txt               百分号                        成功 RC=0                      OK
+(paren).txt            圆括号                        成功 RC=0                      OK
+[brack].txt            方括号                        成功 RC=0                      OK
+{brace}.txt            花括号                        成功 RC=0                      OK
+ABC.TXT                全大写扩展名                     成功 RC=0                      OK
+xxxxxxxxxxxxxxxxx...   长度 259（超 255）              失败 RC=1                      FAIL(1)
+trailingspace .txt     扩展名前有空格                    成功 RC=0                      OK
+enddot..txt            连续点                        成功 RC=0                      OK
+
+设备端实际文件数：19（用 find 独立复核；`ls -a` 的行数在 pty 下不可靠，别拿它数）
+
+被 app 的 validateRemoteName 放行、但设备端实际建不出来的名称：
+  shell(touch/mv) 被拒：['a:b.txt', 'a*b.txt', 'a?b.txt', 'a"b.txt', 'a<b.txt', 'a>b.txt', 'a|b.txt', 'a\\b.txt', 'a\tb.txt', 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.txt']
+  adb push 被拒：['a:b.txt', 'a*b.txt', 'a?b.txt', 'a"b.txt', 'a<b.txt', 'a>b.txt', 'a|b.txt', 'a\\b.txt', 'a\tb.txt', 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.txt']
+  两者不一致的：（无）
+
+==============================================================================
+B. Android/data 与 Android/obb 的写权限边界（§12.2）
+==============================================================================
+/sdcard/Android/data                           Android/data 根           可写 ✓
+/sdcard/Android/data/com.android.settings      别人的应用目录                  不可写 ✗
+    错误原文：touch: '/sdcard/Android/data/com.android.settings/probe.tmp': No such file or directory
+/sdcard/Android/obb                            Android/obb 根            可写 ✓
+/sdcard/Android/media                          Android/media（共享媒体目录）    可写 ✓
+
+shell 用户的补充组：u:r:shell:s0
+
+==============================================================================
+C. 存储卷与可用空间（§12.2 / §20）
+==============================================================================
+--- ls /storage ---
+total 12
+drwx--x---  4 shell    everybody   80 2026-10-11 13:42 .
+drwxr-xr-x 29 root     root      4096 2026-09-23 06:38 ..
+dr-xr-x---  4 media_rw media_rw  4096 2026-10-11 13:42 emulated
+drwxr-xr-x  2 root     root        60 2026-10-11 13:42 self
+--- ls /storage/emulated ---
+total 16
+drwxrws--- 18 media_rw media_rw 4096 2026-10-11 13:55 0
+drwxrwx---  2 media_rw media_rw 4096 2026-10-11 13:42 obb
+--- df -h ---
+Filesystem        Size Used Avail Use% Mounted on
+tmpfs             1.9G 6.3M  1.9G   1% /dev
+tmpfs             1.9G    0  1.9G   0% /mnt
+/dev/block/dm-0   1.2G 1.1G   48M  97% /
+/dev/block/dm-4   110M 110M     0 100% /vendor
+/dev/block/dm-3   2.4G 2.4G     0 100% /product
+/dev/block/dm-2   240M 239M     0 100% /system_ext
+tmpfs             1.9G  32K  1.9G   1% /apex
+/dev/block/loop48 764K 736K   16K  98% /apex/com.android.ipsec@372899999
+/dev/block/loop34 141M 141M     0 100% /apex/com.google.android.gmssystem@2632370
+/dev/block/loop3  232K  24K  204K  11% /apex/com.android.resolv@372899999
+/dev/block/loop15 232K 108K  120K  48% /apex/com.android.apex.cts.shim@1
+
+--- DeviceShell.availableBytes 解析的就是这条（df -k <path>）---
+Filesystem     1K-blocks   Used Available Use% Mounted on
+/dev/fuse       10167132 709724   9309952   8% /storage/emulated
+
+fields = ['/dev/fuse', '10167132', '709724', '9309952', '8%', '/storage/emulated']
+app 取 fields[3] = 9309952 → 9,533,390,848 字节 = 8.88 GiB  ← 解析正确
+--- 另一条路径 df -h /sdcard（verify-clean 那类脚本可能用它）---
+Filesystem      Size Used Avail Use% Mounted on
+/dev/fuse        10G 693M  8.8G   8% /storage/emulated
+
+==============================================================================
+D. 大小写与 Unicode 归一化（§16 的「同名」语义）
+==============================================================================
+建了 Case.txt，测 case.txt 是否存在 → FOUND   （不区分大小写（与 macOS 默认卷相同））
+分别建 NFC 与 NFD 两个 café.txt → 匹配 ^caf 的条数 1   （只有一个 ⇒ 被归一化/覆盖，详见 test-semantics2.py 的复核 6）
+
+==============================================================================
+E. 媒体入库三态与 app 的 where 子句（§19）
+==============================================================================
+--- cmd -l 里的扫描服务（MediaScanner.command 就在这里挑）---
+  media_scanner    不存在 ✗  ⇒ 不采用
+  media.scan       不存在 ✗  ⇒ 不采用
+  结论：app 会选 broadcast（兜底）
+  cmd -l 服务总数：324
+/sdcard/DCIM/DroidBerthProbe/photo.jpg               相机目录（应入库）            表=images 查到 ✓ 已入库
+/sdcard/DCIM/DroidBerthProbe/note.txt                非媒体（应沉默）             表=nil ⇒ 非媒体（app 保持沉默）
+/sdcard/Download/DroidBerthProbe/photo.png           Download（标准媒体目录）     表=images 查到 ✓ 已入库
+/sdcard/DroidBerthProbeNoScan/photo.heic             自建目录（非标准）            表=images 查到 ✓ 已入库
+
+--- LIKE 的大小写语义（决定 app 的「basename 复核」是不是必需品）---
+设备上只有 CaseProbe.jpg，用小写 caseprobe.jpg 去查（app 的 where 原样）
+  → 竟然命中了（LIKE 不区分大小写）⇒ 不做 basename 复核就会张冠李戴
+    Row: 0 _id=56, _data=/storage/emulated/0/DCIM/DroidBerthProbe/CaseProbe.jpg
+
+==============================================================================
+清理
+==============================================================================
+/sdcard/Download/DroidBerthProbe         GONE
+/sdcard/DCIM/DroidBerthProbe             GONE
+/sdcard/DroidBerthProbeNoScan            GONE

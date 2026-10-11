@@ -215,8 +215,20 @@ swiftc -O -o /tmp/iconcheck/run -target arm64-apple-macos14.0 \
 
 ```bash
 build/dd/Build/Products/Release/DroidBerth.app/Contents/MacOS/DroidBerth --spike-report
-# 结果写入 ~/DroidBerth-reports/spike-<timestamp>.json
 ```
+
+**它把报告打在 stdout 然后 `exit(0)`**（`SpikeReport.emit() -> Never`）—— 所以可以管道、可以重定向，
+但**不会**自己写文件。写 JSON 到 `~/DroidBerth-reports/spike-<timestamp>.json` 的是 app 里的
+**验证面板**（`SpikeView` 调 `SpikeReportWriter.write`），那条路要开 GUI。
+
+四项判据 `V1`（sidecar 定位）/ `V2`（签名链 `doctor`）/ `V3`（进程封装）/ `V4`（端到端：`push` → `ls -l` 复核 → `rm`）。
+**`V4` 在没有设备时标 `manual`，接上设备后才有意义**：
+
+```
+SUMMARY: V1=pass V2=fail V3=pass V4=pass      # 接上 Android 模拟器时的实测结果
+```
+
+`V2` 在 MVP 阶段**必然 fail** 两项（未公证、未装进 `/Applications`），这是 PRD §28 的发布前动作，不是缺陷。
 
 ### 产物路径注意
 
@@ -238,6 +250,36 @@ build/dd/Build/Products/Release/DroidBerth.app/Contents/MacOS/DroidBerth --spike
 - **下载**：文件夹递归层级与内容正确
 - **进度上报**：60 MB 上传观察到 17 个不同百分比，峰值 30 MB/s
 - **图片上传 + 系统相册入库**：MediaStore 的 `images/media` 表出现对应行
+
+### 已实测（Android 模拟器，2026-10-11）
+
+本机装有 Android Studio 2026.2 与 SDK（`~/Library/Android/sdk`），AVD `Medium_Phone_API_37.0`。
+**这补上了一条不需要手机的自动化路径** —— `--spike-report` 的 `V4` 在有设备时才成立。
+
+| 项 | 实测结果 |
+|---|---|
+| 项目内嵌 adb 与 SDK 的 adb | **逐字节相同**（`sha256 1811e253…`，版本 `37.0.1-15733141`）⇒ 不存在「两套 adb 版本不一致静默改变行为」的风险；`doctor` 的 `adb.port_5037` 那项在这台机器上是无害的 |
+| 端到端 `V4` | **pass**（`push` → `ls -l` 复核 → `rm` 全通） |
+| 镜像 | Android **17**（API 37，`sdk_gphone64_arm64`，`google_apis_playstore`，`ro.build.type=user` ⇒ 无 `adb root`） |
+| **媒体入库（PRD §19）** | `push` 一张 JPEG 到 `/sdcard/DCIM/` 后**立刻**就能在 `content://media/external/images/media` 查到该行 ⇒ **API 37 上是自动入库的**，印证了 PRD §19.2「Android 11+ 起 MediaProvider 走 FUSE，可能自动入库」的推断 |
+| `cmd -l` 的扫描服务 | **没有** `media_scanner` / `media.scan` ⇒ app 会回退到广播 `MEDIA_SCANNER_SCAN_FILE`（广播返回 `result=0`）。文件本来就已经入库，所以兜底在这台设备上是**多余但无害**的 |
+| 剩余空间（§20） | `df -h /sdcard` 可用：`10G / 592M used / 8.9G avail` |
+| 设备自述（app 的解析器看到的） | `emulator-5554 device product:sdk_gphone64_arm64 model:sdk_gphone64_arm64 device:emu64a` |
+
+**两条必须记住的模拟器特性**
+
+1. **`sys.boot_completed=1` ≠ 存储就绪。** 实测：boot 完成后**立刻**访问 `/sdcard` 会 `Permission denied`
+   （`push`、`ls`，连 `df` 都被拒），再等几秒到几十秒才正常。**判据必须是「实际写一次」**
+   （`mkdir -p /sdcard/<probe>` 轮询），不能信 `boot_completed`。第一次跑就栽在这里。
+2. **模拟器 ≠ 真机，已实测到一条差异**：`/sdcard/Android/data/` 在模拟器上**可写**（`touch` 返回 0），
+   而 PRD §12.2 的假设是「Android 11+ 不可写入，所以不在 UI 里暴露」。原因大概是模拟器的 `shell`
+   用户被授予了 `ext_data_rw` / `ext_obb_rw` 组。
+   ⇒ **涉及设备端权限的结论不能只靠模拟器**，§12.2 仍须真机复核。
+
+**范围边界**：SDK 里只有 **Android 17** 一个系统镜像，而 PRD §5 声明支持 **Android 10–16** ——
+API 37 在声明范围**之外**。所以它能回答「新版还能不能用」，但**替代不了** PRD §19 要求的
+「至少 3 个真实 Android 版本（建议 10 / 13 / 15）」。补镜像要在 Android Studio 的 SDK Manager 里下载
+（本机没有 `cmdline-tools`，因此没有 `avdmanager` / `sdkmanager` 命令行）。
 
 ### 未验证
 

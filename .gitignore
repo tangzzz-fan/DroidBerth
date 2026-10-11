@@ -25,12 +25,19 @@ vendor/
 macos/Sidecar/
 # sidecar 的 cargo 产物。
 sidecar/*/target/
-# App 图标（由 scripts/make-icon.py 生成）。
-# 不入库的理由与 Sidecar/ 一样：**可从脚本完整复现**，不必把二进制塞进版本库。
-# 唯一来源是 scripts/make-icon.py + docs/design/ 下的设计稿。
-# icon.icns 由 build.sh 在 `xcodegen generate` **之前**生成（xcodegen 要求路径存在）。
-macos/Resources/icon.icns
-macos/Resources/icon.png
+# ── 设计资产（**要入库**）─────────────────────────────────────
+# App 图标**入库**（2026-10-11 改；原先不入库，那条理由被实测推翻了）。
+#
+# 原理由「可从 scripts/make-icon.py 完整复现，不必把二进制塞进版本库」不成立：
+# `macos/project.yml` 把 `Resources/icon.icns` 列成了 source，而 xcodegen 要求该路径
+# **存在** ⇒ 新克隆的仓库**连 xcodegen generate 都跑不过**，实测报
+#     Spec validation error: Target "DroidBerth" has a missing source directory …
+#
+# 它也就不是「构建产物」而是**必需的源文件**：由脚本从设计稿落下来，但脚本一改就可能变，
+# 且原生渲染一次要 50 秒。生成是确定性的（同一脚本两次产出字节完全相同，已实测），
+# `build.sh` 也只在脚本比产物新时才重跑（见 scripts/build.sh）。
+# 仍在 .gitignore 里的同类（`macos/Sidecar/`、`vendor/`）与它不同：那些**随时可从
+# 外部来源重建**，且体积/许可有额外理由。
 
 # ── 运行期输出 ────────────────────────────────────────────────
 # doctor / spike 的报告。

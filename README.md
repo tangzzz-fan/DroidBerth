@@ -47,7 +47,7 @@ ADB 二进制内嵌在 app 内 —— 用户不需要装 Android SDK、不需要
 macos/                    Swift 原生外壳（唯一应用工程）
   project.yml               xcodegen 工程定义
   Sources/DroidBerth/       49 个 Swift 文件
-  Resources/                Info.plist + entitlements + icon.icns（**生成物，不入库**）
+  Resources/                Info.plist + entitlements + icon.{icns,png}（**图标入库**，见「图标不生效」）
   Scripts/build-sidecar.sh  编译 Rust sidecar 并暂存到 macos/Sidecar/
 sidecar/droidberth-adb/   Rust sidecar（1788 行 / 5 文件，零第三方依赖）
                           version / doctor / resolve / exec / raw 五个子命令
@@ -96,6 +96,47 @@ SidecarLocator.locate()          相对 Bundle.main.executableURL 的同级目�
 > 图标这一步必须在 `xcodegen generate` **之前** —— xcodegen 要求 `project.yml` 里列出的路径
 > 存在，缺了 `macos/Resources/icon.icns` 它会直接报错。纯 Python 渲染一张 1024 母版约 50 秒，
 > 所以只在 `scripts/make-icon.py` 比产物新时才重跑。
+
+### 图标不生效 / Dock 上还是旧图标
+
+`icon.icns` 已经是**入库的源文件**，所以「新克隆后没图标」不会是这条的原因。真正会咬人的是
+**系统侧的 LaunchServices 记录与 Dock 缓存** —— 它们按 **bundle id** 缓存，而这个项目历史上
+产生过**十几个同 id 的副本**（`DroidDock/` 旧路径、`/private/tmp/dd-*` 的测试副本、
+`/Applications` 的旧副本……）。只要其中一条被标成 `active`，Dock/Finder 就会拿**那一份**的图标。
+
+排查三步（都是只读，先从第一步看起）：
+
+```bash
+LSR=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+
+# 1. 看这个 bundle id 现在有哪些记录、路径还在不在
+"$LSR" -dump | grep -B3 -A8 dev.tango.droidberth
+
+# 2. 清掉指向已消失路径的「幽灵记录」，并强制刷新当前产物
+"$LSR" -u /path/to/dead/DroidBerth.app        # 可重复，逐个来
+"$LSR" -f macos/build/dd/Build/Products/Release/DroidBerth.app
+
+# 3. 丢掉 Dock 的图标缓存
+killall Dock
+```
+
+**2026-10-11 实测**：那次 `active` 记录指向 `/private/tmp/dd-sandboxtest/...`（早就没了），
+`grep` 出来一眼可见；清掉幽灵记录 + `killall Dock` 之后，`NSRunningApplication.icon`
+就返回了品牌橙底板。
+
+> 判断「Dock 到底拿到了什么图标」不要靠截图 —— 跑现成的诊断脚本：
+>
+> ```bash
+> mkdir -p /tmp/dockicon && cp scripts/diagnose-dock-icon.swift /tmp/dockicon/main.swift
+> swiftc -O -o /tmp/dockicon/run -target arm64-apple-macos14.0 \
+>   -sdk "$(xcrun --show-sdk-path --sdk macosx)" \
+>   -swift-version 6 -strict-concurrency=complete -Xfrontend -disable-sandbox \
+>   /tmp/dockicon/main.swift && /tmp/dockicon/run
+> ```
+>
+> 它读的就是 **`NSRunningApplication.icon`** —— Dock 用的那个值：通用应用图标是白/灰，
+> 本项目的图标在 `(w/4, h/2)` 处是 `(240,151,67)` 品牌橙（正中反而是白的，
+> 因为两块白面板在中间接缝，**判据看 (w/4, h/2)**）。顺带列出磁盘上各副本的图标状况。
 
 ### 分步（等价，便于调试）
 

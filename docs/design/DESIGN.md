@@ -239,7 +239,7 @@ iconutil -c iconset macos/Resources/icon.icns -o /tmp/verify.iconset   # 10 档�
 | `CFBundleIconFile` | = `icon` |
 | bundle 内的路径 | `DroidBerth.app/Contents/Resources/icon.icns` |
 
-**图标不进版本库**（`.gitignore` 排除 `macos/Resources/icon.{png,icns}`），理由与 `macos/Sidecar/` 一样：**可从脚本完整复现**，不必把二进制塞进仓库。
+**图标入库**（2026-10-11 起）。原先不入库，理由是「可从 `scripts/make-icon.py` 完整复现，不必把二进制塞进仓库」—— **那个理由被实测推翻了**：`project.yml` 把 `Resources/icon.icns` 列成了 source，而 xcodegen 要求该路径**存在**，于是新克隆的仓库**连 `xcodegen generate` 都跑不过**（`has a missing source directory`）。它因此不是「构建产物」而是**必需的源文件**。生成仍是确定性的（同一脚本两次产出的字节完全相同，实测），`build.sh` 也只在脚本比产物新时才重跑（原生渲染一张 1024 母版约 50 秒）。
 
 **尺寸对比图**：`docs/design/2026-10-10-ui-icons/app-icon-contact-sheet.png` ——
 深色底 / 浅色底各一行，从左到右是 **16 / 32（16pt 档 @2x）/ 64（32pt 档 @2x）/ 128 / 256**，

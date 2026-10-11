@@ -22,9 +22,15 @@ struct DeviceGuideCard: View {
                 illustration
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(guide.title)
-                        .font(.headline)
-                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 6) {
+                        Image(systemName: guide.headerSymbol)
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
+                        Text(guide.title)
+                            .font(.headline)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     Text(guide.subtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -112,7 +118,9 @@ struct DeviceGuideCard: View {
             Image(systemName: "info.circle")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Text(note)
+                .accessibilityHidden(true)
+            // 厂商文案里带 `**…：**` 强调，走 Markdown 渲染（见 `Text(markdown:)`）。
+            Text(markdown: note)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -162,7 +170,9 @@ private struct PhoneAuthorizationMockup: View {
         .frame(width: 196, height: 246)
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 20))
         .accessibilityElement()
-        .accessibilityLabel("手机上会弹出「允许 USB 调试吗？」的授权窗口，其中有一个「一律允许」复选框和取消、允许两个按钮")
+        .accessibilityLabel("手机上会弹出「允许 USB 调试吗？」的授权窗口，"
+                            + "里面有这台计算机的 RSA 密钥指纹、一个「一律允许使用这台计算机进行调试」"
+                            + "复选框，以及取消、允许两个按钮")
     }
 
     private var dialog: some View {
@@ -172,23 +182,25 @@ private struct PhoneAuthorizationMockup: View {
                 .fontWeight(.semibold)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("这台 Mac 的 RSA 密钥指纹：")
+            Text("计算机的 RSA 密钥指纹为：")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("4B:1C:9F:22:AE:70:5D:38\nC1:04:7A:9E:B3:56:20:DD")
+            // 稿子 §3.3 明示这是**示例值**（真机上显示的是这台 Mac 的真实指纹）。
+            Text("A4:7B:9F:2C:11:E8:5D:03\n6A:B2:44:19:7C:D5:88:31")
                 .font(.system(size: 9, design: .monospaced))
                 .foregroundStyle(.secondary)
                 .lineSpacing(1)
 
-            HStack(spacing: 5) {
+            HStack(alignment: .top, spacing: 5) {
                 Image(systemName: "checkmark.square")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                Text("一律允许")
+                Text("一律允许使用这台计算机进行调试")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.top, 2)
 

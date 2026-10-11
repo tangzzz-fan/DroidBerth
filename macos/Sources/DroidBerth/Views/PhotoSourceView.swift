@@ -185,7 +185,7 @@ struct PhotoSourceView: View {
                 title: "DroidBerth 没有照片访问权限",
                 message: model.photos.access == .restricted
                     ? "系统策略限制了照片访问，无法读取图库。文件推送、设备浏览等功能不受影响。"
-                    : "照片图库暂时不能浏览。文件推送、设备浏览等功能不受影响 —— 可在「系统设置 › 隐私与安全性 › 照片」里重新打开。",
+                    : "照片图库暂时不能浏览。文件推送、设备浏览等功能不受影响。可在「系统设置 › 隐私与安全性 › 照片」里重新打开。",
                 primary: .init(title: "打开系统设置") { openPrivacySettings() },
                 secondary: .init(title: "先用 Finder 位置") { model.macSource = .files }
             )

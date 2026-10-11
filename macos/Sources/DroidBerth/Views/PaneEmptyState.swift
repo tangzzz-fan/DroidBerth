@@ -84,14 +84,19 @@ struct DeviceGuide {
     }
 
     var kind: Kind
+    /// 卡片头部的小图标（设计稿 §3.3 技术注：USB 授权用 `cable.connector`，
+    /// 与「未连接设备」空态同一个符号，让两处一眼认出是同一件事）。
+    var headerSymbol: String
     var title: String
     var subtitle: String
     var steps: [String]
     var primaryTitle: String
     var primaryAction: () -> Void
-    /// 厂商附加说明（PRD §17.1「厂商差异」）。取不到品牌时为 nil。
+    /// 厂商附加说明（PRD §17.1「厂商差异」）。**允许 Markdown 行内标记**，
+    /// 由 `Text(markdown:)` 渲染。识别不出品牌时应传通用文案
+    /// （`AndroidDevice.BrandFamily.genericAuthorizationNote`），不要传 nil。
     var brandNote: String? = nil
-    /// 「连接不上？」展开后的排查清单。
+    /// 「连接不上？」展开后的排查清单。同样允许 Markdown。
     var troubleshooting: [String]
 }
 
@@ -158,7 +163,7 @@ struct TroubleshootingPopover: View {
                     Image(systemName: "circle.fill")
                         .font(.system(size: 4))
                         .foregroundStyle(.tertiary)
-                    Text(item)
+                    Text(markdown: item)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -167,5 +172,34 @@ struct TroubleshootingPopover: View {
         }
         .padding(12)
         .frame(width: 280, alignment: .leading)
+    }
+}
+
+extension Text {
+    /// 把一段可能带 `**粗体**` 的文案渲成 `Text`。
+    ///
+    /// ⚠️ **不能只靠 `AttributedString(markdown:)`**。CommonMark 有一组「分隔符左右侧」
+    /// （left/right-flanking）规则：`**` 想闭合，它的**后面**必须跟空白、标点或行尾。
+    /// 我们的文案是中文，`**小米设备：**先到…` 里闭合的 `**` 后面紧跟的是**汉字** ——
+    /// 于是它不满足闭合条件，`**` 会被**原样渲染出来**（实测确认，四个样本里三个中招）。
+    ///
+    /// 所以先试 Markdown；若结果里仍残留 `**`，再按「开头一段粗体」这种形态手工拆。
+    /// 本项目全部文案都是这一种形态（`**前缀：**正文`）—— 够用，且不必为了排版引半个
+    /// Markdown 解析器进来。
+    ///
+    /// 解析失败一律退回 `verbatim`：绝不因为一段文案让界面渲染不出来。
+    init(markdown: String) {
+        if let attributed = try? AttributedString(markdown: markdown),
+           !String(attributed.characters).contains("**") {
+            self.init(attributed)
+            return
+        }
+        if markdown.hasPrefix("**"), let closing = markdown.dropFirst(2).range(of: "**") {
+            let bold = String(markdown.dropFirst(2)[..<closing.lowerBound])
+            let rest = String(markdown[closing.upperBound...])
+            self = Text(bold).bold() + Text(verbatim: rest)
+            return
+        }
+        self.init(verbatim: markdown)
     }
 }

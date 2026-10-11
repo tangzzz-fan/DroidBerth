@@ -22,6 +22,10 @@
 
 次要但建议一并处理：目录图标常驻 `folder.fill`（稿子：默认 `folder`、选中 `folder.fill`）、USB 卡片头部缺 `cable.connector`、空态 2 未上稿子指定的品牌深橙、空态图标未按 48pt。
 
+> **已处理（2026-10-11）**：上面 1–3 条与 `cable.connector` 等 **10 条已按稿子改掉**，
+> 其余各条**有意不改并逐条写明理由** —— 见 **§13「处理记录」**。
+> §1–§12 保留的是**审计当时**的快照，不要拿它当现状读。
+
 ---
 
 ## 1. ① 文件类型符号映射
@@ -285,6 +289,50 @@
 | 实现逐文件通读 | `Support/FileTypeIcon.swift`、`Views/EntryIconView.swift`、`Views/DeviceGuideCard.swift`、`Views/PaneEmptyState.swift`、`Views/MainView.swift`、`Views/PhotoSourceView.swift`、`ADB/AndroidDevice.swift`、`Support/DesignTokens.swift`、`Views/EntryTable.swift`、`Views/EntryGrid.swift`、`Views/PreviewPane.swift`、`scripts/make-icon.py` |
 | 分支依据核对 | `Support/BrowserEntry.swift:4-8`（`Origin.local/.remote/.photo`）、`Views/EntryIconView.swift:26`（唯一分支） |
 | 符号匹配路径核对 | `Support/ByteFormat.swift:62` `pathExtensionLowercased`、`ADB/MediaScanner.swift:134-138` |
-| 回归守卫 | `scripts/check-icon-mapping.swift`（29 条断言，两栏一致性） |
+| 回归守卫 | `scripts/check-icon-mapping.swift`（77 扩展名，两栏一致性） |
 
-> 本审计**未改动任何源码**；产出仅本文件。
+> 本审计（§0–§12）**未改动任何源码**；产出仅本文件。
+> **§13 是随后的处理记录** —— 按用户指示把可修的偏差改掉了。
+
+---
+
+## 13. 处理记录（2026-10-11，同一分支）
+
+### 13.1 已改（10 条）
+
+| # | 位置 | 改动 |
+|---|---|---|
+| A1 | `AndroidDevice.swift:104-127` | **品牌文案全部换成稿子逐字**（小米 `:107` / OPPO `:111` / vivo `:115`）。原先是自写的「检测到 X。这类机型…」，措辞与稿子完全不同 |
+| A2 | `AndroidDevice.swift:118,121` | 三星 / 华为两族（稿子未列、属 §9 的超出项）改成同一形态：`**三星设备：**…` / `**华为 / 荣耀设备：**…` |
+| A3 | `AndroidDevice.swift:130,135` | **新增两条通用文案常量**：`genericAuthorizationNote`（§3.3 表第一行「通用（默认）」）、`dialogNeverAppearsNote`（表最后一行「弹窗不再出现」） |
+| A4 | `MainView.swift:595-596` | 品牌识别不出时**回落到通用文案**，不再传 `nil` —— 认不出品牌恰恰是最需要这段说明的时候 |
+| A5 | `MainView.swift:640` | 排查清单末尾补上「弹窗不再出现」那一条 |
+| A6 | `DeviceGuideCard.swift:200` | 复选框 `一律允许` → **`一律允许使用这台计算机进行调试`** |
+| A7 | `DeviceGuideCard.swift:185` | 指纹标签 `这台 Mac 的 RSA 密钥指纹：` → **`计算机的 RSA 密钥指纹为：`** |
+| A8 | `DeviceGuideCard.swift:191` | 指纹示例值 → 稿子的 `A4:7B:9F:2C:11:E8:5D:03` / `6A:B2:44:19:7C:D5:88:31` |
+| A10 | `PhotoSourceView.swift:188` | 空态 2 辅文案删掉多余的 ` —— `，与稿子 §5 C 一致 |
+| B2 | `DeviceGuideCard.swift:25-29` | 卡片头部补图标（USB 用 `cable.connector`，与空态 1 同符号；无线用 `wifi.slash`）。`DeviceGuide` 因此新增 `headerSymbol`（`PaneEmptyState.swift:89`） |
+
+### 13.2 有意不改（附理由，不是遗漏）
+
+| # | 项 | 为什么不改 |
+|---|---|---|
+| A9 | 空态 4 按钮按筛选项自适应（`清除搜索词 / 清除类型筛选 / 全部清除`） | **本 app 只有「搜索词」这一个筛选维度**（`AppModel` 里没有类型筛选；该空态只由 `hiddenBySearchCount > 0` 触发）。稿子的三分支是假设存在多种筛选写的，照抄会得到两段**永远不会被执行**的死分支。改法：维持「清除搜索词」，并把设计意图记在这里 |
+| A11 | 空态 2 文字链「稍后再说」 | `DESIGN.md` §5.4 规则 3 主动否决，改成「先用 Finder 位置」——**真的把人带到还在工作的那一侧**，比「稍后再说」有信息量 |
+| B1 | 目录图标默认 `folder` / 选中 `folder.fill` | 需要图标视图知道**行选中态**，而当前 `EntryIconView` 不接收选择状态。这是视觉/交互改动，按项目约定先出图再动 |
+| C1–C3 | 空态 2 品牌深橙 / 选中行填充 / 焦点环改品牌橙 | `DESIGN.md` §2 / §7 已主动否决（品牌橙与警示色 `.orange` 撞车） |
+| D1 | USB 主按钮高度定 30–32pt | macOS 原生按钮自带内边距，硬定高会破坏原生观感；`.controlSize(.regular)` 的实际高度已在该量级 |
+| D2 | 32 / 16 两档不加投影 | 改的是图标渲染管线，需要重新出尺寸对比图核对（`1010_01` §9 已就阴影参数做过一轮拟合），单独一轮做 |
+
+### 13.3 改的过程中新发现并修掉的一处
+
+稿子的文案带 `**…**` 强调（`**小米设备：**先到…`）。SwiftUI 里 `Text(字符串变量)` 走
+`StringProtocol` 重载、**不解析** Markdown，所以直接传变量会**把星号原样显示出来**。
+
+于是先试了 `AttributedString(markdown:)` —— **它也不行**：CommonMark 的左右侧分隔符规则
+（flanking）要求闭合 `**` 后面跟**空白、标点或行尾**，而我们闭合 `**` 后面紧跟的是**汉字**。
+实测 4 个样本里 3 个的星号原样保留。
+
+最终 `Text(markdown:)` 做成两段：先试 Markdown，**若结果里仍残留 `**`** 就按
+「开头一段 `**粗体**` + 正文」手工拆成 `Text(粗体).bold() + Text(verbatim: 正文)`。
+样本核对 7/7 通过（`**` 已消费、粗体段正确切出、不含标记的普通项不受影响）。

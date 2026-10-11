@@ -580,6 +580,7 @@ struct MainView: View {
             title: "手机还没授权这台 Mac",
             guide: DeviceGuide(
                 kind: .usbAuthorization,
+                headerSymbol: "cable.connector",
                 title: "手机还没授权这台 Mac",
                 subtitle: "看一眼手机屏幕，上面应该有一个弹窗在等你确认。",
                 steps: [
@@ -589,7 +590,10 @@ struct MainView: View {
                 ],
                 primaryTitle: "已完成，重新检测",
                 primaryAction: { Task { await model.monitor.refresh() } },
-                brandNote: device.brandFamily?.authorizationNote,
+                // 识别不出品牌时给**通用文案**而不是 nil —— 认不出品牌恰恰是最需要这段
+                // 说明的时候（用户不知道为什么没有弹窗）。稿子 §3.3 表也把它列为第一行。
+                brandNote: device.brandFamily?.authorizationNote
+                    ?? AndroidDevice.BrandFamily.genericAuthorizationNote,
                 troubleshooting: Self.usbTroubleshooting
             )
         )
@@ -601,6 +605,7 @@ struct MainView: View {
             title: "无线连接需要重新激活一次",
             guide: DeviceGuide(
                 kind: .wirelessReactivation,
+                headerSymbol: "wifi.slash",
                 title: "无线连接需要重新激活一次",
                 subtitle: "手机重启之后无线端口会失效 —— 这是 Android 的限制，不是故障。",
                 steps: [
@@ -631,6 +636,8 @@ struct MainView: View {
         "换一根数据线或换一个 USB 口：有些线只供电、不传数据。",
         "手机从没弹出过授权窗口时，先去「开发者选项」确认「USB 调试」是开着的。",
         "小米 / OPPO / vivo 的部分机型还需要额外的「USB 调试（安全设置）」，并等倒计时结束。",
+        // 稿子 §3.3 表最后一行（任意品牌）。放在清单末尾：它是最「最后手段」的一条。
+        AndroidDevice.BrandFamily.dialogNeverAppearsNote,
     ]
 
     private static let wirelessTroubleshooting = [

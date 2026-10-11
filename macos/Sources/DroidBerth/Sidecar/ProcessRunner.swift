@@ -139,13 +139,19 @@ enum ProcessRunner {
         do {
             try process.run()
         } catch {
+            let failure = String(describing: error)
+            // 起不来的原因几乎总是「可执行文件不在」或「架构/签名不对」—— 这两条都要留痕。
+            AppLog.error(
+                "起不了进程：\(([executable.lastPathComponent] + arguments).joined(separator: " ")) ⇒ \(failure)",
+                executable.lastPathComponent.hasPrefix("droidberth-adb") ? .sidecar : .adb
+            )
             return (
                 exitCode: nil,
                 stdout: Data(),
                 stderr: "",
                 timedOut: false,
                 durationMs: elapsed(since: started),
-                spawnError: String(describing: error)
+                spawnError: failure
             )
         }
 
@@ -177,7 +183,10 @@ enum ProcessRunner {
         process.waitUntilExit()
         drain.waitForFinish(3)
 
-        return (
+        let outcome: (
+            exitCode: Int32?, stdout: Data, stderr: String,
+            timedOut: Bool, durationMs: Int, spawnError: String?
+        ) = (
             exitCode: process.terminationStatus,
             stdout: drain.stdoutData,
             stderr: drain.stderr,
@@ -185,6 +194,41 @@ enum ProcessRunner {
             durationMs: elapsed(since: started),
             spawnError: nil
         )
+        logIfFailed(executable, arguments, outcome)
+        return outcome
+    }
+
+    /// **只在失败时记日志。**
+    ///
+    /// 成功不记是有意的：设备轮询每 1–5 秒就一次 `adb devices -l`，把它们全写进日志，
+    /// 只会让真正出事的那一行被埋进噪音里。失败才是要看的东西。
+    ///
+    /// 命令本身过 `AppLog.redact`（走的是写盘那条统一路径）—— `-s <序列号>` 会被掩掉。
+    private static func logIfFailed(
+        _ executable: URL,
+        _ arguments: [String],
+        _ outcome: (exitCode: Int32?, stdout: Data, stderr: String, timedOut: Bool, durationMs: Int, spawnError: String?)
+    ) {
+        let name = executable.lastPathComponent
+        let category: AppLog.Category = name.hasPrefix("droidberth-adb")
+            ? .sidecar
+            : (name.hasPrefix("adb") ? .adb : .app)
+        let command = ([name] + arguments).joined(separator: " ")
+
+        if let spawnError = outcome.spawnError {
+            AppLog.error("起不了进程：\(command) ⇒ \(spawnError)", category)
+            return
+        }
+        if outcome.timedOut {
+            AppLog.warning("超时（\(outcome.durationMs) ms）：\(command)", category)
+            return
+        }
+        guard let code = outcome.exitCode, code != 0 else { return }
+        let tail = outcome.stderr
+            .split(separator: "\n")
+            .suffix(6)
+            .joined(separator: "\n")
+        AppLog.warning("退出码 \(code)：\(command)\n    stderr: \(tail.isEmpty ? "(空)" : tail)", category)
     }
 
     private static func elapsed(since start: Date) -> Int {

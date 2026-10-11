@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @Bindable var settings: AppSettings
+    let model: AppModel
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -13,6 +14,7 @@ struct SettingsView: View {
                 listSection
                 appearanceSection
                 rememberedSection
+                diagnosticsSection
             }
             .formStyle(.grouped)
 
@@ -133,6 +135,39 @@ struct SettingsView: View {
                     }
                 }
             }
+        }
+    }
+
+    /// 诊断（日志与崩溃收集）。
+    ///
+    /// 刻意**不做成独立窗口**：它一年用不了几次，塞在设置里只占三行，
+    /// 比多一个窗口更符合「界面简洁」。导出这一步会真的跑一遍自检，所以要给进度。
+    private var diagnosticsSection: some View {
+        Section("诊断") {
+            LabeledContent("日志") {
+                Text(AppPaths.logsDirectory.path)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+            }
+
+            HStack(spacing: 10) {
+                Button("导出诊断报告…") {
+                    Task { await model.exportDiagnostics() }
+                }
+                .disabled(model.diagnosticsExporting)
+                Button("在访达中显示") { model.revealLogs() }
+                if model.diagnosticsExporting {
+                    ProgressView().controlSize(.small)
+                }
+                Spacer()
+            }
+
+            Text("诊断包含日志、系统崩溃报告、自检结果与设备状态。用户名、设备序列号与密钥指纹在写入前就会被抹掉；**不会**自动上传。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 }

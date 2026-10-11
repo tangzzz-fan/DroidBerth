@@ -301,6 +301,58 @@ SUMMARY: V1=pass V2=fail V3=pass V4=pass      # 接上 Android 模拟器时的�
 
 ---
 
+## 排障与诊断
+
+用户报「传不动 / 打不开 / 刚才闪退了」时，**手上必须要有现场**。这套机制就为这一件事，
+完整方案与取舍见 [`docs/1011_02_observability-report.md`](docs/1011_02_observability-report.md)。
+
+### 用户侧：一次点击
+
+**帮助 → 导出诊断报告…** → 在桌面生成 `DroidBerth-diagnostics-<时间>.zip`（并自动在访达里选中）。
+让用户把这个 zip 发回来即可。包里 9 类内容：环境 / 会话哨兵 / 崩溃报告 / 未捕获异常 / 日志 /
+自检报告 / sidecar-doctor / adb 现场 / 设备列表。
+
+**没有自动上传**，包只生成在用户机器上。所有文本**写入前就脱敏**（家目录用户名 → `~`、
+设备序列号 → 前 3 位、RSA 指纹 → 前两组）。
+
+### 开发者侧：一条命令
+
+```bash
+APP=build/dd/Build/Products/Release/DroidBerth.app/Contents/MacOS/DroidBerth
+$APP --diagnose                      # 打印摘要：环境 / 上次是否异常结束 / 崩溃报告 / adb / 日志尾部
+$APP --export-diagnostics            # 生成 zip 到桌面，打印路径
+$APP --export-diagnostics=/tmp/out   # 指定落点（等号形式与空格形式都支持）
+```
+
+> ⚠️ **写命令行分派时的一个坑**：`firstIndex(where: { $0 == "--export-diagnostics" })` 用的是
+> **精确相等**，于是 `--export-diagnostics=/tmp/out` 匹配不上、静默落到 GUI 分支 —— 在终端里的
+> 表现是「命令挂住不返回」（图形进程不自己退出），而且不报任何错。必须写成
+> `$0 == "--export-diagnostics" || $0.hasPrefix("--export-diagnostics=")`。
+> 现在还有一个兜底：未识别的 `--xxx` 会往 stderr 说一句再继续。
+
+### 崩溃怎么收
+
+**四类故障要分开处理**，混在一起谈必然做不对：
+
+| 故障 | 现场 | 谁给的 |
+| --- | --- | --- |
+| app 崩溃（强制解包 nil / 越界 trap / 内存错误） | `~/Library/Logs/DiagnosticReports/` 的 `.ips`，带全线程栈 | 系统 |
+| **未捕获的 ObjC 异常** | `NSSetUncaughtExceptionHandler` 记一笔 | **我们**（系统不为它生成 `.ips`） |
+| **异常退出但没有信号**（强退 / 掉电 / `SIGKILL`） | 会话哨兵：启动写标记、正常退出补结束时间 | **我们** |
+| 子进程故障（adb / sidecar 崩了 / 起不来 / 超时） | 失败才记：命令 + 退出码 + stderr 尾部 | **我们** |
+
+**不自己装 signal handler** —— 崩溃那一刻进程状态已不可信，在里面调 Foundation 会二次崩溃，
+反而把系统本来能生成的完整报告弄丢。系统那块写得比我们好，只补它不做的那几格。
+
+### 日志
+
+- 统一日志：`log show --last 1h --predicate 'subsystem == "dev.tango.droidberth"'`
+- 磁盘：`~/Library/Logs/DroidBerth/DroidBerth-<日期>.log`（按天分、保留 7 天、单文件 4 MB 滚动）
+
+**刻意只记失败**：设备轮询每 1–5 秒一次 `adb devices -l`，全记进去会把真正出事的那行埋掉。
+
+---
+
 ## 验证状态
 
 沿用文档的约定，明确区分「已实测」与「未验证」。

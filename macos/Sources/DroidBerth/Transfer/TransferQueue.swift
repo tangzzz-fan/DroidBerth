@@ -161,6 +161,7 @@ final class TransferQueue {
 
         if cancelled || job.state == .cancelled {
             job.state = .cancelled
+            AppLog.notice("传输已取消：\(job.plan.direction.label) \(job.plan.displayName)", .transfer)
         } else if outcome.code == 0 {
             job.state = .finished
             job.fraction = 1
@@ -172,6 +173,15 @@ final class TransferQueue {
                     ? "adb 退出码 \(outcome.code)"
                     : outcome.tail)
             }
+            // 传输失败是用户最可能来报障的那一类，所以这里把「够定位」的字段一次记清楚：
+            // 方向、名字、大小、耗时的近似（用字节数代替速度曲线）、以及 adb 的尾部输出。
+            // 文件**名**要记（定位必需），但整个路径不记 —— 它带着用户的目录结构。
+            AppLog.error(
+                "传输失败：\(job.plan.direction.label) \(job.plan.displayName)"
+                    + "（\(ByteFormat.size(job.plan.totalBytes))，退出码 \(outcome.code)）"
+                    + "\n    原因：\(job.errorMessage ?? "未知")",
+                .transfer
+            )
         }
 
         pump()

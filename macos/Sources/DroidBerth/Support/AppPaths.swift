@@ -24,6 +24,35 @@ enum AppPaths {
         return directory
     }
 
+    /// 日志目录。
+    ///
+    /// 刻意放 `~/Library/Logs/` 而不是 Application Support：这是 macOS 上应用日志的
+    /// **约定位置** —— 用户熟悉它（「控制台.app」直接就能看），支持人员也知道去那里找。
+    /// Application Support 里放的是应用自己的数据，不该混进日志。
+    static var logsDirectory: URL {
+        let base = FileManager.default
+            .urls(for: .libraryDirectory, in: .userDomainMask)
+            .first ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library")
+        let directory = base
+            .appendingPathComponent("Logs", isDirectory: true)
+            .appendingPathComponent("DroidBerth", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    /// 诊断包的落点（`导出诊断报告…` 的产出）。与日志分开：日志是持续写的，
+    /// 诊断包是一次性的快照，用户会把它发出去。
+    static var diagnosticsDirectory: URL {
+        let directory = supportDirectory.appendingPathComponent("Diagnostics", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    /// 会话标记文件（`CrashSentinel` 用它判断上次是不是异常退出）。
+    static var sessionFile: URL {
+        supportDirectory.appendingPathComponent("session.json")
+    }
+
     /// Quick Look 预览的临时落地目录（PRD §23：`$TMPDIR/DroidBerth/preview/`）。
     ///
     /// 刻意不放在 `supportDirectory` 下：预览文件是一次性的、可能很大，交给系统

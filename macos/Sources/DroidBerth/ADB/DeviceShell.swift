@@ -21,6 +21,15 @@ struct ShellResult: Sendable {
         if text.isEmpty { return "退出码 \(code.map(String.init) ?? "nil")" }
         return text
     }
+
+    /// 是否是「adb server 不可达」那一族（判据在 `ADBRecovery`）。
+    ///
+    /// `spawnError` 时一律为 false：那说明 **adb 这个二进制本身**起不来，
+    /// 重启 server 帮不上忙，该报的是「app 包内的可执行文件有问题」。
+    var suggestsADBServerRestart: Bool {
+        guard spawnError == nil, !timedOut else { return false }
+        return ADBRecovery.suggestsServerRestart(stderr + stdout)
+    }
 }
 
 struct DeviceShell: Sendable {
@@ -45,6 +54,19 @@ struct DeviceShell: Sendable {
     }
 
     func raw(_ arguments: [String], timeout: TimeInterval = 30) -> ShellResult {
+        let first = runOnce(arguments, timeout: timeout)
+        // adb server 不可达时自愈一次（判据与「为什么敢对写操作也重试」见 `ADBRecovery`）。
+        // `kill-server` / `start-server` 自己不参与重试 —— 否则会自己递归自己。
+        guard !isServerControl(arguments), first.suggestsADBServerRestart else { return first }
+        guard ADBRecovery.restartServer(binary: adb) else { return first }
+        return runOnce(arguments, timeout: timeout)
+    }
+
+    private func isServerControl(_ arguments: [String]) -> Bool {
+        arguments.contains("kill-server") || arguments.contains("start-server")
+    }
+
+    private func runOnce(_ arguments: [String], timeout: TimeInterval) -> ShellResult {
         let result = ProcessRunner.run(adb, ["-s", serial] + arguments, timeout: timeout)
         return ShellResult(
             code: result.exitCode,

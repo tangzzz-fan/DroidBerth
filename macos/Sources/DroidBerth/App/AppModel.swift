@@ -29,6 +29,26 @@ final class AppModel {
         let level: Level
         let title: String
         let detail: String?
+
+        /// **每条提示都进日志** —— 有意放在 `init` 里。
+        ///
+        /// `banner = Banner(...)` 在全仓有几十处，散在传输 / 设备 / 文件操作各条路径上。
+        /// 逐个补日志调用一定会漏，而漏掉的那一条恰好就是下次要查的那条。
+        /// 提示是「用户已经被告知的事」，日志必须能对得上 —— 否则用户说「它刚才报错了」，
+        /// 而日志里什么都没有。
+        ///
+        /// 副作用放在 `init` 里通常不是好味道，这里是刻意的取舍：可漏性 > 纯净性。
+        init(level: Level, title: String, detail: String? = nil) {
+            self.level = level
+            self.title = title
+            self.detail = detail
+            let message = title + (detail.map { " · \($0)" } ?? "")
+            switch level {
+            case .info: AppLog.info("提示：\(message)", .ui)
+            case .warning: AppLog.warning("警告：\(message)", .ui)
+            case .error: AppLog.error("错误：\(message)", .ui)
+            }
+        }
     }
 
     enum ExportPhase: Sendable, Equatable {
@@ -1065,6 +1085,43 @@ final class AppModel {
         } else {
             banner = Banner(level: .error, title: "删除失败", detail: result.failureMessage)
         }
+    }
+
+    // MARK: - 诊断（日志与崩溃收集）
+
+    /// 是否正在导出诊断包。界面据此禁用按钮并显示进度 —— 导出会跑一遍自检与
+    /// sidecar doctor，几秒到十几秒。
+    private(set) var diagnosticsExporting = false
+
+    /// 导出诊断包。
+    ///
+    /// 收集放后台线程（要起子进程），完成后**在访达里把 zip 选中** ——
+    /// 用户的下一步动作就是把它发出去，不该再让他们自己去翻文件。
+    func exportDiagnostics() async {
+        guard !diagnosticsExporting else { return }
+        diagnosticsExporting = true
+        banner = Banner(
+            level: .info,
+            title: "正在收集诊断信息…",
+            detail: "要跑一遍自检，可能需要十几秒"
+        )
+        let outcome = await Task.detached(priority: .userInitiated) {
+            DiagnosticsExporter.collect()
+        }.value
+        diagnosticsExporting = false
+        NSWorkspace.shared.activateFileViewerSelecting([outcome.zipURL])
+        banner = Banner(
+            level: outcome.warnings.isEmpty ? .info : .warning,
+            title: outcome.warnings.isEmpty
+                ? "诊断报告已生成"
+                : "诊断报告已生成（\(outcome.warnings.count) 项没拿到）",
+            detail: outcome.zipURL.lastPathComponent
+        )
+    }
+
+    /// 在访达里选中日志目录。设置面板里显示了这个路径，按钮就该打开同一个地方。
+    func revealLogs() {
+        NSWorkspace.shared.activateFileViewerSelecting([AppPaths.logsDirectory])
     }
 
     // MARK: - 设备端重命名 / 移动（PRD §13.1 右键、§24 窗格内拖拽）

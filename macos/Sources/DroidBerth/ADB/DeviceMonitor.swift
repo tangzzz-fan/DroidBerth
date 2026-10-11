@@ -58,9 +58,19 @@ final class DeviceMonitor {
 
         adbPath = adb.path
 
-        let result = await Task.detached(priority: .utility) {
+        var result = await Task.detached(priority: .utility) {
             ProcessRunner.run(adb, ["devices", "-l"], timeout: 15)
         }.value
+
+        // adb server 挂掉时 `devices` 会返回**空列表** —— 症状与「没插设备」一模一样，
+        // 用户会以为线没插好，然后去换线。这里认出这一类（判据见 `ADBRecovery`），
+        // 重启一次再问。这是最值得自愈的一处：不修的话整个设备栏都是错的。
+        if ADBRecovery.suggestsServerRestart(result.stderr + result.stdout),
+           ADBRecovery.restartServer(binary: adb) {
+            result = await Task.detached(priority: .utility) {
+                ProcessRunner.run(adb, ["devices", "-l"], timeout: 15)
+            }.value
+        }
 
         if let spawnError = result.spawnError {
             status = .failed(spawnError)

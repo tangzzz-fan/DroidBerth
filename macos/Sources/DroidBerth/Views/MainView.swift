@@ -89,7 +89,7 @@ struct MainView: View {
             AppearanceController.apply(newValue)
         }
         .sheet(isPresented: $showSettings) {
-            SettingsView(settings: model.settings)
+            SettingsView(settings: model.settings, model: model)
         }
         .alert("新建文件夹", isPresented: $showNewFolder) {
             TextField("名称", text: $newFolderName)

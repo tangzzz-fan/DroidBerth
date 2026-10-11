@@ -14,15 +14,22 @@ final class SpikeModel {
         running = true
         hasRun = true
         rows = []
-        Task.detached(priority: .userInitiated) {
+        Task.detached(priority: .userInitiated) { [weak self] in
             let result = SpikeChecks.runAll()
             SpikeReportWriter.write(result)
-            await MainActor.run {
-                self.rows = result
-                self.running = false
-                self.finishedAt = Date()
-            }
+            // 回主 actor 用**直接 await 一个 @MainActor 方法**，不要用
+            // `MainActor.run { self.rows = … }` —— 后者的 body 是 `@Sendable`，
+            // 捕获 self 会被判 `sending 'self' risks causing data races`
+            // （Xcode 16.4 报，新编译器不报）。
+            guard let self else { return }
+            await self.apply(result)
         }
+    }
+
+    private func apply(_ result: [SpikeRow]) {
+        rows = result
+        running = false
+        finishedAt = Date()
     }
 }
 

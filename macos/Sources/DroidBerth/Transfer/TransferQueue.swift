@@ -135,15 +135,19 @@ final class TransferQueue {
                 }
             }
 
-            await MainActor.run {
-                self?.finish(
-                    job,
-                    outcome: outcome,
-                    cancelled: cancellation.isCancelled,
-                    scanNote: scanNote,
-                    scanFailed: scanFailed
-                )
-            }
+            // 收尾要回主 actor。**不要写 `await MainActor.run { self?.finish(…) }`** ——
+            // `MainActor.run` 的 body 是 `@Sendable`，把 self 捕进去会被判
+            // `sending 'self' risks causing data races`（Xcode 16.4 报，新编译器不报）。
+            // 直接 `await` 一个 `@MainActor` 方法是最稳的写法：那是一次 actor hop，
+            // 靠的是「隔离调用」而不是「把 self 塞进 @Sendable 闭包」，依赖的机制最少。
+            guard let self else { return }
+            await self.finish(
+                job,
+                outcome: outcome,
+                cancelled: cancellation.isCancelled,
+                scanNote: scanNote,
+                scanFailed: scanFailed
+            )
         }
     }
 

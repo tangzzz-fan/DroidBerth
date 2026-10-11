@@ -84,10 +84,35 @@ detect_identity() {
 identity_kind() {
   case "$1" in
     "Developer ID Application"*) printf '%s' "developer-id" ;;
+    "Apple Distribution"*|"Mac Installer Distribution"*) printf '%s' "apple-distribution" ;;
     "Apple Development"*|"Mac Developer"*) printf '%s' "apple-development" ;;
     "-") printf '%s' "adhoc" ;;
     *) printf '%s' "unknown" ;;
   esac
+}
+
+# MAS 版用的签名身份：优先 `Apple Distribution`。
+#
+# ⚠️ 那两行 `sed` 是**刻意写死的**，不要图省事改成复用 `detect_identity()`：
+#    `detect_identity()` 排第一的是 **Developer ID**，而 Developer ID 签出来的包
+#    能公证、能侧载、本机跑得起来 —— 唯独**上不了 App Store**。
+#    差别要到「提交之后」才暴露，所以这里宁可返回 `-`（ad-hoc）让调用方一眼看出
+#    这不是个能上架的包，也不要静默给出一个「看起来更好」的错身份。
+#
+# 返回 `-` 时调用方应当明确告知：这样签出来的包**只能本机自测**。
+detect_mas_identity() {
+  if [ -n "${APPLE_MAS_SIGNING_IDENTITY:-}" ]; then
+    printf '%s' "$APPLE_MAS_SIGNING_IDENTITY"
+    return 0
+  fi
+  local found
+  found="$(security find-identity -v -p codesigning 2>/dev/null \
+    | sed -n 's/.*"\(Apple Distribution: [^"]*\)".*/\1/p' | head -1)"
+  if [ -n "$found" ]; then
+    printf '%s' "$found"
+    return 0
+  fi
+  printf '%s' "-"
 }
 
 make_signed_dmg() {

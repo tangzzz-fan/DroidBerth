@@ -343,6 +343,10 @@ SUMMARY: V1=pass V2=fail V3=pass V4=pass      # 接上 Android 模拟器时的�
 | shell 里写 `"$VAR，"`                  | macOS 的 bash 3.2 会把全角标点的字节算进变量名 ⇒ `unbound variable`。写 `${VAR}，`。**已从「靠记得」升级成 `check-all.sh` 的第 0 道守卫**（静态扫 `scripts/*.sh`）                              |
 | 在 `unzip -l` 里判中文名编码                | macOS 的 `unzip` 不认 EFS 标志，照样显示乱码，**但解压到磁盘是对的**。自研 ZIP 的中文名要显式置 EFS `0x0800`                                   |
 | 拿 `sm list-volumes` 枚举设备卷           | vold 旧接口，Android 10+ 已限制。用 `ls /storage/`                                                                     |
+| 拿 `/Users/` 前缀当「隐私泄露」判据        | **系统崩溃报告 `.ips` 自己就会匿名化**：实测里面的形态是 `\/Users\/USER\/*\/DroidBerth.app\/…`（用户名→字面量 `USER`、中间层→`*`）。按 `/Users/` 判，会让「用户机器上崩过一次」永远 FAIL —— **持续误报等于没有判据**。判据要落在**真实**家目录路径（含 `\/` 转义形态）与**真实**用户名上 |
+| 用子串匹配判 hardened runtime            | runtime 是 CodeDirectory 的 **`0x10000` 这一位**。ad-hoc 签名的构建是 `flags=0x10002(adhoc,runtime)`，**不含子串 `10000`** ⇒ grep 会把 ad-hoc 构建误报成「没开 hardened runtime」（本项目第一次跑就中招，同一个包从全 PASS 变成 FAIL）。**位掩码判**，别 grep |
+| 从**受限会话**的子进程启动沙盒 app         | 症状是 **`exit 133`（SIGTRAP）+ 一行输出都没有**，`.ips` 里栈顶是 `libsystem_secinit.dylib _libsecinit_appsandbox` —— **沙盒初始化失败**，不是 app 坏了。**用 `open`（LaunchServices）或 Finder 启动**：那样 app 由 launchd 拉起，不继承你所在进程的沙盒 |
+| 把「本会话能不能施加限制性沙盒」当**稳定**事实 | **同一台机器、同一天会话内都会变**：2026-10-12 06:20 判据返回 **0**、06:41 返回 **71**。⇒ 每次验沙盒前**现测一次**，别引用上一轮结论 |
 
 ---
 
@@ -386,3 +390,45 @@ sandbox-exec -p '(version 1)(deny default)(allow file-read*)(allow process-exec)
   探针必须自己打印「我到底有没有被沙盒化」。
 - 验沙盒**必须有对照组**（同一段代码、不带沙盒的另一个 bundle）。只测沙盒版时，
   「adb 失败」既可能是沙盒挡的、也可能是探针打包错了，**分不清的两件事等于没测**。
+
+### 10.1 那条判据**不稳定** —— 每次都要现测
+
+补一条 2026-10-12 晚些时候才发现的：**同一台机器、同一天、同一个会话里，那条判据会变。**
+
+```
+06:20  sandbox-exec -p '(version 1)(deny default)(allow file-read*)(allow process-exec)' /usr/bin/true  → 0
+06:41  同一条命令                                                                                          → 71
+```
+
+06:20 时沙盒版探针跑通、S1-a/S1-b PASS；06:41 之后连探针自己都跑不起来，而中间**谁也没改过任何配置**
+（跨了一个回合）。⇒ 这是**会话环境的策略变化**，不是我们的代码或工程配置。
+
+后果与对策：
+
+- **不要引用「上次测过」的结论** —— 每次验沙盒前先跑一次判据。
+- 探针脚本已内置这条预检，判据不成立时会明说「**本次沙盒版结论无效**」而不是报假 FAIL。
+- 这一条也解释了那份误以为「环境做不了沙盒验证」的原始结论：它在某些时刻**确实**成立，
+  但它**不是**稳定事实 —— 把一时一地的观察写成通则，就是最初那个错误的来源。
+
+### 10.2 怎么启动一个沙盒 app 来验它（这条比上面都实用）
+
+**别从 shell 直接跑它的可执行文件**（`"$APP/Contents/MacOS/DroidBerth" --diagnose`）。
+在有沙盒限制的会话里，它会：
+
+- **`exit 133`（SIGTRAP）且一行输出都没有**；
+- `~/Library/Logs/DiagnosticReports/` 里的 `.ips` 栈顶是
+  `libsystem_secinit.dylib — _libsecinit_appsandbox`（**沙盒初始化失败**）。
+
+**这看起来就是「app 被沙盒挡住了」，而它只是被启动方式挡住了。** 正确做法是：
+
+```bash
+open "/abs/path/to/DroidBerth.app"        # app 由 launchd 拉起，不继承你所在进程的沙盒
+```
+
+本机实测：同一个包，shell 直接跑 → 133 + 无输出；`open` → **正常起来、8 秒后进程仍在、无新崩溃报告**。
+两种签名（ad-hoc 与 `Apple Distribution`）都是这个结果。
+
+> ⚠️ 顺带更正一条差点写进方案的结论：**「用 Apple Distribution 签的包本机跑不起来」是错的。**
+> 依据是 `spctl -a` 报 `rejected` + shell 跑出 133 —— 前者是 **Gatekeeper 的分发评估**
+> （与公证/票据有关，不妨碍本机运行），后者是**启动方式**的问题。实测 `open` 同样能起来。
+> 真正需要 profile 的是**提交**，不是本机运行。

@@ -94,9 +94,9 @@
 | E1 | `macos/Resources/DroidBerth-MAS.entitlements` | ✅ **已落盘**。七条，逐条在文件里注明对应哪段代码；**刻意不放**的三类也写明了理由（`files.all` 已废弃 / `assets.*` 不需要因为照片走 PhotoKit / 三条 Hardened Runtime 例外不需要） |
 | E2 | `macos/Resources/Helper-MAS.entitlements` | ✅ **已落盘**。`app-sandbox` + `inherit`，并写明两者作用不同：前者是**审核要求**，后者才是继承机制，而**功能上子进程本来就继承** ⇒ 漏了 `inherit` 本地测不出来 |
 | E3 | `macos/project.yml` 加一个 **`Release-MAS`** 配置 | ✅ **已完成并实测构建通过**。配置类型显式写成 `release`（XcodeGen 按名字推断类型，不然会掉进 Debug 预设拿到 `-Onone`），生成结果核对过：`-O` + `wholemodule` ✅。目标级换 `Apple Distribution` + E1，`PROVISIONING_PROFILE_SPECIFIER` **刻意不写**（部署期数据，从命令行注入） |
-| E4 | `scripts/sign-embedded-tools-mas.sh` | ⬜ 待做。**当前 MAS 包里内嵌工具是 0 条 entitlements**（已实测），因为 `CodeSignOnCopy` 用的是 app 的 identity 但**不带 entitlements** |
-| E5 | `scripts/package-mas.sh` | ⬜ 待做 |
-| E6 | `scripts/check-mas-readiness.sh` | ⬜ 待做 |
+| E4 | `scripts/sign-embedded-tools-mas.sh` | ✅ **已完成并实测通过**。由内向外签（helper 带 E2 → app 带 E1），并**数清 `Contents/MacOS` 下恰好 3 个可执行文件**（多一个就会被静默按「无 entitlements」留在包里）。没有 Apple Distribution 证书时会退到 ad-hoc 并**大声说明**。实测：两个 helper 各 2 条、app 7 条 |
+| E5 | `scripts/package-mas.sh` | ⬜ 待做。会用到 `Mac Installer Distribution` 证书（还没有） |
+| E6 | `scripts/check-mas-readiness.sh` | ✅ **已完成并实测通过**。三档结论（PASS / FAIL / 人工项），实测 **PASS 23 · FAIL 1 · 人工项 6**，退出码 1 —— **唯一那条 FAIL 正是缺 `embedded.provisionprofile`**，也就是必须有 App Store Connect 记录才能生成的东西。它自己也在第一次跑就抓出一个缺陷（见 §4.2） |
 | E7 | 启动时的**授权引导流程**（代码改动） | ⬜ 待做。**先看 §4.1 的实测数据** —— `places()` 不只是「要授权」，现在这个形态会**骗人** |
 | E8 | 退出时 `adb kill-server`（代码改动） | ⬜ 待做 |
 
@@ -132,6 +132,36 @@
 > 在沙盒下根本读不动，**加 entitlement 不是解法** —— 照片图库走的是 PhotoKit
 > （`Photos/PhotoLibraryModel.swift`），需要的是一条 `personal-information.photos-library`，
 > 已经放进 E1 了。
+
+### 4.2 怎么验沙盒版：**不需要证书，也不需要 App Store Connect**
+
+实测一遍完整流程（每步都验过）：
+
+```bash
+CONFIGURATION=Release-MAS ./scripts/build.sh                    # 用 Apple Distribution 签，BUILD SUCCEEDED
+CONFIGURATION=Release-MAS ./scripts/sign-embedded-tools-mas.sh  # 给两个 helper 补 app-sandbox + inherit
+CONFIGURATION=Release-MAS ./scripts/check-mas-readiness.sh      # PASS 23 · FAIL 1 · 人工项 6
+```
+
+- `xcodebuild` 的 **`build` 动作不强求 provisioning profile**（只有 archive / 上传才要）
+  ⇒ 没有 profile 也能构建、也能本机运行。**唯一那条 FAIL 就是缺 profile**，而那是必须
+  先有 App Store Connect 记录才能生成的。
+- 内嵌 helper 的 entitlements 得靠 E4 补（Xcode 的 `CodeSignOnCopy` 不带）。
+
+**两条硬规矩（都踩过）：**
+
+1. **用 `open` 启动它，别从 shell 跑可执行文件。** 在有限制的会话里直接跑它 =
+   `exit 133` + 一行输出都没有，`.ips` 栈顶 `libsecinit_appsandbox`（沙盒初始化失败）。
+   这看着就是「沙盒把 app 挡住了」，其实只是**启动方式**不对 —— `open` 由 launchd 拉起，
+   不继承你所在进程的沙盒。实测同一个包两种签名都能正常起来。
+2. **判据每次现测。** 「本会话能不能施加限制性沙盒」在同一天里会变（06:20 是 0、06:41 是 71）
+   ⇒ 别引用上一轮的结论。
+
+> ⚠️ **更正一条早期结论**：本方案曾口头写「用 Apple Distribution 签的包本机跑不起来」——
+> **不成立**。当时的两条依据都不支持它：`spctl -a` 报 `rejected` 是 **Gatekeeper 的分发评估**
+> （与公证/票据有关，不妨碍本机运行）；shell 跑出 133 是**启动方式**的问题（上一条）。
+> 实测 `open` 能起来、无崩溃。所以**本机自测不必另配一套开发签名** ——
+> 缺 profile 只会让 `check-mas-readiness.sh` 报那一条 FAIL。
 
 ---
 

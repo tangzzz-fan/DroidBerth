@@ -278,6 +278,15 @@ struct DroidBerthApp: App {
                 Button("快速查看") { model.quickLookFocusedSelection() }
                     .disabled(!model.canQuickLook)
 
+                // 回车重命名（PRD §13.1）。**刻意不挂键盘快捷键**，与上一行的空格、
+                // 以及窗格里的 Tab 同一条理由：无修饰键的菜单快捷键会先于文本框拿到
+                // 事件，挂上去之后在搜索框 / 重命名框里按回车就不是「提交」了。
+                // 真正的键位在 `PaneKeyMonitor` 里；这一项只负责可发现性与启用态。
+                Button("重命名…") {
+                    NotificationCenter.default.post(name: .droidBerthRenameSelection, object: nil)
+                }
+                .disabled(model.renameCandidate == nil)
+
                 Button("搜索") {
                     NotificationCenter.default.post(name: .droidBerthFocusSearch, object: nil)
                 }
@@ -376,6 +385,9 @@ struct DroidBerthApp: App {
 extension Notification.Name {
     static let droidBerthNewFolder = Notification.Name("DroidBerth.newFolder")
     static let droidBerthDeleteSelection = Notification.Name("DroidBerth.deleteSelection")
+    /// 回车（`PaneKeyMonitor`）与菜单项「重命名…」共用这一条 —— 两条入口，
+    /// 一个落点，不会出现「键盘重命名」与「菜单重命名」行为不一致。
+    static let droidBerthRenameSelection = Notification.Name("DroidBerth.renameSelection")
     /// 菜单命令 → `MainView` 的桥。`showSettings` 与搜索焦点都是 `MainView` 的
     /// `@State` / `@FocusState`，菜单命令拿不到，只能靠通知转一手。
     static let droidBerthOpenSettings = Notification.Name("DroidBerth.openSettings")

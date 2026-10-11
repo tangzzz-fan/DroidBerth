@@ -1723,6 +1723,182 @@ final class AppModel {
             .filter { FileManager.default.fileExists(atPath: $0.path) }
     }
 
+    // MARK: - 网格视图的键盘导航（PRD §13.3）
+
+    /// 每侧网格当前的列数，由 `EntryGrid` 在布局后回报。
+    ///
+    /// 为什么必须由视图回报：`LazyVGrid` 的 `.adaptive` 铺几列是 SwiftUI 按可用宽决定的，
+    /// 视图之外拿不到；而 ↑ / ↓ 要按**一行的条数**跳，猜一个列数会让上下键落到别处。
+    /// 「怎么算列数」只有一份实现（`GridNavigation.columnCount`），视图拿它算、这里拿它跳。
+    private var gridColumns: [Pane: Int] = [:]
+
+    func reportGridColumnCount(_ count: Int, for pane: Pane) {
+        let clamped = max(count, 1)
+        guard gridColumns[pane] != clamped else { return }
+        gridColumns[pane] = clamped
+    }
+
+    /// ⇧ 区间选择与方向键共用的锚点。
+    ///
+    /// 放在模型里而不是 `EntryGrid` 的 `@State`：键盘移动是从这里发起的，锚点若留在视图里，
+    /// 鼠标点一下再按 ⇧→ 的区间就会从别处开始 —— 两份锚点必然分叉。
+    private var gridAnchors: [Pane: String] = [:]
+
+    func gridAnchor(for pane: Pane) -> String? { gridAnchors[pane] }
+
+    func setGridAnchor(_ id: String?, for pane: Pane) {
+        if let id {
+            gridAnchors[pane] = id
+        } else {
+            gridAnchors.removeValue(forKey: pane)
+        }
+    }
+
+    /// 键盘移动后要求网格滚到可见的条目 id。
+    ///
+    /// **只在键盘移动时设置**：鼠标点到的条目本来就在视野里，若也走滚动，
+    /// 就会出现「点一下视图自己动一下」的副作用。
+    private var gridScrollTargets: [Pane: String] = [:]
+
+    func gridScrollTarget(for pane: Pane) -> String? { gridScrollTargets[pane] }
+
+    func setGridScrollTarget(_ id: String?, for pane: Pane) {
+        if let id {
+            gridScrollTargets[pane] = id
+        } else {
+            gridScrollTargets.removeValue(forKey: pane)
+        }
+    }
+
+    /// 聚焦窗格此刻是不是「一个支持键盘导航的网格」。
+    ///
+    /// 照片图库的网格刻意不在内：它的顺序来自 PhotoKit（`PhotoLibraryModel.items`），
+    /// 与 `GridNavigation` 拿到的不是同一份列表 —— 硬接上去会让 ↓ 跳到看不见的地方。
+    /// 返回 false 时按键原样交还系统。
+    private var focusedGridIsNavigable: Bool {
+        switch (focus, macSource) {
+        case (.mac, .files): viewMode(for: .mac) == .grid
+        case (.device, _): viewMode(for: .device) == .grid
+        case (.mac, .photos): false
+        }
+    }
+
+    /// 聚焦窗格里网格要显示的条目，顺序与屏幕上一致。
+    private func focusedGridEntries() -> [BrowserEntry] {
+        switch (focus, macSource) {
+        case (.mac, .files):
+            return GridNavigation.order(
+                visibleLocalEntries.map(\.asBrowserEntry), foldersFirst: settings.foldersFirst
+            )
+        case (.device, _):
+            return GridNavigation.order(
+                visibleRemoteEntries.map(BrowserEntry.init(remote:)), foldersFirst: settings.foldersFirst
+            )
+        case (.mac, .photos):
+            return []
+        }
+    }
+
+    private func selection(in pane: Pane) -> Set<String> {
+        pane == .mac ? localSelection : remoteSelection
+    }
+
+    private func setSelection(_ ids: Set<String>, in pane: Pane) {
+        if pane == .mac {
+            localSelection = ids
+        } else {
+            remoteSelection = ids
+        }
+    }
+
+    /// 光标当前位置：优先锚点，锚点失效（条目被删掉 / 换了目录）再退回当前单选的那一项。
+    private func gridCursorIndex(in entries: [BrowserEntry]) -> Int? {
+        if let anchor = gridAnchors[focus], let index = entries.firstIndex(where: { $0.id == anchor }) {
+            return index
+        }
+        let picked = selection(in: focus)
+        return entries.firstIndex { picked.contains($0.id) }
+    }
+
+    /// 网格的方向键。返回 true 表示已消费。
+    ///
+    /// 没有选中项时第一下落在首项，而不是「按了没反应」—— 点完空白处再按 → 会从第一格开始。
+    @discardableResult
+    func moveGridSelection(_ move: GridNavigation.Move, extending: Bool) -> Bool {
+        guard focusedGridIsNavigable else { return false }
+        let entries = focusedGridEntries()
+        guard !entries.isEmpty else { return false }
+
+        let pane = focus
+        let start = gridCursorIndex(in: entries) ?? 0
+        let target = GridNavigation.targetIndex(
+            from: start, move: move, columns: gridColumns[pane] ?? 1, count: entries.count
+        )
+        guard entries.indices.contains(target) else { return false }
+
+        if extending, let anchor = gridAnchors[pane],
+           let anchorIndex = entries.firstIndex(where: { $0.id == anchor }) {
+            let range = anchorIndex <= target ? anchorIndex...target : target...anchorIndex
+            setSelection(Set(entries[range].map(\.id)), in: pane)
+        } else {
+            setSelection([entries[target].id], in: pane)
+            gridAnchors[pane] = entries[target].id
+        }
+        gridScrollTargets[pane] = entries[target].id
+        return true
+    }
+
+    /// 一轮字母跳转的起点下标。
+    ///
+    /// `su` 的第 2 枚字母要在**同一批候选**里把前缀重新筛一遍；从「上一次落点」往后找
+    /// 会把刚筛出来的那一项正好跳过去（`s` 跳到 sunset 之后再敲 `u`，会跳到 sunrise）。
+    /// 所以只在**新一轮的第一枚字母**上重算起点。
+    private var gridTypeSelectOrigins: [Pane: Int] = [:]
+
+    /// 网格的字母跳转。返回 true 表示已消费（没命中就返回 false，让按键回到系统，
+    /// 不会变成「按了没反应」）。
+    @discardableResult
+    func typeSelectInGrid(_ query: String, isContinuation: Bool) -> Bool {
+        guard focusedGridIsNavigable else { return false }
+        let entries = focusedGridEntries()
+        guard !entries.isEmpty else { return false }
+
+        let pane = focus
+        let origin: Int
+        if isContinuation, let remembered = gridTypeSelectOrigins[pane] {
+            origin = remembered
+        } else {
+            // 从「当前项的下一个」开始找：连着敲同一个字母因此在所有命中项之间轮转。
+            origin = (gridCursorIndex(in: entries) ?? -1) + 1
+            gridTypeSelectOrigins[pane] = origin
+        }
+
+        guard let index = GridNavigation.typeSelectIndex(query, in: entries, from: origin) else {
+            return false
+        }
+        setSelection([entries[index].id], in: pane)
+        gridAnchors[pane] = entries[index].id
+        gridScrollTargets[pane] = entries[index].id
+        return true
+    }
+
+    /// 回车重命名的目标（PRD §13.1）。
+    ///
+    /// 三条同时成立才给：① 聚焦窗格在设备端；② 恰好选中一项；③ 视图形态是列表或网格。
+    ///
+    /// **分栏刻意排除。** `renameRemoteEntry` 的冲突预检比的是**当前目录**的列表，
+    /// 而分栏选中的条目可能位于子目录（`/sdcard/DCIM/Camera/x.jpg` 并不在 `/sdcard/DCIM` 里），
+    /// 那份列表里没有它的同目录兄弟 ⇒ 预检漏判 ⇒ `mv` 静默覆盖用户手机上的文件
+    /// （`mv` 默认覆盖，设备端又没有回收站）。宁可这个键位在分栏里不存在，
+    /// 也不要一个会丢数据的入口 —— 分栏本来也没有右键「重命名…」，两边一致。
+    var renameCandidate: BrowserEntry? {
+        guard focus == .device,
+              activeDevice != nil,
+              viewMode(for: .device) != .column,
+              remoteSelection.count == 1 else { return nil }
+        return focusedBrowserSelection().first
+    }
+
     // MARK: - 聚焦与键盘导航
 
     /// Tab 在窗格之间循环。

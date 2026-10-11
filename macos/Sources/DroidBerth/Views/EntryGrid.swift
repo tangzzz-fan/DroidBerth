@@ -9,11 +9,21 @@ import SwiftUI
 ///
 /// 与列表的两处**刻意不同**：
 /// - 没有列头，所以没有按列排序。顺序固定为「文件夹优先 + 本地化名称」，即
-///   图标视图的既有约定。列表里的列头排序是 `EntryTable` 的局部状态，不外溢到这里。
+///   图标视图的既有约定 —— 那份排序由 `GridNavigation.order` 给出，方向键用的是同一份。
 /// - 右键菜单按**显式目标**动作，见 `menu(for:)` 的说明。
+///
+/// 键盘导航（方向键 / 字母跳转 / 回车重命名）由 `PaneKeyMonitor` + `AppModel` 驱动，
+/// 这里只负责三件事：**排序**（与模型同一份）、**回报一屏几列**、**把落点滚进视野**。
 struct EntryGrid: View {
     let entries: [BrowserEntry]
     @Binding var selection: Set<String>
+    /// ⇧ 区间选择与方向键共用的锚点。放在模型里而不是本视图的 `@State`：
+    /// 键盘移动是从模型发起的，锚点若留在视图里，鼠标点一次再按 ⇧→ 就会从别处开始。
+    @Binding var anchor: String?
+    /// 键盘移动后要求滚到可见的条目 id；滚动完成由本视图置回 nil。
+    @Binding var scrollTarget: String?
+    /// 布局后回报「一屏几列」—— ↑ / ↓ 按它跳一整行，而列数只有在这里才知道。
+    let onColumnCountChange: (Int) -> Void
     /// 空态的结构化描述（图标 + 文案 + 可选动作），与列表视图共用同一个类型。
     let emptyState: PaneEmptyState
     /// 网格图标边长（pt），由 ⌘+ / ⌘- 调整（PRD §13.3）。
@@ -32,12 +42,12 @@ struct EntryGrid: View {
     var dragSide: TransferDragPayload.Side?
     var foldersFirst: Bool = true
 
-    /// ⇧ 区间选择的锚点。
-    @State private var anchorID: String?
-
     /// 图标两侧留给文件名的宽度。随字号缩放（PRD §25 动态字体）—— 定死的话
     /// 大字号下两行名称会被裁掉。
     @ScaledMetric(relativeTo: .caption) private var labelAllowance: CGFloat = 34
+
+    /// PRD §25：键盘连续移动时若开着「减弱动态效果」，滚进视野也不该有动画。
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let spacing: CGFloat = 12
 
@@ -47,21 +57,59 @@ struct EntryGrid: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ScrollView {
-                LazyVGrid(columns: columns, spacing: spacing) {
-                    ForEach(sortedEntries) { entry in
-                        cell(entry)
+                ScrollViewReader { proxy in
+                    LazyVGrid(columns: columns, spacing: spacing) {
+                        ForEach(sortedEntries) { entry in
+                            cell(entry)
+                        }
+                    }
+                    // 宽度必须在 `.padding(12)` **之前**量：自适应列数用的是网格自己拿到的
+                    // 可用宽，量到带内边距的外框会每边多算 12pt。
+                    .background(widthReporter)
+                    .padding(12)
+                    // ⌘+ / ⌘- 只改格子大小、**不改宽度** —— 少这一条，放大图标后列数变了
+                    // 而模型里还是旧值，↑ / ↓ 从此跳错行，且不报任何错。
+                    .onChange(of: cellWidth) { _, _ in reportColumns(for: measuredWidth) }
+                    .onChange(of: scrollTarget) { _, target in
+                        guard let target else { return }
+                        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.12)) {
+                            proxy.scrollTo(target, anchor: .center)
+                        }
+                        scrollTarget = nil
                     }
                 }
-                .padding(12)
             }
             // 点空白处取消选择（与 Finder 图标视图一致）。格子自己的手势在
             // 各自的命中区域里优先，不会把点格子的操作误判成点空白。
             .contentShape(Rectangle())
             .onTapGesture {
                 selection = []
-                anchorID = nil
+                anchor = nil
             }
         }
+    }
+
+    /// 最近一次量到的网格宽度。存下来是为了 `cellWidth` 变化时（⌘± 改图标尺寸）
+    /// 能拿它重算列数 —— 那一刻宽度没变，`GeometryReader` 的 `onChange` 不会触发。
+    @State private var measuredWidth: CGFloat = 0
+
+    /// 把网格的实际宽度换成一屏列数回报上去。
+    ///
+    /// 借 `GeometryReader` + `onChange` 而不是在 body 里同步算：`body` 期间不能写
+    /// 模型状态，而这两个回调都在布局之后触发。
+    private var widthReporter: some View {
+        GeometryReader { proxy in
+            Color.clear
+                .onAppear { reportColumns(for: proxy.size.width) }
+                .onChange(of: proxy.size.width) { _, width in reportColumns(for: width) }
+        }
+    }
+
+    private func reportColumns(for width: CGFloat) {
+        measuredWidth = width
+        onColumnCountChange(
+            GridNavigation.columnCount(width: Double(width), cellWidth: Double(cellWidth), spacing: Double(spacing))
+        )
     }
 
     // MARK: - 布局
@@ -76,13 +124,10 @@ struct EntryGrid: View {
         [GridItem(.adaptive(minimum: cellWidth, maximum: cellWidth * 1.4), spacing: spacing)]
     }
 
+    /// 显示顺序。**与 `AppModel` 走方向键时用的是同一个函数**（`GridNavigation.order`）——
+    /// 两边各排一次、排序规则稍有差别，↓ 就会跳到肉眼看不见的地方。
     private var sortedEntries: [BrowserEntry] {
-        entries.sorted { lhs, rhs in
-            if foldersFirst, lhs.isDirectory != rhs.isDirectory {
-                return lhs.isDirectory
-            }
-            return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
-        }
+        GridNavigation.order(entries, foldersFirst: foldersFirst)
     }
 
     // MARK: - 单元格
@@ -177,16 +222,16 @@ struct EntryGrid: View {
             } else {
                 selection.insert(entry.id)
             }
-            anchorID = entry.id
+            anchor = entry.id
         } else if flags.contains(.shift),
-                  let anchorID,
-                  let from = sortedEntries.firstIndex(where: { $0.id == anchorID }),
+                  let anchor,
+                  let from = sortedEntries.firstIndex(where: { $0.id == anchor }),
                   let to = sortedEntries.firstIndex(where: { $0.id == entry.id }) {
             let range = from <= to ? from...to : to...from
             selection = Set(sortedEntries[range].map(\.id))
         } else {
             selection = [entry.id]
-            anchorID = entry.id
+            anchor = entry.id
         }
     }
 

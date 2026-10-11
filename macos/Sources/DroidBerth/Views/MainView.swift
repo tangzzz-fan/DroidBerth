@@ -54,6 +54,22 @@ struct MainView: View {
                     model.cycleFocus(backwards: backwards)
                 }
                 monitor.onQuickLook = { model.quickLookFocusedSelection() }
+                // 网格视图的三个键（PRD §13.3）。三者都只在「聚焦窗格确实是网格」时
+                // 返回 true；返回 false 时事件照原样流给系统，列表与分栏的原生方向键
+                // 与 type-select 因此一行都不用改，也不会被抢走。
+                monitor.onGridMove = { move, extending in
+                    model.moveGridSelection(move, extending: extending)
+                }
+                monitor.onGridTypeSelect = { query, isContinuation in
+                    model.typeSelectInGrid(query, isContinuation: isContinuation)
+                }
+                // 走通知而不是在这里直接开弹窗：`showRename` 是 MainView 的 `@State`，
+                // 与 ⌘⌫ 的删除确认同一条路（菜单项也用同一个通知）。
+                monitor.onRename = {
+                    guard model.renameCandidate != nil else { return false }
+                    NotificationCenter.default.post(name: .droidBerthRenameSelection, object: nil)
+                    return true
+                }
                 monitor.start()
                 keyMonitor = monitor
             }
@@ -69,6 +85,11 @@ struct MainView: View {
         .onReceive(NotificationCenter.default.publisher(for: .droidBerthDeleteSelection)) { _ in
             guard model.canDeleteSelection else { return }
             showDeleteConfirm = true
+        }
+        // 回车（`PaneKeyMonitor`）与「显示 → 重命名…」都走这一条，只有一个入口。
+        .onReceive(NotificationCenter.default.publisher(for: .droidBerthRenameSelection)) { _ in
+            guard let entry = model.renameCandidate else { return }
+            beginRename(entry)
         }
         .onReceive(NotificationCenter.default.publisher(for: .droidBerthFocusSearch)) { _ in
             searchFocused = true
@@ -195,6 +216,9 @@ struct MainView: View {
                     EntryGrid(
                         entries: macEntries,
                         selection: localSelectionBinding,
+                        anchor: gridAnchorBinding(.mac),
+                        scrollTarget: gridScrollBinding(.mac),
+                        onColumnCountChange: { model.reportGridColumnCount($0, for: .mac) },
                         emptyState: macEmptyState,
                         iconSize: model.settings.gridIconSize,
                         thumbnails: model.thumbnails,
@@ -411,6 +435,9 @@ struct MainView: View {
                 EntryGrid(
                     entries: model.visibleRemoteEntries.map(BrowserEntry.init(remote:)),
                     selection: remoteSelectionBinding,
+                    anchor: gridAnchorBinding(.device),
+                    scrollTarget: gridScrollBinding(.device),
+                    onColumnCountChange: { model.reportGridColumnCount($0, for: .device) },
                     emptyState: deviceEmptyState,
                     iconSize: model.settings.gridIconSize,
                     thumbnails: model.thumbnails,
@@ -785,6 +812,26 @@ struct MainView: View {
         Binding(
             get: { model.photoSelection },
             set: { model.photoSelection = $0; model.focus = .mac }
+        )
+    }
+
+    // MARK: - 网格视图的会话状态（锚点 / 滚动目标）
+
+    /// 锚点与滚动目标都放在 `AppModel` 里，视图只借一个绑定 —— 键盘移动是模型发起的，
+    /// 状态若留在视图里，鼠标与键盘就会各记一份锚点（必然分叉）。
+    ///
+    /// 注意绑的是 `.mac` / `.device` 而不是左右：⇄ 交换只换窗格的位置，不换它显示谁。
+    private func gridAnchorBinding(_ pane: AppModel.Pane) -> Binding<String?> {
+        Binding(
+            get: { model.gridAnchor(for: pane) },
+            set: { model.setGridAnchor($0, for: pane) }
+        )
+    }
+
+    private func gridScrollBinding(_ pane: AppModel.Pane) -> Binding<String?> {
+        Binding(
+            get: { model.gridScrollTarget(for: pane) },
+            set: { model.setGridScrollTarget($0, for: pane) }
         )
     }
 

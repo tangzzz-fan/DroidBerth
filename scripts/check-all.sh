@@ -2,18 +2,19 @@
 # 跑**全部**回归守卫。CI 与本地共用同一个入口 —— 这样「CI 绿了但本地是另一套检查」
 # 这种最常见的失配从结构上不会发生。
 #
-# 三个守卫各有分工，**都不能省**：
+# 四个守卫各有分工，**都不能省**：
 #
 # | 守卫 | 守什么 | 为什么编译器不管 |
 # | --- | --- | --- |
 # | `check-icon-mapping` | 同一扩展名在两栏（Mac / 设备）得到同一个符号 | 缺陷表现是「**静默分叉**」——两处 switch 各写一遍，`.apk` 在一边变通用文稿，没有任何编译错误 |
+# | `check-grid-navigation` | 网格的顺序 / 列数 / 方向键落点 / 字母跳转 | 视图排一次序、键盘再排一次，误差不报错也不崩，只会**让 ↓ 跳到肉眼看不见的地方** |
 # | `check-transfer-semantics` | 折叠规则、冲突改名、名称校验、缩略图范围 | 全是纯函数判据；错的方向会让**用户手机上的文件被静默覆盖** |
 # | `check-diagnostics-bundle` | 诊断包条目数 / 中文名编码 / 无隐私泄露 | 缺陷表现是「**产物打开来才发现**」——曾经产出过一个只有根目录的空包，不报任何错 |
 #
-# ⚠️ 本项目**没有测试 target**（`project.yml` 里没有 unit-test target）。这三个脚本目前
+# ⚠️ 本项目**没有测试 target**（`project.yml` 里没有 unit-test target）。这四个脚本目前
 #    是这类「静默错」唯一的自动化防线，所以 CI 必须跑它们。
 #
-# 前置：先构建（`scripts/build.sh`）。第三个守卫会去跑 app 的导出命令。
+# 前置：先构建（`scripts/build.sh`）。第四个守卫会去跑 app 的导出命令。
 set -euo pipefail
 
 source "$(cd "$(dirname "$0")" && pwd)/env.sh"
@@ -61,6 +62,15 @@ run_swift_check() {
 }
 
 run_swift_check check-icon-mapping \
+  "$SWIFT_SRC/Support/FileTypeIcon.swift" \
+  "$SWIFT_SRC/Support/ByteFormat.swift"
+
+run_swift_check check-grid-navigation \
+  "$SWIFT_SRC/Support/GridNavigation.swift" \
+  "$SWIFT_SRC/Support/NameComparison.swift" \
+  "$SWIFT_SRC/Support/BrowserEntry.swift" \
+  "$SWIFT_SRC/ADB/RemoteEntry.swift" \
+  "$SWIFT_SRC/Local/LocalFileSystem.swift" \
   "$SWIFT_SRC/Support/FileTypeIcon.swift" \
   "$SWIFT_SRC/Support/ByteFormat.swift"
 

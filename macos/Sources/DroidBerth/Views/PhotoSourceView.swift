@@ -7,6 +7,11 @@ struct PhotoSourceView: View {
     /// 选择绑定由外面给：改选择要同时把焦点移到 Mac 窗格（见 `MainView` 的说明）。
     @Binding var selection: Set<String>
 
+    /// 照片网格只借 `EntryGrid` 的排布与右键菜单，不参与键盘导航，
+    /// 所以锚点与滚动目标留在这里（没人会从模型侧读它）。
+    @State private var photoGridAnchor: String?
+    @State private var photoGridScrollTarget: String?
+
     var body: some View {
         switch model.photos.access {
         case .authorized, .limited:
@@ -52,6 +57,12 @@ struct PhotoSourceView: View {
                         EntryGrid(
                             entries: model.photos.items.map(\.asBrowserEntry),
                             selection: $selection,
+                            // 照片网格**不参与**键盘导航：它的顺序来自 PhotoKit，
+                            // 与 `GridNavigation` 用的列表不是同一份（见
+                            // `AppModel.focusedGridIsNavigable`）。方向键因此原样交还系统。
+                            anchor: $photoGridAnchor,
+                            scrollTarget: $photoGridScrollTarget,
+                            onColumnCountChange: { _ in },
                             emptyState: photosEmptyState,
                             iconSize: model.settings.gridIconSize,
                             thumbnails: model.thumbnails,

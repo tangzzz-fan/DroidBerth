@@ -181,13 +181,28 @@ enum ZipWriter {
     // MARK: - 时间戳
 
     /// MS-DOS 的打包时间格式（ZIP 只支持到 1980–2107、精确到 2 秒）。
+    ///
+    /// ⚠️ 位域拼装**必须拆成带显式类型的中间量**。写成一行
+    /// `UInt16((a ?? 0) << 11 | (b ?? 0) << 5 | (c ?? 0) / 2)` 时，
+    /// 新编译器能过，但 CI 的 Xcode 16.4 会报
+    /// `the compiler is unable to type-check this expression in reasonable time`
+    /// —— 那一堆 `??` / `<<` / `|` 让重载决议的组合爆炸了。
     private static func dosStamp(_ date: Date) -> (time: UInt16, date: UInt16) {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = .current
         let parts = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
         let year = max(1980, min(2107, parts.year ?? 1980))
-        let time = UInt16((parts.hour ?? 0) << 11 | (parts.minute ?? 0) << 5 | ((parts.second ?? 0) / 2))
-        let day = UInt16((year - 1980) << 9 | (parts.month ?? 1) << 5 | (parts.day ?? 1))
+
+        let hour: UInt16 = UInt16(parts.hour ?? 0)
+        let minute: UInt16 = UInt16(parts.minute ?? 0)
+        let twoSecond: UInt16 = UInt16((parts.second ?? 0) / 2)
+        let time: UInt16 = (hour << 11) | (minute << 5) | twoSecond
+
+        let since1980: UInt16 = UInt16(year - 1980)
+        let month: UInt16 = UInt16(parts.month ?? 1)
+        let dayOfMonth: UInt16 = UInt16(parts.day ?? 1)
+        let day: UInt16 = (since1980 << 9) | (month << 5) | dayOfMonth
+
         return (time, day)
     }
 }

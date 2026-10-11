@@ -134,7 +134,7 @@ final class ThumbnailStore {
         let url = URL(fileURLWithPath: entry.path)
         let currentGeneration = generation
         Task {
-            let image = await Self.generate(from: url)
+            let image = await Self.generate(from: url).image
             guard generation == currentGeneration else { return }
             finish(key: key, image: image, scratch: nil)
         }
@@ -175,7 +175,7 @@ final class ThumbnailStore {
 
             let image: NSImage?
             if let scratch {
-                image = await Self.generate(from: scratch)
+                image = await Self.generate(from: scratch).image
             } else {
                 image = nil
             }
@@ -227,9 +227,30 @@ final class ThumbnailStore {
     /// `nonisolated` + 只经 `CGImage` 过界：`NSImage` 不是 `Sendable`，直接把
     /// `QLThumbnailRepresentation` 或 `NSImage` 从非隔离上下文带回 MainActor
     /// 在严格并发下过不了编译。`CGImage` 是不变值，可以安全跨界。
-    private nonisolated static func generate(from url: URL) async -> NSImage? {
-        guard let cgImage = await generateCGImage(from: url) else { return nil }
-        return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+    /// 把缩略图从后台线程交回主线程的载体。
+    ///
+    /// **为什么需要它**：`NSImage` 至今不是 `Sendable` —— 但不同 SDK 上的判定不一样，
+    /// 于是出现「本地编译过、CI 编译不过」：同一份代码在较新的 SDK 上不报，
+    /// 而 CI 的 Xcode 16.4 明确报
+    /// `non-sendable result type 'NSImage?' cannot be sent from nonisolated context`。
+    /// （`ThumbnailStore` 是 `@MainActor`，而 `generate` 是 `nonisolated`，
+    /// 结果要跨回主 actor，因此要求 `Sendable`。）
+    ///
+    /// 这里标 `@unchecked Sendable` 是**断言**而不是掩盖，依据有两条：
+    /// ① `QLThumbnailGenerator` 给的是 `CGImage`，本身不可变；
+    /// ② 生成的图片交给主线程后**没有任何地方再修改它** —— `finish` 只把它存进缓存并通知视图。
+    ///
+    /// 另一条路是「后台编成 PNG 字节、主线程再解成 NSImage」（`Data` 天然 `Sendable`），
+    /// 但那要给每张缩略图加一次编解码往返，而网格滚动时这个开销是实打实的。不划算。
+    private struct ThumbnailImage: @unchecked Sendable {
+        let image: NSImage?
+    }
+
+    private nonisolated static func generate(from url: URL) async -> ThumbnailImage {
+        guard let cgImage = await generateCGImage(from: url) else { return ThumbnailImage(image: nil) }
+        return ThumbnailImage(
+            image: NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+        )
     }
 
     private nonisolated static func generateCGImage(from url: URL) async -> CGImage? {

@@ -98,12 +98,17 @@ if [ -n "${XCODEBUILD_ARGS:-}" ]; then
   echo "    XCODEBUILD_ARGS: ${EXTRA_ARGS[*]}"
 fi
 
+# ⚠️ 展开必须写成 `"${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"`，**不能**只写 `"${EXTRA_ARGS[@]}"`：
+#    本机与 CI 的 /bin/bash 都是 **3.2**，在 `set -u` 下把**空数组**的 `"${arr[@]}"` 判为
+#    unbound variable（4.4 起才修）。写成直接展开时，不传 XCODEBUILD_ARGS 的普通构建
+#    会在最后一步报 `EXTRA_ARGS[@]: unbound variable` —— 而这**是默认路径**。
+#    这个坑我踩过一次，且因为用 grep 过滤了输出、管道的退出码又把失败盖住了，白看了一轮。
 xcodebuild \
   -project "$SWIFT_DIR/DroidBerth.xcodeproj" \
   -scheme DroidBerth \
   -configuration "$CONFIGURATION" \
   -derivedDataPath "$SWIFT_DIR/build/dd" \
-  "${EXTRA_ARGS[@]}" \
+  "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}" \
   build
 
 echo

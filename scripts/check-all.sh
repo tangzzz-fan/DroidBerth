@@ -23,16 +23,30 @@ source "$(cd "$(dirname "$0")" && pwd)/env.sh"
 SWIFT_SRC="$SWIFT_DIR/Sources/DroidBerth"
 APP_BIN="$APP_PATH/Contents/MacOS/$APP_NAME"
 
-# ── swiftc 的沙箱逃逸：只在本机受限沙箱里需要 ──────────────────────────
+# ── swiftc 的沙箱逃逸：**必要性未被证实**，保留只因为它不命中时零影响 ──────────
 #
-# 受限沙箱会挡住 swift-plugin-server，症状是宏（`@Observable` / `@State`）报
-# `malformed response` —— 看着像代码错误，其实是环境。判据是那条探针的退出码：
-# 71 = sandbox_apply 被拒。CI 与用户自己的终端都不需要这个参数，所以**自动判**。
+# 初衷是：受限沙箱挡住 swift-plugin-server，症状是宏（`@Observable` / `@State`）报
+# `malformed response` —— 看着像代码错误，其实是环境。
+#
+# ⚠️ 但这条机制的**判据曾经写反**，而且 2026-10-12 实测：完整 `build.sh`（xcodebuild）
+#    在不加 `-Xfrontend -disable-sandbox` 的情况下 **BUILD SUCCEEDED**，日志里
+#    `sandbox_apply` / `malformed response` 一条都没有。`swiftc -typecheck` 同理。
+#    ⇒ 「本机的 agent 会话需要它」这个前提**站不住**。
+#
+# 原判据为什么反：`sandbox-exec -p '...' /bin/echo ok` —— 那份 profile 里**没有
+# `allow process-exec`**，而 `sandbox-exec` 施加完 profile 还要 exec 目标程序，
+# 于是「profile 自己拒绝 exec」被读成了「profile 施加不了」。判据错一个方向，
+# 挡住的是自己的路（详见 scripts/spike-sandbox-adb.sh 的预检注释）。
+#
+# 现在的判据是**一个能正常跑起来的最小放开集**：施加成功 ⇒ exit 0。两个细节都要对：
+# ① profile 要带 `allow process-exec`；② 程序要写 `/usr/bin/true`（macOS **没有 `/bin/true`**）。
+# 任一处写错都报 71，症状和「施加不了」完全一样 —— 这条探针已经连错两次，别再改回去。
+# 保留这个函数的理由是它在探测不命中时什么都不做 —— 万一某天真在一个受限环境里跑，还能兜一下。
 sandbox_escape_args() {
   if ! command -v sandbox-exec >/dev/null 2>&1; then return 0; fi
   local code=0
-  sandbox-exec -p '(version 1)(deny default)(allow file-read*)' /bin/echo ok >/dev/null 2>&1 || code=$?
-  [ "$code" = "71" ] && printf '%s' "-Xfrontend -disable-sandbox"
+  sandbox-exec -p '(version 1)(deny default)(allow file-read*)(allow process-exec)' /usr/bin/true >/dev/null 2>&1 || code=$?
+  [ "$code" != "0" ] && printf '%s' "-Xfrontend -disable-sandbox"
   return 0
 }
 

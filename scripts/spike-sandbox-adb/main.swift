@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import IOKit
 
 // S1 探针 —— 在（可选）沙盒里跑包内内嵌的 adb。
 //
@@ -139,7 +140,72 @@ do {
 say("  容器可写        : \(containerWritable ? "是" : "否")")
 
 // ─────────────────────────────────────────────────────────────
-// 1. 找包内的 adb
+// 1. USB 通路 —— S1-c 的**辅助判据**（不需要手机就能跑）
+// ─────────────────────────────────────────────────────────────
+//
+// 为什么要有这一节：S1-c 的真判据是「沙盒里 adb 能不能看见**真机**」，而那必须有手机。
+// 但**权限通路**可以提前单独验掉：`adb` 在 macOS 上走 libusb，libusb 走 IOKit。
+// 沙盒里若连 `IOUSBHostDevice` 都枚举不到，S1-c 几乎必然失败 —— 不用等手机就知道。
+//
+// 对照组就是 ControlProbe（**不沙盒**）：它的数才是「这台机器上本来有几个 USB 设备」。
+// 两个数必须放在一起看 —— 单看沙盒那个数，0 既可能是权限不够，也可能是这台机器真没插东西。
+//
+// ⚠️ 这条只是**辅助**：枚举得到 ≠ adb 一定打得开设备（打开还要额外一步授权）。
+//    所以它过了也**不把 S1-c 判成 PASS**。
+func usbDeviceSummary() -> (ok: Bool, count: Int, names: [String]) {
+    func hex4(_ value: Int) -> String {
+        let digits = "0123456789abcdef"
+        let clamped = max(0, min(value, 0xFFFF))
+        var out = ""
+        for shift in stride(from: 12, through: 0, by: -4) {
+            let nibble = (clamped >> shift) & 0xF
+            out.append(Array(digits)[nibble])
+        }
+        return out
+    }
+
+    // `IOServiceGetMatchingServices` 会**吃掉** matching 字典的引用，不用自己放。
+    guard let matching = IOServiceMatching("IOUSBHostDevice") else { return (false, -1, []) }
+    var iterator: io_iterator_t = 0
+    let kr = IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iterator)
+    guard kr == KERN_SUCCESS else { return (false, Int(kr), []) }
+    defer { IOObjectRelease(iterator) }
+
+    var names: [String] = []
+    var service = IOIteratorNext(iterator)
+    while service != 0 {
+        var props: Unmanaged<CFMutableDictionary>?
+        if IORegistryEntryCreateCFProperties(service, &props, kCFAllocatorDefault, 0) == KERN_SUCCESS,
+           let dict = props?.takeRetainedValue() as? [String: Any] {
+            let vid = dict["idVendor"] as? Int ?? -1
+            let pid = dict["idProduct"] as? Int ?? -1
+            let product = dict["USB Product Name"] as? String
+            let vendor = dict["USB Vendor Name"] as? String
+            let label = product ?? vendor ?? "(无名)"
+            names.append("\(label) [\(hex4(vid)):\(hex4(pid))]")
+        }
+        IOObjectRelease(service)
+        service = IOIteratorNext(iterator)
+    }
+    return (true, names.count, names)
+}
+
+let usb = usbDeviceSummary()
+
+say()
+say("── USB 通路（辅助判据：adbd → libusb → IOKit）")
+if !usb.ok {
+    say("  IOKit 枚举          : **被拒**（kern_return = \(usb.count)）—— device.usb 没生效？")
+} else {
+    say("  IOKit 枚举          : 成功，可见 \(usb.count) 个 IOUSBHostDevice")
+    for name in usb.names.prefix(8) { say("        \(name)") }
+    if usb.names.count > 8 { say("        …另有 \(usb.names.count - 8) 个") }
+}
+// 给 shell 一个稳定的机器可读行：脚本要拿它与对照组比。
+say("USB-COUNT: \(usb.ok ? usb.count : -1)")
+
+// ─────────────────────────────────────────────────────────────
+// 2. 找包内的 adb
 // ─────────────────────────────────────────────────────────────
 
 let bundleResources = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/adb")
@@ -167,7 +233,7 @@ guard adbPresent else {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 2. 执行 adb（自定义端口，别去动用户自己的 5037 server）
+// 3. 执行 adb（自定义端口，别去动用户自己的 5037 server）
 // ─────────────────────────────────────────────────────────────
 
 let port = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "15037"
@@ -194,7 +260,7 @@ let kill = run(adbPath, ["-P", port, "kill-server"])
 say("  [3] adb kill-server  退出码 \(kill.code)")
 
 // ─────────────────────────────────────────────────────────────
-// 3. 结论
+// 4. 结论
 // ─────────────────────────────────────────────────────────────
 
 let serials: [String] = devices.out
@@ -228,15 +294,31 @@ if !s1a {
     s1c = "**未验证** —— 没有任何设备连着；请插上真机并确认 USB 调试已授权后重跑"
 }
 
+let usbVerdict: String
+if !usb.ok {
+    usbVerdict = "**枚举被拒** —— device.usb 没生效，S1 到此为止"
+} else if usb.count == 0 {
+    usbVerdict = "枚举成功但 0 个 —— 要先与对照组对比再下结论"
+} else {
+    usbVerdict = "通路成立（枚举到 \(usb.count) 个；设备级**打开**仍需真机）"
+}
+
 say()
 say("════ S1 结论 · \(sandboxed ? "沙盒版" : "对照组（**未沙盒** —— 它的 PASS 只证明探针本身没坏）")")
 say("  S1-a 可执行包内 adb         : \(s1a ? "PASS" : "FAIL")")
 say("  S1-b adb server 起得来      : \(s1b ? "PASS" : "FAIL")")
 say("  S1-c 经 USB 看见真机        : \(s1c)")
+say("  S1-c′ USB 通路（辅助判据）  : \(usbVerdict)")
 say("  判据自检：沙盒真的生效了吗  : \(sandboxed ? "是" : "**否**")")
 if sandboxed && homeReadable {
     say("  ⚠️ 沙盒已生效但真实家目录仍可列 —— 判据需要复核，先别信上面的 PASS")
 }
+// 机器可读行：外壳脚本靠它们汇总，不去猜上面那些对齐全角空格的文本。
+// 只输出**结论**（PASS / FAIL / 分类），不输出路径与设备名 —— 这行会进日志。
+say("MACHINE S1-a=\(s1a ? "PASS" : "FAIL")")
+say("MACHINE S1-b=\(s1b ? "PASS" : "FAIL")")
+say("MACHINE S1-c=\(physical.isEmpty ? (emulators.isEmpty ? "NO-DEVICE" : "EMULATOR-ONLY") : "PHYSICAL")")
+say("MACHINE sandbox=\(sandboxed ? "yes" : "no")")
 say("SPIKE-SANDBOX-ADB done")
 
 exit(s1a ? 0 : 1)

@@ -198,7 +198,7 @@ S6  首次提交 → 应对审核反馈（预留 1–3 个来回）
 | **S1-b** | adb 的 server 能不能在沙盒里**起在自定义端口**（要 `network.server`） |
 | **S1-c** | 沙盒里 adb 能不能**通过 USB 看见真机** |
 
-跑法（**在你自己的终端里**，原因见下）：
+跑法：
 
 ```bash
 ./scripts/spike-sandbox-adb.sh          # 默认端口 15037，刻意避开你自己的 5037
@@ -208,33 +208,52 @@ S6  首次提交 → 应对审核反馈（预留 1–3 个来回）
 对照组是必需的 —— 只测沙盒版的话，「adb 失败」既可能是沙盒挡的，也可能是探针自己打包错了，
 **分不清的两件事等于没测**。跑完自动注销 LaunchServices 记录、删掉临时目录与它创建的容器。
 
-**2026-10-11 已跑出的结果（只完成了一半，见下）**
+**2026-10-12 实测结果：S1-a / S1-b 已过，只剩 S1-c**
 
 | 项 | 结论 |
 |---|---|
 | 对照组（未沙盒） | ✅ 探针本身没坏：`adb version` 与 `adb devices -l` 都退出码 0，server 起在 `tcp:15037` |
-| **S1-a / S1-b（沙盒版）** | ⏸ **本次没测到** —— 见下面那条环境限制 |
-| **S1-c（USB）** | ⏸ **未验证**。当时只有 `emulator-5554`，而**模拟器走 TCP，USB 通路根本没被走过** ⇒ 这一项必须插真机 |
+| **S1-a 沙盒内执行包内 adb** | ✅ **PASS** |
+| **S1-b 沙盒内 adb server** | ✅ **PASS** —— 起在自定义端口 `tcp:15037`（说明 5037 不是必须的） |
+| **S1-c adb 经 USB 见真机** | ⏸ **仍未验证** —— 当时只连着 `emulator-5554`（走 TCP）+ **一台 iPhone**（adb 看不见 iOS 设备）。需要一台 **Android** 真机 |
+| **S1-c′ USB 通路（辅助判据，本轮新增）** | ✅ **成立** —— 沙盒内 IOKit 枚举到 **4 个 `IOUSBHostDevice`**，与不沙盒的对照组**数量完全一致** |
 
-> ⚠️ **环境限制（重要，不是代码问题）**：App Sandbox 的本质是一份 `(deny default)` 的**限制性** profile，
-> 而**受限会话不允许再往下施加限制性 profile** —— 内核直接拒。判据是这条探针：
->
-> ```bash
-> sandbox-exec -p '(version 1)(allow default)'            /bin/echo ok   # 0   宽松：可以
-> sandbox-exec -p '(version 1)(deny default)(allow file-read*)' /bin/echo ok  # 71  限制性：被拒
-> ```
->
-> 后果极具误导性：被沙盒化的进程**一行输出都没有**就被信号打死
-> （实测 ad-hoc 签名 `Trace/BPT trap` = 133、Developer ID 签名 = 137），
-> 因为它是**启动阶段**就死的，连 stdio 缓冲里的东西都带不走。
-> **只看现象会得出「沙盒挡住了 adb」这个完全错误的结论。**
-> 脚本已经内置了这条预检，遇到就明说「本次沙盒版结论无效」并让你换终端重跑，而不是报一个假 FAIL。
->
-> （排查过程中确认：容器 `~/Library/Containers/<bundle-id>` **确实被创建了** —— 说明 secinitd 走到了
-> 最后一步才被拒。所以这不是签名或 entitlements 写错。）
+判据自检「沙盒真的生效了吗」= **是**（`NSHomeDirectory` 指向容器、真实家目录不可列）⇒ 上面的 PASS 可信。
 
-**要拿到 S1 的真结论，需要你两件事**：① 在一个**不受限的终端**里跑上面的脚本；
-② 插一台**真机**并确认 USB 调试已授权（否则 S1-c 只能是「未验证」）。
+**S1-c′ 是什么、为什么值得加**：S1-c 的真判据必须有 Android 真机，插上之前什么都证不了。
+但**权限通路**可以先单独验掉：`adb` 在 macOS 上走 libusb、libusb 走 IOKit。沙盒里若连
+`IOUSBHostDevice` 都枚举不到，S1-c 几乎必然失败 —— 不用等手机就知道结论。这条已经在沙盒里过了，
+而且看到的是**真实的用户外设**（键盘 / 鼠标 / 显示器 USB Hub / iPhone），不是只有根集线器。
+
+> ⚠️ 它只是**辅助**：枚举得到 ≠ adb 一定打得开设备（打开还要额外一步授权）。
+> 所以它过了也**不把 S1-c 判成 PASS**。
+
+**还剩一件事，需要你**：插一台 **Android 真机**、在手机上确认 USB 调试授权，再重跑一次上面的脚本。
+脚本现在是只读探针、跑完自己收工；**退出码 0 = 沙盒真的生效且 S1-a/S1-b 通过**（环境不可信时返回非 0，
+不让调用方把「没验到」当成绿灯）。
+
+### 6.1 ⚠️ 一条被**推翻**的结论（记在这里，因为它差点让这条路被白否掉）
+
+2026-10-11 本方案与工程笔记都写过「**本机 agent 会话做不了沙盒验证**」，判据是：
+
+```bash
+sandbox-exec -p '(version 1)(deny default)(allow file-read*)' /bin/echo ok   # 退出码 71
+```
+
+**这条是错的。** 那份 profile 里**没有 `allow process-exec`**，而 `sandbox-exec` 施加完 profile
+之后**还要 exec 目标程序** —— 是 profile 自己拒绝了 exec，**也就是说 profile 其实施加成功了**。
+补上 `allow process-exec` 后同一条命令退出码 **0**。
+
+同类第二个坑：探针里一度把被施加的程序写成 `/bin/true` —— macOS **没有**这个路径，是 `/usr/bin/true`。
+路径写错同样报 71、同样报 `execvp() … failed`。**一条六行的探针连错两次，两次都指向同一个错结论。**
+
+代价是实的：这条误读让「做不了」被写进方案、工程笔记与项目记忆，而实际上沙盒版探针在这里
+**跑得完全正常** —— S1-a / S1-b 当场就 PASS。**判据错一个方向，挡住的是自己的路。**
+
+它的推论「本机构建需要 `-Xfrontend -disable-sandbox`」也一并被否：2026-10-12 实测完整
+`build.sh`（`xcodebuild`）**不带**该参数也 `BUILD SUCCEEDED`，日志里 `sandbox_apply` /
+`malformed response` 一条都没有。该机制保留（探测不命中时零影响），但**必要性未被证实**，已在
+`scripts/check-all.sh` 的注释里如实标注。
 
 ---
 
@@ -252,8 +271,8 @@ S6  首次提交 → 应对审核反馈（预留 1–3 个来回）
 
 | # | 项 | 为什么不确定 |
 |---|---|---|
-| U1 | `com.apple.security.device.usb` 是否足够让 adb 的 IOKit 通道工作 | 官方只承诺「USB device access APIs」，没有点名 adb 走的那条路。**S1-c 就是为它准备的判据**（`scripts/spike-sandbox-adb.sh`） |
-| U0 | **受限会话里跑不了沙盒进程**（已确认，不是待确认） | 限制性 profile 被内核拒（`sandbox_apply: Operation not permitted`，71）⇒ 本机 agent 会话里做不了 S1，**必须在你自己的终端跑**。已写进工程笔记 §10 |
+| U1 | `com.apple.security.device.usb` 是否足够让 adb 的 IOKit 通道工作 | 官方只承诺「USB device access APIs」，没有点名 adb 走的那条路。**已部分回答**：S1-c′ 证明沙盒内 IOKit 能枚举到 USB 设备（与不沙盒一致），但「**打开**设备」还没验 —— 需要 Android 真机（S1-c） |
+| U0 | ~~受限会话里跑不了沙盒进程~~ ❌ **这条结论是错的，已推翻（2026-10-12）** | 原判据的 profile 少了 `allow process-exec`，把「profile 生效」读成了「施加不了」。实测沙盒版探针在这里跑得完全正常，S1-a / S1-b 当场 PASS。详见 §6.1 |
 | U2 | adb server 在沙盒下的行为（能否 bind 5037、能不能 kill 干净、容器内的 `$HOME/.android` 是否被正确使用） | 要实测 |
 | U3 | 沙盒下 `~/Library/Logs/DroidBerth` 会落到容器内哪一层（我们要改 `AppPaths`，或接受重定向） | 要实测 |
 | U4 | `assets.pictures` / `movies` 这两组 entitlement 是否真需要（还是 user-selected 就够） | 要实测 |

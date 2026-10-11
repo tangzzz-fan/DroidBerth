@@ -63,10 +63,10 @@ open build/dd/Build/Products/Release/DroidBerth.app
 仓库会同时存在 `macos/build/Release/` 与 `macos/build/dd/Build/Products/Release/`。  
 **验证 UI 改动前先核对进程启动时间是否晚于源码 mtime**，否则会看着旧二进制下结论 —— 这个坑真实踩到过。
 
-### 1.5 只在受限沙箱里需要的逃逸参数
+### 1.5 逃逸参数 `-Xfrontend -disable-sandbox`（**必要性未被证实**）
 
-本机（agent 会话）的受限沙箱会挡住 `swift-plugin-server`，症状是宏报  
-`malformed response` / `@State` 未展开。**只加在命令行上，绝不写进 `build.sh` 或工程文件**：
+曾经的判断是：本机（agent 会话）的受限沙箱挡住 `swift-plugin-server`，症状是宏报
+`malformed response` / `@State` 未展开。用法（**只加在命令行上，绝不写进 `build.sh` 或工程文件**）：
 
 ```bash
 # swiftc
@@ -74,6 +74,12 @@ open build/dd/Build/Products/Release/DroidBerth.app
 # xcodebuild（经 build.sh 的口子，xcodebuild 不认环境变量为 build setting）
 XCODEBUILD_ARGS="OTHER_SWIFT_FLAGS=-disable-sandbox" ./scripts/build.sh
 ```
+
+> ⚠️ **2026-10-12 实测：不带这个参数也能构建。** 完整 `build.sh`（`xcodebuild`）与
+> `swiftc -typecheck` 都不加该参数 ⇒ 均通过，日志里 `sandbox_apply` / `malformed response`
+> 一条都没有。⇒**「本机需要它」这个前提站不住**（当初的判定依据是一条写反了的探针，
+> 见 §10）。参数与 `check-all.sh` 里的自动探测都**保留**（探测不命中时零影响，
+> 万一真在受限环境里跑还能兜一下），但**不要再说它是本机的必需项**。
 
 ---
 
@@ -340,28 +346,43 @@ SUMMARY: V1=pass V2=fail V3=pass V4=pass      # 接上 Android 模拟器时的�
 
 ---
 
-## 10. 受限会话里跑不了**沙盒**进程（做 App Store 必须知道）
+## 10. 沙盒进程与「受限会话」—— 一条被推翻的结论
 
-App Sandbox 的本质是一份 `(deny default)` + 逐条放开 的**限制性** profile。而**受限会话不允许
-再往下施加限制性 profile** —— 内核直接拒。
+> ⚠️ **本节 2026-10-11 的版本是错的，2026-10-12 已推翻重写。** 保留这段是因为它是个好教材：
+> **判据错一个方向，会把整条路白否掉。**
 
-判据（两条都会用到）：
+2026-10-11 写过「受限会话不允许再往下施加限制性沙盒 profile ⇒ 本机 agent 会话做不了沙盒验证」，
+判据是：
 
 ```bash
-sandbox-exec -p '(version 1)(allow default)'                  /bin/echo ok   # 0   宽松：可以施加
-sandbox-exec -p '(version 1)(deny default)(allow file-read*)' /bin/echo ok   # 71  限制性：被拒
+sandbox-exec -p '(version 1)(deny default)(allow file-read*)' /bin/echo ok   # 退出码 71
 ```
 
-**症状极具误导性**：被沙盒化的进程**一行输出都没有**就被信号打死
-（实测 ad-hoc 签名 → `Trace/BPT trap` 133；Developer ID 签名 → 137 `SIGKILL`）。
-因为它是**启动阶段**就死的，连 stdio 缓冲里的东西都带不走 —— 而 `print` 在管道下面是块缓冲的。
+**真因不是嵌套限制，是这份 profile 自己有问题**：它**没有 `allow process-exec`**，
+而 `sandbox-exec` 施加完 profile **还要 exec 目标程序**。也就是说 profile 施加成功了、
+随即拒绝了 exec —— 症状与「施加不了」一模一样。补上 `allow process-exec` 后同一条命令退出码 0：
 
-只看现象会得出「**沙盒挡住了 adb**」这个完全错误的结论。排查时确认过：
+```bash
+sandbox-exec -p '(version 1)(deny default)(allow file-read*)(allow process-exec)' /usr/bin/true  # 0
+```
 
-- 容器 `~/Library/Containers/<bundle-id>` **确实被创建了** ⇒ secinitd 走到了最后一步才被拒，
-  **不是**签名或 entitlements 写错（换 Developer ID 身份、补 `application-identifier` 都一样死）。
-- 对照组（同一段代码、不带沙盒）一切正常 ⇒ 探针打包没问题。
+第二个坑：被施加的程序一度写成 `/bin/true` —— **macOS 没有这个路径**（那是 Linux），
+是 `/usr/bin/true`。路径写错同样报 71、同样报 `execvp() … failed`。
+**一条六行的探针连错两次，两次都指向同一个错结论。**
 
-⇒ **结论：要在本机验沙盒行为，必须在不受限的终端里跑**（你自己开的 iTerm / Terminal）。
-`scripts/spike-sandbox-adb.sh` 已内置这条预检，遇到就明说「本次沙盒版结论无效」，
-而不是报一个假 FAIL —— 与 `check-all.sh` 的 `sandbox_escape_args()` 是同一条判据。
+⇒ 正确结论：**本机 agent 会话完全可以验沙盒行为。** `scripts/spike-sandbox-adb.sh` 的沙盒版
+当场跑出 S1-a / S1-b PASS（判据自检「沙盒生效 = 是」）。App Store 那条路没有被这个环境卡住。
+
+它连带否掉的推论：**「本机构建需要 `-Xfrontend -disable-sandbox`」也不成立**。
+2026-10-12 实测完整 `build.sh`（`xcodebuild`）不带该参数 ⇒ `BUILD SUCCEEDED`，
+日志里 `sandbox_apply` / `malformed response` 一条都没有；`swiftc -typecheck` 同理。
+`check-all.sh` 与探针里的逃逸探测**保留**（探测不命中时零影响，万一真在受限环境里跑还能兜一下），
+但**必要性未被证实**，已在两处注释里如实标注。
+
+**仍然成立的两条**（与上面无关，别一起丢掉）：
+
+- 被沙盒化的进程若在**启动阶段**被杀，会**一行输出都没有**（信号直接带走 stdio 缓冲，
+  而 `print` 在管道下面是块缓冲的）。所以「没有输出」**不能**推出任何关于沙盒策略的结论 ——
+  探针必须自己打印「我到底有没有被沙盒化」。
+- 验沙盒**必须有对照组**（同一段代码、不带沙盒的另一个 bundle）。只测沙盒版时，
+  「adb 失败」既可能是沙盒挡的、也可能是探针打包错了，**分不清的两件事等于没测**。

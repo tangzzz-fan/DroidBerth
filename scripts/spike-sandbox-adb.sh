@@ -43,20 +43,37 @@ fi
 
 # ── 预检：这个终端能不能施加**限制性**沙盒 ──────────────────────────────
 #
-# App Sandbox 的本质是一份 `(deny default)` + 逐条放开 的 profile。而**受限会话**
-# （比如 agent 自己跑在里面的那层沙箱）不允许再往下施加限制性 profile ——
-# 内核直接拒：`sandbox-exec: sandbox_apply: Operation not permitted`，退出码 **71**。
+# ⚠️ 这条判据**曾经写错过一次，而且错得非常有说服力** —— 记在这里免得再犯。
 #
-# 症状极具误导性：被沙盒化的进程**一行输出都没有**就被信号打死（实测 ad-hoc 签名 SIGTRAP 133、
-# Developer ID 签名 SIGKILL 137），因为它是**启动阶段**就死了，连缓冲里的东西都带不走。
-# 只看现象会得出「沙盒挡住了 adb」这个**完全错误**的结论。
+#   原判据  sandbox-exec -p '(version 1)(deny default)(allow file-read*)' /bin/echo ok
+#   症状    退出码 71 + `execvp() of '/bin/echo' failed: Operation not permitted`
+#   误读    以为「这个会话不允许嵌套限制性沙盒」
+#   真因    那份 profile **没有 `allow process-exec`**，而 `sandbox-exec` 施加完 profile
+#           之后**还要 exec 目标程序**。是 profile 自己拒绝了 exec ——
+#           也就是说 profile **施加成功了**，结论与真实情况正好相反。
 #
-# 判据就用这条探针：宽松 profile 能施加、限制性 profile 报 71 ⇒ 本次运行不可信。
+# 补上 `allow process-exec` 后同一条命令退出码 0。所以判据必须是**一个能正常跑起来的最小放开集**，
+# 否则「profile 生效了」会被读成「profile 施加不了」。
+#
+# 这条误读付过代价：它让「本机做不了沙盒验证」被写进方案、工程笔记与项目记忆，
+# 而实际上**沙盒版探针本机跑得完全正常**（S1-a / S1-b 当场就 PASS）。判据错一个方向，
+# 挡住的是自己的路。
+#
+# 修正后的判据同时看两件事，避免再猜：退出码 + stderr 里有没有 `sandbox_apply`。
+#
+# ⚠️ 被施加的程序要写 **`/usr/bin/true`**：macOS **没有 `/bin/true`**（那是 Linux）。
+#    路径写错同样报 71（`execvp() … No such file or directory`）—— **和判据写反的症状一模一样**，
+#    所以这条也记在这里。短短一条探针能连错两次、两次都指向同一个错结论，值得当范例。
 SANDBOX_APPLICABLE=1
+SANDBOX_PROBE_DETAIL=""
 if command -v sandbox-exec >/dev/null 2>&1; then
   probe_code=0
-  sandbox-exec -p '(version 1)(deny default)(allow file-read*)' /bin/echo ok >/dev/null 2>&1 || probe_code=$?
-  if [ "$probe_code" = "71" ]; then SANDBOX_APPLICABLE=0; fi
+  probe_err="$(sandbox-exec -p '(version 1)(deny default)(allow file-read*)(allow process-exec)' /usr/bin/true 2>&1 >/dev/null)" || probe_code=$?
+  if [ "$probe_code" != "0" ]; then
+    SANDBOX_APPLICABLE=0
+    SANDBOX_PROBE_DETAIL="退出码 ${probe_code}"
+    [ -n "$probe_err" ] && SANDBOX_PROBE_DETAIL="${SANDBOX_PROBE_DETAIL} / ${probe_err}"
+  fi
 fi
 
 echo "══ S1：沙盒里能不能跑内嵌的 adb"
@@ -64,8 +81,8 @@ echo "   工作目录 : $WORK"
 echo "   端口     : ${PORT}（刻意避开 5037，不动你自己的 adb server）"
 echo
 if [ "$SANDBOX_APPLICABLE" = "0" ]; then
-  echo "⚠️  ⚠️  ⚠️  这个终端**不允许施加限制性沙盒**（sandbox-exec 探针退出码 71）。"
-  echo "       下面沙盒版一定会启动即被杀（且不留任何输出）—— 那是**环境**，不是沙盒策略的结论。"
+  echo "⚠️  ⚠️  ⚠️  这个终端**施加不了限制性沙盒**（探针：${SANDBOX_PROBE_DETAIL}）。"
+  echo "       下面沙盒版会启动即被杀（且不留任何输出）—— 那是**环境**，不是沙盒策略的结论。"
   echo "       请在一个不受限的终端里重跑本脚本（你自己开的 iTerm / Terminal 就行）。"
   echo "       对照组仍然有效，会照常跑给你看。"
   echo
@@ -74,12 +91,14 @@ fi
 rm -rf "$WORK"
 mkdir -p "$WORK"
 
-# ── 受限沙箱里的 swiftc 逃逸参数（与 check-all.sh 同一套判据）──────────────
+# ── swiftc 的沙箱逃逸参数（与 check-all.sh 同一套判据）─────────────────
+# ⚠️ 判据同上：profile 必须自带 `allow process-exec`，且程序要写 `/usr/bin/true`
+#    （macOS 没有 `/bin/true`，写错同样报 71）。
 sandbox_escape_args() {
   if ! command -v sandbox-exec >/dev/null 2>&1; then return 0; fi
   local code=0
-  sandbox-exec -p '(version 1)(deny default)(allow file-read*)' /bin/echo ok >/dev/null 2>&1 || code=$?
-  [ "$code" = "71" ] && printf '%s' "-Xfrontend -disable-sandbox"
+  sandbox-exec -p '(version 1)(deny default)(allow file-read*)(allow process-exec)' /usr/bin/true >/dev/null 2>&1 || code=$?
+  [ "$code" != "0" ] && printf '%s' "-Xfrontend -disable-sandbox"
   return 0
 }
 ESCAPE="$(sandbox_escape_args)"
@@ -92,6 +111,7 @@ swiftc -O -o "$WORK/probe" \
   -target arm64-apple-macos14.0 \
   -sdk "$(xcrun --show-sdk-path --sdk macosx)" \
   -swift-version 6 -strict-concurrency=complete \
+  -framework IOKit \
   $ESCAPE \
   "$SCRIPT_DIR/main.swift"
 echo "   ✓ 编译通过"
@@ -181,17 +201,95 @@ codesign -d --entitlements - "$SANDBOX_APP/Contents/Resources/adb" 2>/dev/null |
 echo
 echo "── 4/4 跑对照组（先跑它：它是「探针自己能跑通」的证据）"
 echo
-"$CONTROL_APP/Contents/MacOS/ControlProbe" "$PORT" || true
+# 两次运行的输出都**落文件再打印**，不用管道。
+# 原因有两个，都踩过：① 管道会块缓冲，探针在启动阶段被杀时缓冲里的输出全丢 ——
+# 现象就是「一行输出都没有」，完全看不出死在哪一步；② 我们要从输出里取 USB-COUNT
+# 与对照组比，必须留得下来。
+set +e
+"$CONTROL_APP/Contents/MacOS/ControlProbe" "$PORT" > "$WORK/control.out" 2>&1
+CONTROL_STATUS=$?
+set -e
+cat "$WORK/control.out"
 echo
 echo "───────────────────────────────────────────────────────────────"
 echo "── 跑沙盒版"
 echo
 set +e
-"$SANDBOX_APP/Contents/MacOS/SandboxProbe" "$PORT"
+"$SANDBOX_APP/Contents/MacOS/SandboxProbe" "$PORT" > "$WORK/sandbox.out" 2>&1
 SANDBOX_STATUS=$?
 set -e
+cat "$WORK/sandbox.out"
 
-# ── 收工：注销 LaunchServices 记录并删掉临时目录 ─────────────────────────
+# ── USB-COUNT 对比（辅助判据）──────────────────────────────────────────
+# 取两次输出里那个稳定的机器可读行。同样用 awk 不用 `sed | head`（理由见下方 machine_get）。
+# `|| true` 是为了可能一行都没有（进程在启动阶段就被杀掉）时不把脚本带崩。
+usb_count_of() {
+  awk '/^USB-COUNT: /{ print substr($0, 12); exit }' "$1" 2>/dev/null || true
+}
+control_usb="$(usb_count_of "$WORK/control.out")"
+sandbox_usb="$(usb_count_of "$WORK/sandbox.out")"
+control_usb="${control_usb:-?}"
+sandbox_usb="${sandbox_usb:-?}"
+USB_VERDICT="未取到"
+if [ "$control_usb" != "?" ] && [ "$sandbox_usb" != "?" ]; then
+  if [ "$sandbox_usb" = "-1" ]; then
+    USB_VERDICT="**枚举被拒** —— device.usb 没生效"
+  elif [ "$sandbox_usb" = "0" ] && [ "$control_usb" != "0" ]; then
+    USB_VERDICT="**沙盒里 0 个，对照组 ${control_usb} 个 —— 通路被挡**"
+  elif [ "$sandbox_usb" = "$control_usb" ]; then
+    USB_VERDICT="通路成立（沙盒 ${sandbox_usb} 个 = 对照组 ${control_usb} 个）"
+  else
+    USB_VERDICT="数量不一致（沙盒 ${sandbox_usb} vs 对照组 ${control_usb}）—— 需要复核"
+  fi
+fi
+
+# ── 结论汇总 ───────────────────────────────────────────────────────────
+# 只读探针打的那几行 `MACHINE xxx=yyy`，不去猜上面那些带全角空格的正文 ——
+# 正文是给人看的，改排版就会让解析静默失效。
+#
+# ⚠️ 取「第一行」**必须用 awk 的 exit，不能用 `sed … | head -1`**：
+#    在 `set -e` + `pipefail` 下，`head` 提前退出会让 `sed` 收 SIGPIPE（141），
+#    于是赋值语句整体失败、脚本直接中断 —— 而且是**竞态**，取决于两者谁先跑完，
+#    上一次跑通了下一次就未必（本项目实测到过一次）。
+machine_get() {
+  awk -v key="MACHINE $1=" 'index($0, key) == 1 { print substr($0, length(key) + 1); exit }' "$2" 2>/dev/null || true
+}
+sb_a="$(machine_get 'S1-a' "$WORK/sandbox.out")"; sb_a="${sb_a:-?}"
+sb_b="$(machine_get 'S1-b' "$WORK/sandbox.out")"; sb_b="${sb_b:-?}"
+sb_c="$(machine_get 'S1-c' "$WORK/sandbox.out")"; sb_c="${sb_c:-?}"
+sb_box="$(machine_get 'sandbox' "$WORK/sandbox.out")"; sb_box="${sb_box:-?}"
+
+echo
+echo "───────────────────────────────────────────────────────────────"
+echo "── S1 判定（沙盒版；对照组只用来证明「探针本身没坏」）"
+echo "  S1-a 沙盒内执行包内 adb  : ${sb_a}"
+echo "  S1-b 沙盒内 adb server   : ${sb_b}"
+echo "  S1-c 沙盒内经 USB 见真机 : ${sb_c}"
+echo "  S1-c′ USB 通路（辅助）   : ${USB_VERDICT}"
+echo "  判据自检 沙盒真的生效吗  : ${sb_box}"
+echo
+
+if [ "$SANDBOX_APPLICABLE" = "0" ] || [ "$sb_box" = "no" ]; then
+  echo "**本次沙盒版结论无效** —— 进程没有被沙盒化（或这个终端施加不了限制性沙盒）。"
+  echo "探针详情：${SANDBOX_PROBE_DETAIL:-（无）}"
+  echo "在你自己不受限的终端里重跑："
+  echo
+  echo "    cd $ROOT && ./scripts/spike-sandbox-adb.sh"
+elif [ "$sb_a" = "PASS" ] && [ "$sb_b" = "PASS" ]; then
+  echo "S1-a / S1-b **通过**：沙盒里能执行包内 adb，server 也能起在自定义端口上。"
+  echo "剩下只有 **S1-c** —— 它必须有真机：插上手机、在手机上确认 USB 调试授权后重跑。"
+  echo "辅助判据那条可以先看：它若已「通路成立」，S1-c 基本只剩设备那一侧的事。"
+else
+  echo "S1-a 或 S1-b **失败** —— 这才是真正该写进 docs/1011_04_appstore-plan.md §3 R1 的结论。"
+  echo "先看上面沙盒版输出里「判据自检 沙盒真的生效吗」那一行：为「否」则本次结果什么都不能证明。"
+fi
+
+# ── 收工：注销 LaunchServices 记录、删临时目录、清探针容器 ────────────────
+#
+# ⚠️ **必须在结论汇总之后**。这些清理要删掉 `$WORK`，而汇总正是去读
+#    `$WORK/sandbox.out` 与 `control.out` —— 先删就会出现「汇总全是 ?」，
+#    而且**不报错**，只是静默变空。本项目实测踩过一次（USB 那组因为排在清理之前才侥幸读到）。
+#
 # KEEP=1 时保留现场 —— 探针被杀掉时必须能进到 bundle 里手工复现与换签名重试。
 LSR=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 if [ "${KEEP:-0}" != "1" ]; then
@@ -200,15 +298,13 @@ if [ "${KEEP:-0}" != "1" ]; then
     "$LSR" -u "$CONTROL_APP" >/dev/null 2>&1 || true
   fi
   rm -rf "$WORK"
-else
-  echo
-  echo "（KEEP=1：现场保留在 ${WORK}，你自己记得删。）"
 fi
 
-# 收工时顺手清掉探针自己创建的那个 App Sandbox 容器 —— 留着就是一个幽灵。
+# 顺手清掉探针自己创建的那个 App Sandbox 容器 —— 留着就是一个幽灵。
 #
-# **容错**：某些环境会对 `~/Library` 下的删除做保护，删不掉不能把整个脚本带崩
-# （`set -e` 下第一次 `rm` 失败就会中断，连结论都不打了）。删不掉就把路径打出来让人自己处理。
+# **容错**：某些环境会对 `~/Library` 下的删除做保护（本项目的 agent 会话就是），
+# 删不掉不能把整个脚本带崩（`set -e` 下第一次 `rm` 失败就会中断，连结论都不打了）。
+# 删不掉就把路径打出来让人自己处理。
 CONTAINER="$HOME/Library/Containers/$SANDBOX_BID"
 if [ -d "$CONTAINER" ]; then
   echo
@@ -220,26 +316,18 @@ if [ -d "$CONTAINER" ]; then
   fi
 fi
 
-echo
-echo "───────────────────────────────────────────────────────────────"
-if [ "$SANDBOX_APPLICABLE" = "0" ]; then
-  echo "**本次运行的沙盒版结论无效** —— 这个终端施加不了限制性沙盒，进程在启动阶段就被杀了。"
-  echo "请在你自己的终端里重跑："
-  echo
-  echo "    cd $ROOT && ./scripts/spike-sandbox-adb.sh"
-  echo
-  echo "要拿到 S1-c（USB）的答案，还得插上**真机**并确认 USB 调试已授权。"
-elif [ "$SANDBOX_STATUS" -eq 0 ]; then
-  echo "S1-a / S1-b 通过。**S1-c（USB 那条）以沙盒版输出里的结论为准** ——"
-  echo "只看到模拟器时必须报「未验证」：模拟器走 TCP，USB 通路根本没被走过。"
-  echo "要拿到 S1-c 的答案：把**真机**插上、在手机上确认 USB 调试授权，然后重跑本脚本。"
-else
-  echo "S1-a 或 S1-b 失败（退出码 ${SANDBOX_STATUS}）。**先看沙盒版输出里「沙盒真的生效了吗」那一行**："
-  echo "  · 若是「否」 —— 沙盒没挂上，这次结果什么都不能证明；"
-  echo "  · 若是「是」 —— 沙盒确实挡住了，把输出贴进 docs/1011_04_appstore-plan.md §3 的 R1。"
-fi
 if [ "${KEEP:-0}" = "1" ]; then
   echo "（KEEP=1：现场保留在 ${WORK}，记得自己删。）"
 else
   echo "（临时目录已删除，LaunchServices 记录已注销。）"
 fi
+
+# ── 退出码 ─────────────────────────────────────────────────────────────
+# 只表达一件事：**S1-a / S1-b 在真正生效的沙盒里通过了**。
+# 环境不可信（沙盒没挂上 / 施加不了）也返回非 0 —— 那种情况下「通过」不成立，
+# 不能让调用方（CI、以后的脚本）把它当成绿灯。
+if [ "$SANDBOX_APPLICABLE" = "1" ] && [ "$sb_box" = "yes" ] \
+   && [ "$sb_a" = "PASS" ] && [ "$sb_b" = "PASS" ]; then
+  exit 0
+fi
+exit 1

@@ -80,23 +80,23 @@ echo
 # ── 1/5 构建（版本号通过命令行 build setting 注入）─────────────────
 # ⚠️ 必须走 XCODEBUILD_ARGS 而**不是**环境变量：实测 xcodebuild 不把环境变量当 build setting，
 #    `MARKETING_VERSION=9.9.9 xcodebuild …` 产出的 Info.plist 仍是 project.yml 里的值。
-echo "==> 1/5 构建"
+echo "==> 1/6 构建"
 XCODEBUILD_ARGS="MARKETING_VERSION=$VERSION CURRENT_PROJECT_VERSION=$BUILD_NUMBER" \
   "$ROOT/scripts/build.sh"
 
 # ── 2/5 回归守卫（发版前的最低门槛）───────────────────────────────
 echo
-echo "==> 2/5 回归守卫"
+echo "==> 2/6 回归守卫"
 "$ROOT/scripts/check-all.sh"
 
 # ── 3/5 公证 ────────────────────────────────────────────────────
 echo
-echo "==> 3/5 公证（app + DMG）"
+echo "==> 3/6 公证（app + DMG）"
 "$ROOT/scripts/notarize.sh"
 
 # ── 4/5 验证票据与 Gatekeeper ────────────────────────────────────
 echo
-echo "==> 4/5 验证"
+echo "==> 4/6 验证"
 xcrun stapler validate "$APP_PATH"
 xcrun stapler validate "$DMG_DIR/$APP_NAME.dmg"
 codesign --verify --deep --strict --verbose=2 "$APP_PATH"
@@ -124,8 +124,15 @@ printf '  CFBundleShortVersionString = %s\n' \
 
 # ── 5/5 打包 ────────────────────────────────────────────────────
 echo
-echo "==> 5/5 打包"
+echo "==> 5/6 打包"
 "$ROOT/scripts/package-release.sh" "$VERSION"
+
+# ── 6/6 发布前闸门（PRD §28 的可执行版本）─────────────────────────
+# 放在打包**之后**：它要连 dist/ 里的附件（校验和、票据、zip 里的垃圾项）一起判。
+# FAIL 就打住 —— 交到用户手上的东西不该带着已知不达标项。
+echo
+echo "==> 6/6 发布前闸门"
+"$ROOT/scripts/check-release.sh" "$VERSION"
 
 if [ "$PUBLISH" != "1" ]; then
   echo

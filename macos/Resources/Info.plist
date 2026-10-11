@@ -27,7 +27,7 @@
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSHumanReadableCopyright</key>
-	<string></string>
+	<string>© 2026 zhenzhi Tang</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>DroidBerth 需要读取照片与视频的原始文件，才能把它们推送到你的 Android 设备。</string>
 	<key>NSDesktopFolderUsageDescription</key>

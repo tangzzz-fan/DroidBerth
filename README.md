@@ -107,7 +107,8 @@ macos/                    Swift 原生外壳（唯一应用工程）
 sidecar/droidberth-adb/   Rust sidecar（1788 行 / 5 文件，零第三方依赖）
 scripts/                  构建、签名、公证、发布脚本（逐脚本说明见工程笔记）
   build.sh                  唯一构建入口    release-local.sh  本机发版
-  check-all.sh              四个回归守卫    fetch-adb.sh      取 platform-tools
+  check-all.sh              回归守卫        check-release.sh  发布前闸门
+  fetch-adb.sh              取 platform-tools
 vendor/                   adb 源码与 platform-tools（**刻意不入库**）
 docs/                     产品文档、验收报告、路线图、工程笔记
   design/                   设计令牌（DESIGN.md，唯一来源）+ open-design 稿快照
@@ -173,6 +174,15 @@ Rust 工具链（`scripts/env.sh` 会注入 `RUSTUP_HOME` / `CARGO_HOME`）· De
 一条命令跑完 **构建 → `check-all` → 公证（app + DMG）→ 验证票据与 Gatekeeper → 打包 → 建 Release**。
 版本号通过 `XCODEBUILD_ARGS` 注入（`Info.plist` 用 `$(MARKETING_VERSION)`），
 所以 app 里显示的版本与 Release 上的 tag 一定一致。
+
+**第 6 步是发布前闸门** `scripts/check-release.sh` —— PRD §28 那份「发布前检查清单」的可执行版本：
+签名 / 公证 / 票据 / 架构 / 图标十档 / `NOTICE.txt` / 版权字段 / 版本号 / dist 里的校验和与 zip 垃圾项 /
+`LICENSE` / `CHANGELOG`，机器能判的全部判一遍。**FAIL 就打住**（退出码 1），
+而法务、真机验收这类只能人判的单独列成「人工项」，不混在 PASS 里。也可以单独跑：
+
+```bash
+./scripts/check-release.sh 1.0.0
+```
 
 | Release 附件 | 来源 |
 |---|---|

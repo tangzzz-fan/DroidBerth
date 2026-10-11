@@ -1,0 +1,213 @@
+# DroidBerth · 上架 Mac App Store 需要准备什么
+
+| 项 | 值 |
+|---|---|
+| 日期 | 2026-10-11 |
+| 依据 | App Review Guidelines（官方原文）、Apple App Sandbox 文档、App Store Connect 交付要求（各方一致的实施资料） |
+| 现状 | 仓库当前形态是 **Developer ID 侧载分发**（DMG + 公证）。本文件只谈如何**新增** MAS 这条渠道 |
+| 一句话 | MAS 版不是「现在这个 app 加个沙盒」——沙盒会**改变产品能力**（见 §2.1），所以第一步是拍板，不是写代码 |
+
+> ⚠️ 本文件里凡是**没有官方出处**的判断都标了「**待实测**」或「**待确认**」。
+> 不要把它们当成已核实的结论往下推。政策与工具链都在变，提交前请以 App Store Connect 当时的提示为准。
+
+---
+
+## 1. 先认清一件事：这会是**两个不同的构建**
+
+| | 现在这条（侧载） | MAS 那条（新增） |
+|---|---|---|
+| 签名 | `Developer ID Application` | **`Apple Distribution`**（旧名 Mac App Distribution）+ `Mac Installer Distribution` 签 `.pkg` |
+| 公证 | 必须自己跑 `notarytool` + `stapler` | **不需要**——Apple 在审核流程里处理 |
+| 沙盒 | 可选 | **强制**（Guideline 2.4.5(i)） |
+| 产物 | `.dmg` / `.zip` | **`.pkg`**（`productbuild`），由 Transporter / Xcode Organizer 上传 |
+| 更新机制 | 自己发 Release（将来可接 Sparkle） | **必须走 Mac App Store**（2.4.5(vii)）⇒ **Sparkle 不能用** |
+| 分发 | GitHub Releases | App Store Connect |
+
+**两个直接影响：**
+
+1. **PRD §27 计划的 Sparkle 2 更新链在 MAS 版上是不允许的。** 原文 2.4.5(vii)：
+   *"They must use the Mac App Store to distribute updates; other update mechanisms are not allowed."*
+   ⇒ 若同时走两条渠道，侧载版接 Sparkle、MAS 版靠商店更新，是两套逻辑。
+2. **用 `Apple Distribution` 签出来的 app 在本机跑不起来**（只能从 MAS 下载）。
+   本地自测要用 **`Apple Development` 证书 + development provisioning profile**
+   （这就是 `mas-dev` 那种形态），而且这个形态**不会**进 App Store。
+   ⇒ 「改一下就能在本地验一遍」是不成立的，得专门配一套调试签名。
+
+---
+
+## 2. 硬约束：官方条款逐条对照本项目
+
+### 2.1 会影响产品能力的三条
+
+| 条款 | 原文要点 | 对本项目意味着什么 |
+|---|---|---|
+| **2.5.2** | 不得读写 designated container **之外**的数据 | **这是最大的一条。**「浏览 Mac 上任意文件夹」是这个产品的核心体验，而沙盒里默认只能碰容器。要访问用户其它目录，只能靠 `NSOpenPanel` 让用户**亲自选**（`com.apple.security.files.user-selected.read-write`），并且**记住**要落 security-scoped bookmark。⇒ 首次使用会多一步「授权素材目录」，且**不允许默认就在 home 目录起**（现在 `AppModel.localDirectory` 默认是 `homeDirectoryForCurrentUser`） |
+| **2.4.5(iii)** | 不得在用户退出 app 后留下**继续运行的进程** | **adb 的 server 是常驻的** —— 它 fork 自己监听 5037，退出 app 后还在。这直接撞条款。⇒ MAS 版必须在退出时 `adb kill-server`，并且**不能**让它在后台偷偷活着。**待实测**：沙盒下 kill 是否总能成功、残留如何自愈 |
+| **2.4.5(vii)** | 更新必须走 Mac App Store | 见 §1 —— Sparkle 不能在 MAS 版用 |
+
+### 2.2 沙盒本身（官方文档）
+
+| 事实 | 出处 |
+|---|---|
+| **App Sandbox 是提交 Mac App Store 的硬性要求** | *"...the App Sandbox Entitlement, which is an App Store requirement for any app that you submit to the Mac App Store for review."* — Apple《Configuring the macOS App Sandbox》 |
+| 沙盒**不限制**子进程：**子进程继承父进程的沙盒**，与它自己有没有 entitlement 无关 | Apple 开发者论坛（DTS 的说明） |
+| 但 **App Review 要求所有 main executable 都带 `com.apple.security.app-sandbox`**；所以内嵌 helper 要带 **`com.apple.security.inherit`** 来触发继承 | 同上 |
+| 容器启动时**不能任意执行 `.app` 之外的二进制** | Apple《Embedding a Command-Line Tool in a Sandboxed App》 |
+| 沙盒把文件系统限制在容器内；容器里 `~/Downloads`、`~/Pictures` 等是符号链接，但**访问解析后的真实位置仍要相应 entitlement**，否则报 `Operation not permitted` | 同上 |
+| **「所有文件」entitlement（`com.apple.security.files.all`）已标注 Deprecated** | Apple Entitlements 参考 —— 所以**不能**靠一个开关拿到整盘访问权 |
+
+### 2.3 本项目需要的 entitlements（逐条对照代码）
+
+| Entitlement | 为什么需要 | 对应代码 |
+|---|---|---|
+| `com.apple.security.app-sandbox` | MAS 强制 | `macos/Resources/DroidBerth.entitlements`（**现在没有，要新加**） |
+| `com.apple.security.network.client` | adb 连 `localhost:5037`；无线 ADB 连手机 | `Sidecar/ProcessRunner`、`WirelessManager` |
+| `com.apple.security.network.server` | **adb server 要监听 5037** | 同上。⚠️ 这条也是 §2.1「常驻进程」那条条款的放大器 |
+| `com.apple.security.device.usb` | adb 要通过 IOKit 直接跟 Android 设备对话 | `ADB/ADBBinary`、`DeviceShell`。**官方定义**：*"whether your app may interact with USB devices. macOS 10.7+"*（Hardware → USB） |
+| `com.apple.security.files.user-selected.read-write` | 用户选中的素材目录要有读写权 | `AppModel.navigateLocal` / `NSOpenPanel` 那条路 |
+| `com.apple.security.assets.pictures.read-*`、`...movies...` | 「照片图库」来源与常用素材目录 | `Photo/PhotoLibraryModel`。**可能可以不要**（走 user-selected 或 PhotoKit）——待确认 |
+| `com.apple.security.files.downloads.read-write` | 「下载」这个固定位置 | `LocalFileSystem.places()` |
+| **内嵌二进制的继承标记** | `adb` 与 `droidberth-adb` 各自带 `app-sandbox` + `inherit` | `scripts/resign.sh` 现在**只给 app 签**，sidecar 不带 entitlements ⇒ 要新增一套 |
+
+> 现在 `DroidBerth.entitlements` 里那三条（`allow-jit` / `allow-unsigned-executable-memory` /
+> `disable-library-validation`）是 **Hardened Runtime 的例外**，不是沙盒权限。
+> **要复核它们是否真的还需要** —— Swift 原生 app 通常不需要前两条，而审核更偏好最小权限集。
+
+---
+
+## 3. 五个真实风险（按「会不会让整件事白做」排序）
+
+| # | 风险 | 为什么可能是致命的 | 最低成本的判据 |
+|---|---|---|---|
+| **R1** | **沙盒下 adb 的 USB 通道能否工作** | `com.apple.security.device.usb` 的官方描述是「通过 USB device access APIs 与 USB 设备交互」。adb 用的是自己的 IOKit 路径，**它是否落在那套 API 的范围内没有官方承诺**。若不行，MAS 版就只能走**无线 ADB**——产品可用性大幅下降（首次连接必须先用别的方式打开 tcpip） | 写一个最小沙盒 app（`app-sandbox` + `device.usb`），在里面跑我们内嵌的 `adb devices -l`，插一台真机看能否列出 |
+| **R2** | **「浏览任意目录」这个核心体验与沙盒的冲突** | 沙盒要求用户逐个授权目录（user-selected + bookmark）。摄影师场景是「一个几百 GB 的项目文件夹」——**一次授权是可以接受的**；但「像 Finder 一样上下乱逛」不行。这会改变 PRD §3 的产品定位 | 不需要实验，**需要你拍板**：接受「首次授权素材目录」这个前提吗？ |
+| **R3** | **adb server 常驻违背 2.4.5(iii)** | 条款原文明确禁止「用户退出后仍继续运行的进程」。adb server 天然如此 | 实测：退出时 `adb kill-server` 是否可靠；以及**连接期间** adb server 属于「我们起的、我们负责收」——把生命周期写进代码即可。这条**可以工程解决**，不是死结 |
+| **R4** | **内嵌第三方二进制（adb）的许可与审核表述** | `adb` 是 Apache-2.0（`NOTICE.txt` 已随包），沙盒下自包含在 bundle 内，形式上符合 2.4.5(ii)「self-contained、不往共享位置装东西」。但**审核备注里必须解释清楚**「为什么一个文件传输 app 内嵌了一个命令行 adb」——否则容易被判 2.5.2/2.4.5(iv) | 我起草审核备注（§5.5），你提交时粘贴 |
+| **R5** | **`disable-library-validation` 等例外被质疑** | 审核对 Hardened Runtime 例外会问用途。若确实不需要，留着只会增加沟通成本 | 逐条试去掉，编译 + 运行验证（半天内能做完） |
+
+---
+
+## 4. 需要新增的工程形态（我能做）
+
+| # | 产物 | 说明 |
+|---|---|---|
+| E1 | `macos/Resources/DroidBerth-MAS.entitlements` | MAS 版的 app entitlements（沙盒 + 上表逐条） |
+| E2 | `macos/Resources/Helper-MAS.entitlements` | 内嵌 helper 的 `app-sandbox` + `inherit` |
+| E3 | `macos/project.yml` 加一个 **Release-MAS** 配置 | 带沙盒、指向 E1/E2、`CODE_SIGN_IDENTITY = Apple Distribution`、`PROVISIONING_PROFILE_SPECIFIER` |
+| E4 | `scripts/sign-embedded-tools-mas.sh` | 按顺序签：adb / droidberth-adb（带 E2）→ app（带 E1）→ 验签。现在的 `resign.sh` 只签 app |
+| E5 | `scripts/package-mas.sh` | `productbuild` 出 `.pkg`（或直接用 Xcode Organizer 归档，脚本只做校验） |
+| E6 | `scripts/check-mas-readiness.sh` | **上架前自检**：沙盒标识在不在、每个 Mach-O 的 entitlements 对不对、`LSApplicationCategoryType` 在不在、`NSHumanReadableCopyright` 非空、内嵌工具都带了 `inherit`、没有指向容器外的硬编码路径 |
+| E7 | 启动时的**授权引导流程**（代码改动） | 沙盒版第一次运行需要一个「选择素材目录」的步骤，并把结果落成 bookmark。**属 UI 改动 ⇒ 按项目约定先出图** |
+| E8 | 退出时 `adb kill-server`（代码改动） | 针对 2.4.5(iii) |
+
+---
+
+## 5. App Store Connect 侧要准备的材料
+
+> 分三栏：**我能准备** / **必须你准备** / **待定**。
+
+### 5.1 账号与协议
+
+| 项 | 谁 |
+|---|---|
+| Apple Developer Program 会员（已是，Team ID `UKXWZ3FS84`） | ✅ 已有 |
+| 在 App Store Connect 里**新建 App 记录**（bundle id `dev.tango.droidberth`） | 你（要登录，我代不了） |
+| Paid Applications Agreement / 各类协议签署 | 你 |
+| 若免费分发：无需银行与税务信息 | — |
+
+### 5.2 证书与描述文件（都在你的开发者账号里，我代不了）
+
+| 项 | 说明 |
+|---|---|
+| `Apple Distribution` 证书（app 签名） | 现在只有 `Developer ID`，**要新申请一张** |
+| `Mac Installer Distribution` 证书（`.pkg` 签名） | 同上 |
+| **Mac App Store provisioning profile** | MAS 与侧载最大的差别之一：**必须有 profile**，绑定 App ID 与你勾选的 entitlements。开发自测另需一个 **Mac App Development** profile |
+| App ID 的 capability 勾选 | 要与你声明的 entitlements 一致，漏勾会在签名/上传时失败 |
+
+### 5.3 App Store Connect 元数据（文案我能写，提交要你）
+
+| 项 | 谁 | 备注 |
+|---|---|---|
+| App 名称 / 副标题 / 分类 | 我起草 | 分类已定：`public.app-category.utilities`（`Info.plist` 里已有） |
+| 描述（Description）+ 关键词 | **我写** | 可直接复用 README 的定位段与关键词 |
+| 「新功能」（What's New） | **我写** | Guideline 2.3.12 要求如实描述变更 |
+| 支持 URL（**必填**，Guideline 1.5 要求能联系到你） | 你 | 可以是 GitHub Issues 页或一个简单网页 |
+| 营销 URL / 隐私政策 URL | 我起草，你确认主体 | 本 app **不收集任何数据**（诊断包只在用户机器上生成、不自动上传）⇒ 隐私政策可以很短 |
+| App 隐私声明（App Privacy 问卷） | 我列逐项答案，你点 | 与「不收集数据」一致 |
+| 年龄分级 | 我填（应是最低档） | |
+| 定价 | 你 | |
+| 中国大陆上架所需的额外资质 | **你确认** | 涉及 ICP / 软件著作权等；**我没有判据，不要猜** |
+
+### 5.4 视觉素材（我生成不了，必须你在真机上截）
+
+| 项 | 要求 | 谁 |
+|---|---|---|
+| App 图标（1024×1024） | 已有（`scripts/make-icon.py` 的母版） | ✅ |
+| **macOS 截图** | App Store 要求若干张，且**必须是真实运行界面**。本机无法截图（README 记过这条限制） | **你** |
+| 预览视频（可选） | | 你 |
+
+> 截图这一项要设计几个脚本：**双栏主界面**、**网格视图带缩略图**、**传输进行中**、
+> **连接引导卡片**、**预览窗格**。我可以先在代码里确认这些界面都在，你只需要按脚本截。
+
+### 5.5 审核备注（App Review Notes）—— **我起草**
+
+沙盒 app 里内嵌命令行工具、要求 USB 访问权、还要访问用户目录，这三件事都必须在备注里讲清楚。
+我会写成一段可直接粘贴的英文说明，涵盖：
+① 这个 app 做什么（Mac ↔ Android 文件传输，给摄影师用）；
+② 为什么内嵌 `adb`（用户不该被要求装 Android SDK；adb 是 Apache-2.0，`NOTICE.txt` 随包）；
+③ 为什么需要 USB / 网络 / 用户选中目录三类权限，各自的用途；
+④ **登录/账号：不需要**（没有账号体系，审核员直接就能用）；
+⑤ 无网络后端、不收集数据。
+
+### 5.6 法律与主体的三件（之前就在路线图里，这里再列一次）
+
+| 项 | 说明 |
+|---|---|
+| **仓库 LICENSE** | 与 MAS 无直接冲突，但公开仓库该有（路线图 B1） |
+| **`NOTICE.txt` 的 §3.5 适用性** | 附录 B #2 的待验证项：发 **App Store 包**时更需要它 —— 商用分发。**这不是法律意见，要法务确认** |
+| `NSHumanReadableCopyright` | 空串。填一行版权声明（我能改，主体你定） |
+
+---
+
+## 6. 我的建议：先花半天做可行性，再决定投不投入
+
+沙盒化是个**会反向改产品**的工程（§2.1），不要一次做完才发现 R1 走不通。建议这个顺序：
+
+```
+S1  最小沙盒 app spike（半天）—— 只验一件事：沙盒里 adb 能否列出 USB 设备
+       ├─ 能 → 继续
+       └─ 不能 → 决策点：MAS 版是否只支持「无线 ADB」？若也不行 ⇒ MAS 这条路放弃，
+                 继续做侧载分发（并把这半小时的结论写进文档，免得半年后再试一遍）
+S2  E1–E3（entitlements + MAS 配置）          半天
+S3  E7 + E8（授权引导 UI + 退出时收 adb）      1–2 天（UI 改动，先出图）
+S4  E4 + E5 + E6（签名 / 打包 / 上架前自检）   半天
+S5  元数据 + 截图 + 审核备注                   你半天（我出文案）
+S6  首次提交 → 应对审核反馈（预留 1–3 个来回）
+```
+
+**关键判断：S1 的结论决定后面全部。** 而那半天是**可以现在就做的**——
+不需要任何新证书、不需要 App Store Connect 记录，只要一个沙盒 flag 加在本机构建上。
+
+---
+
+## 7. 需要你先拍板的三件事
+
+| # | 决策 | 选项 |
+|---|---|---|
+| **D1** | 要不要做 MAS 版？ | ① 做（多一条渠道，但要有第二套签名/打包，且 MAS 版功能受限）② 不做，专注侧载（`release-local.sh` 已经跑通，1.0.0 就能发）③ 先做 S1 的半小时 spike 再定 |
+| **D2** | 如果做：接受「首次运行要授权素材目录」吗？ | 这是沙盒换来的**不可回避**的代价。不接受的话，MAS 版对主场景（几百 GB 项目文件夹）的体验会明显差于侧载版 |
+| **D3** | 如果做：MAS 版与侧载版的关系 | ① 两者并行（MAS 版可能不支持 USB，只支持无线）② MAS 版为主，侧载版只给老用户 ③ 先只发侧载，MAS 作为 1.1 |
+
+---
+
+## 8. 不确定 / 待确认清单（不要当结论用）
+
+| # | 项 | 为什么不确定 |
+|---|---|---|
+| U1 | `com.apple.security.device.usb` 是否足够让 adb 的 IOKit 通道工作 | 官方只承诺「USB device access APIs」，没有点名 adb 走的那条路 |
+| U2 | adb server 在沙盒下的行为（能否 bind 5037、能不能 kill 干净、容器内的 `$HOME/.android` 是否被正确使用） | 要实测 |
+| U3 | 沙盒下 `~/Library/Logs/DroidBerth` 会落到容器内哪一层（我们要改 `AppPaths`，或接受重定向） | 要实测 |
+| U4 | `assets.pictures` / `movies` 这两组 entitlement 是否真需要（还是 user-selected 就够） | 要实测 |
+| U5 | Hardened Runtime 那三条例外是否还能去掉 | 要实测 |
+| U6 | 中国大陆上架需要的额外资质 | **我没有可靠判据，必须你或代理确认** |
+| U7 | MAS 版本的**体积**限制（我们要内嵌约 40 MB 的 platform-tools） | 各方资料口径不一，提交时以 App Store Connect 的提示为准 |

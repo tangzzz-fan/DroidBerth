@@ -432,3 +432,39 @@ open "/abs/path/to/DroidBerth.app"        # app 由 launchd 拉起，不继承�
 > 依据是 `spctl -a` 报 `rejected` + shell 跑出 133 —— 前者是 **Gatekeeper 的分发评估**
 > （与公证/票据有关，不妨碍本机运行），后者是**启动方式**的问题。实测 `open` 同样能起来。
 > 真正需要 profile 的是**提交**，不是本机运行。
+
+### 10.3 怎么**证明**一个 app 真的在沙盒里跑（`lsof` 看 cwd）
+
+「进程活着」不足以证明它跑对了 —— 它可能 hang、可能没进沙盒、也可能进沙盒但写不了东西。
+一条命令就能同时回答这三件事：
+
+```bash
+open "/abs/path/to/DroidBerth.app"; sleep 6
+lsof -p "$(pgrep -f "Release-MAS/DroidBerth" | sed -n '1p')" | grep Containers
+```
+
+本机实测（**Apple Distribution 签名 + 无 provisioning profile** 的 MAS 包）：
+
+```
+cwd  DIR   /Users/tango/Library/Containers/dev.tango.droidberth/Data
+3w   REG  3843  …/Containers/dev.tango.droidberth/Data/Library/Logs/DroidBerth/DroidBerth-2026-10-12.log
+```
+
+**三件事一次都成立**：`cwd` 是容器（**沙盒确实生效了**）、日志写在容器里（**没有误写真实家目录**）、
+日志有 3843 字节（**它真的在干活，不是 hang 在那里**）。
+
+对照：真实 `~/Library/Logs/DroidBerth/` 整份日志里**只出现过 `Release/`，从来没有 `Release-MAS`**
+（用 `grep -n Release-MAS` 数得出来）。这一条把「沙盒版的行为会不会污染真实环境」也一起答了。
+
+> 顺带说明一件事：**沙盒的初始化只看签名里的 entitlements，不要求 provisioning profile。**
+> profile 是给**受限** entitlements（`com.apple.developer.*`）与 App Store 校验用的。
+> 我们那 7 条都是标准 sandbox 权限，所以「无 profile 也能正常进沙盒」是预期行为，
+> 不是侥幸 —— 也正是「无证书即可验行为」这条路成立的原因。
+
+**「不能在本机跑」这个说法从哪来**（三条，前两条是误读、第三条是真的）：
+
+| 说法 | 实际 |
+|---|---|
+| `spctl -a` 报 `rejected` | 那是 **Gatekeeper 的「能不能分发给别人」评估**，不是「能不能在本机运行」 |
+| 从 shell 跑可执行文件 → 133 | **启动方式**问题（§10.2） |
+| 真机上游这条说法的**正当**来源 | 给二进制加上**受限** entitlement（`com.apple.developer.*`）却没有对应 profile，内核会在启动时直接 `SIGKILL`（137）。**我们没用到任何受限 entitlement**，所以不落入这一条 |

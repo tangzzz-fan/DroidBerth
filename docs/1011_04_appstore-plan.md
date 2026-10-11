@@ -157,11 +157,19 @@ CONFIGURATION=Release-MAS ./scripts/check-mas-readiness.sh      # PASS 23 · FAI
 2. **判据每次现测。** 「本会话能不能施加限制性沙盒」在同一天里会变（06:20 是 0、06:41 是 71）
    ⇒ 别引用上一轮的结论。
 
-> ⚠️ **更正一条早期结论**：本方案曾口头写「用 Apple Distribution 签的包本机跑不起来」——
-> **不成立**。当时的两条依据都不支持它：`spctl -a` 报 `rejected` 是 **Gatekeeper 的分发评估**
-> （与公证/票据有关，不妨碍本机运行）；shell 跑出 133 是**启动方式**的问题（上一条）。
-> 实测 `open` 能起来、无崩溃。所以**本机自测不必另配一套开发签名** ——
-> 缺 profile 只会让 `check-mas-readiness.sh` 报那一条 FAIL。
+> ⚠️ **更正一条早期结论（2026-10-12 复核过两轮）**：本方案曾口头写「用 Apple Distribution
+> 签的包本机跑不起来」—— **不成立**。当时的两条依据都不支持它：`spctl -a` 报 `rejected` 是
+> **Gatekeeper 的分发评估**（与公证/票据有关，不妨碍本机运行）；shell 跑出 133 是**启动方式**的问题
+> （上一条）。
+>
+> **复核用的判据**（`lsof` 看 cwd，见 `1011_05` §10.3）：Apple Distribution 签名、**无 profile**
+> 的 MAS 包经 `open` 启动后 —— `cwd` = `~/Library/Containers/dev.tango.droidberth/Data`、
+> 日志写在容器里且有 3843 字节、真实 `~/Library/Logs/` 里从来没出现过 `Release-MAS`。
+> ⇒ **它不但能跑，而且是作为一个正常的沙盒 app 在跑。**
+>
+> 所以**本机自测不必另配一套开发签名** —— 缺 profile 只会让 `check-mas-readiness.sh` 报那一条 FAIL。
+> 沙盒初始化只看签名里的 entitlements；profile 是给**受限** entitlements（`com.apple.developer.*`）
+> 与 App Store 校验用的，我们一条都没用到。
 
 ---
 

@@ -37,7 +37,35 @@ ADB 二进制内嵌在 app 内 —— 用户不需要装 Android SDK、不需要
 | 技术路线验证 | **完成，判 Go**（`docs/0926_02_swift-native-spike-plan.md`） |
 | Swift 原生外壳 MVP | **已实现，核心链路真机验证通过**（`docs/0926_03_swift-native-mvp-implementation.md`） |
 | 视觉与交互 | **已补齐（2026-10-11）**：交互层早于 2026-10-10 全绿；随后一轮视觉与图标审计补上三条 P0 —— **应用图标**（原来完全缺失，`scripts/make-icon.py` 是个从未被调用的孤儿脚本）、**文件类型图标单一来源**（原来两栏各写一遍 switch 且已分叉）、**PRD §17.1 的连接引导卡片**（原来只是一行字符串）。另补品牌色定义、空态结构（四类各有图标与动作）与 WCAG AA 的数据列文字。**运行时行为与图标观感待人工验收**；VoiceOver 按要求跳过；动态字体与对比度只做到部分。审计与设计稿见 `docs/1010_01_ui-icon-design-report.md`，**设计令牌唯一来源**是 `docs/design/DESIGN.md` |
-| 公证与分发 | **未做**（架构范围已决策：**arm64-only**，放弃 Intel，见 PRD §5.1） |
+| 公证与分发 | **链已跑通（2026-10-11）**：`build.sh` → `notarize.sh`（app zip 与 DMG 双双 `Accepted`、staple 通过）→ `checklist.sh`；GitHub Actions 的 `ci.yml` / `release.yml` 已就绪，CI **实跑全绿**。**尚未正式发版** —— 打 `v*` tag 前要先补 6 个 Repository secret。架构范围已决策 **arm64-only**（放弃 Intel，PRD §5.1） |
+
+---
+
+## 下载与安装
+
+发布页：**<https://github.com/tangzzz-fan/DroidBerth/releases>**
+
+| 文件 | 说明 |
+|---|---|
+| **`DroidBerth-<版本>.dmg`** | **推荐**。已签名 + 已公证 + 已 staple |
+| `DroidBerth-<版本>.zip` | 同一份 app 的压缩包；习惯直接拖 app 的人用这个 |
+| `NOTICE.txt` | `adb`（Android platform-tools）的 Apache-2.0 声明。它也在 app 包内（`Contents/Resources/NOTICE.txt`） |
+| `SHA256SUMS.txt` | 上面各文件的 SHA-256 |
+| Source code (zip / tar.gz) | GitHub 为每个 Release 自动附带的**源码快照** |
+
+**需要 Apple Silicon（M 系列）与 macOS 14 或更高。** 本项目不发 Intel 版本（PRD §5.1）。
+
+安装：打开 DMG，把 **DroidBerth** 拖到旁边的 **Applications**。
+（DMG 里带了一条 `/Applications` 的符号链接，正是为了这一步。）
+包已公证，**不需要**「右键 → 打开」绕过 Gatekeeper。
+
+校验下载：
+
+```bash
+shasum -a 256 -c SHA256SUMS.txt
+```
+
+> 想自己从源码构建：见下面的「构建与运行」。
 
 ---
 
@@ -48,6 +76,7 @@ macos/                    Swift 原生外壳（唯一应用工程）
   project.yml               xcodegen 工程定义
   Sources/DroidBerth/       49 个 Swift 文件
   Resources/                Info.plist + entitlements + icon.{icns,png}（**图标入库**，见「图标不生效」）
+                            + NOTICE.txt（**构建期从 vendor/ 暂存**，不入库；PRD §28 要求随包分发）
   Scripts/build-sidecar.sh  编译 Rust sidecar 并暂存到 macos/Sidecar/
 sidecar/droidberth-adb/   Rust sidecar（1788 行 / 5 文件，零第三方依赖）
                           version / doctor / resolve / exec / raw 五个子命令
@@ -105,12 +134,13 @@ SidecarLocator.locate()          相对 Bundle.main.executableURL 的同级目�
 ./scripts/build.sh
 ```
 
-它会依次：**生成 App 图标** → 暂存 sidecar → `xcodegen generate` → `xcodebuild`。
+它会依次：**生成 App 图标 + 暂存 NOTICE** → 暂存 sidecar → `xcodegen generate` → `xcodebuild`。
 产物：`macos/build/dd/Build/Products/Release/DroidBerth.app`。
 
-> 图标这一步必须在 `xcodegen generate` **之前** —— xcodegen 要求 `project.yml` 里列出的路径
-> 存在，缺了 `macos/Resources/icon.icns` 它会直接报错。纯 Python 渲染一张 1024 母版约 50 秒，
-> 所以只在 `scripts/make-icon.py` 比产物新时才重跑。
+> 图标与 NOTICE 这两步必须在 `xcodegen generate` **之前** —— xcodegen 要求 `project.yml` 里
+> 列出的路径**存在**，缺了 `macos/Resources/icon.icns` 或 `Resources/NOTICE.txt` 它会直接报错。
+> 图标那步纯 Python 渲染一张 1024 母版约 50 秒，所以只在 `scripts/make-icon.py` 比产物新时才重跑；
+> NOTICE 来自 `vendor/`，缺了会给出「先跑 `./scripts/fetch-adb.sh`」的报错。
 
 ### 图标不生效 / Dock 上还是旧图标
 
@@ -430,7 +460,19 @@ git push origin v0.2.0
 
 tag 里的版本号会覆盖 `MARKETING_VERSION`（`Info.plist` 用的是 `$(MARKETING_VERSION)`），
 `CFBundleVersion` 用 `github.run_number`，保证同一版本号下多次构建可区分。
-产物是 `DroidBerth-<版本>.dmg` + `.zip` + `SHA256SUMS.txt`，挂在自动生成的 Release 下。
+
+产物挂在自动生成的 Release 下：
+
+| 附件 | 来源 |
+|---|---|
+| `DroidBerth-<版本>.dmg` | 已签名 + 已公证 + 已 staple，含 `/Applications` 软链 |
+| `DroidBerth-<版本>.zip` | 同一份 app 打包 |
+| `NOTICE.txt` | `vendor/platform-tools/NOTICE.txt`（也在 app 包内） |
+| `SHA256SUMS.txt` | 上面各文件的校验和（**裸文件名**，下载后可直接 `-c`） |
+| Source code (zip / tar.gz) | GitHub 自动附带，无需我们做任何事 |
+
+Release 说明由 `release.yml` 写死一段「下载 / 安装 / 校验」在前，`gh --generate-notes`
+自动生成的变更清单接在其后（REST API 的 `body` + `generate_release_notes` 就是这个语义）。
 
 **干跑**（不建 Release，只出 artifact）：Actions → Release → Run workflow → 填一个版本号。
 用于在真正打 tag 之前验证签名与公证这条链 —— 值得在第一次发版前跑一次。
@@ -608,8 +650,11 @@ MotionEvent` —— 这不是某个 app 的 bug，是**系统整体跑不动**�
 
 ### 许可 —— 公开发布前必须确认
 
-- 必须随包附 `NOTICE.txt`（当前位于 `vendor/platform-tools/NOTICE.txt`，
-  注意 `vendor/` 已被 `.gitignore` 排除，**不随仓库分发**）。
+- **必须随包附 `NOTICE.txt`** —— **已经做到**（2026-10-11）：`build.sh` 在 `xcodegen generate`
+  之前把它从 `vendor/platform-tools/NOTICE.txt` 暂存到 `macos/Resources/`，`project.yml` 把它列为
+  bundle 资源 ⇒ 落在 `DroidBerth.app/Contents/Resources/NOTICE.txt`；`release.yml` 还会**再挂一份**
+  到 Release 页（免得要先下 40 MB 的 DMG 才看得到许可）。
+  源文件在 `vendor/`（`.gitignore` 排除，不随仓库分发），新克隆的机器由 `./scripts/fetch-adb.sh` 取回。
 - `NOTICE.txt` 声明整包 Apache-2.0；SDK 条款的**再分发禁令是 §3.4**，而 **§3.5 对开源许可组件有豁免**。
 - 所以「必须自建才能公开分发」这个前提不成立。
 - **但这仍不是法律意见。** 公开发布前必须让法务确认 §3.5 的适用性。**不要把它当成「无风险」。**
@@ -620,6 +665,8 @@ MotionEvent` —— 这不是某个 app 的 bug，是**系统整体跑不动**�
 - sidecar 定位用**相对自身可执行文件**的路径，不用安装路径拼接。
 - 子进程封装必须**同时抽干 stdout 和 stderr**，并带超时。
 - 禁止手写 `hdiutil create`，统一走 `scripts/env.sh` 的 `make_signed_dmg()`。
+  它用 `ditto`（不是 `cp -R` —— 后者不保留扩展属性，实测那样拷出来的副本 `spctl` 会判
+  `rejected / Insufficient Context`），并往 DMG 里放一条 `/Applications` 符号链接。
 - adb 只暂存到 `macos/Sidecar/`（该目录已被 `.gitignore` 排除），**不提交、不随仓库分发**。
 
 ---

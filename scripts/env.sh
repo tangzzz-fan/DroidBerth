@@ -91,10 +91,23 @@ identity_kind() {
 }
 
 make_signed_dmg() {
-  local app="$1" out="$2" identity
+  local app="$1" out="$2" identity staging
   identity="$(detect_identity)"
   rm -f "$out"
-  hdiutil create -volname "$APP_NAME" -srcfolder "$app" -ov -format UDZO "$out" >/dev/null
+
+  # DMG 里只放 .app 的话，用户得自己把图标拖到 /Applications —— 而「拖到左边那个
+  # 文件夹」正是 macOS 分发的既定约定。往里放一条 /Applications 的**符号链接**
+  # （不是副本），Finder 会把它画成「应用程序」，一次拖拽就装好。
+  #
+  # 用 ditto 而不是 cp -R 拷进去：cp -R **不保留扩展属性**，实测那样得到的副本
+  # `spctl` 会判 `rejected / Insufficient Context`（这也是 Apple 建议 ditto 的原因）。
+  staging="$(mktemp -d)"
+  ditto "$app" "$staging/$(basename "$app")"
+  ln -s /Applications "$staging/Applications"
+
+  hdiutil create -volname "$APP_NAME" -srcfolder "$staging" -ov -format UDZO "$out" >/dev/null
+  rm -rf "$staging"
+
   codesign --force --sign "$identity" --timestamp "$out"
 }
 

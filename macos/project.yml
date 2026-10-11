@@ -40,6 +40,13 @@ targets:
       #    但**手工**跑 `xcodegen generate` 会直接失败。
       - path: Resources/icon.icns
         buildPhase: resources
+      # 随包分发的第三方声明（PRD §28：`adb` 的 `NOTICE.txt` 必须跟包走）。
+      # **不入库** —— 理由与下面 `Sidecar/` 相同（体积大 + 许可待法务确认，见 .gitignore），
+      # 由 `build.sh` 在 `xcodegen generate` 之前从 `vendor/platform-tools/NOTICE.txt`
+      # 暂存到这里。⚠️ 与 icon.icns 一样，**手工**跑 `xcodegen generate` 时若它不在，
+      #    xcodegen 会直接报 `has a missing source directory`。
+      - path: Resources/NOTICE.txt
+        buildPhase: resources
       - path: Sidecar/droidberth-adb
         buildPhase:
           copyFiles:
@@ -95,4 +102,12 @@ targets:
               exit 1
             fi
           done
+          # third-party 声明也要在（PRD §28 要求随包分发）。它由 build.sh 从 vendor/ 暂存，
+          # 而 vendor/ 刻意不入库 —— 所以新克隆的机器上很容易缺这一份。
+          if [ ! -f "$SRCROOT/Resources/NOTICE.txt" ]; then
+            echo "error: $SRCROOT/Resources/NOTICE.txt 不存在" >&2
+            echo "error: 先运行 ./scripts/fetch-adb.sh（取回 platform-tools，含 NOTICE.txt）" >&2
+            echo "error: 或者直接跑 ./scripts/build.sh —— 它会自己暂存" >&2
+            exit 1
+          fi
           "$SRCROOT/Sidecar/droidberth-adb" version

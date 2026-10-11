@@ -25,6 +25,10 @@ vendor/
 macos/Sidecar/
 # sidecar 的 cargo 产物。
 sidecar/*/target/
+# platform-tools 的 NOTICE（Apache-2.0 声明）。**不随仓库分发**的理由与 vendor/ 相同，
+# 但它必须**随包分发**（PRD §28）—— 所以 build.sh 会在 `xcodegen generate` 之前
+# 从 vendor/ 暂存到 Resources/（缺了它 xcodegen 会直接失败）。
+macos/Resources/NOTICE.txt
 # ── 设计资产（**要入库**）─────────────────────────────────────
 # App 图标**入库**（2026-10-11 改；原先不入库，那条理由被实测推翻了）。
 #
@@ -43,6 +47,8 @@ sidecar/*/target/
 # doctor / spike 的报告。
 reports/
 *.log
+# release.yml 收产物用的暂存目录（DMG / app zip / NOTICE / 校验和）。
+dist/
 
 # ── Xcode 的用户级状态（每个开发者各不相同）──────────────────────
 xcuserdata/

@@ -58,7 +58,7 @@ for v in APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID \
   unset "$v"
 done
 
-echo "==> 1/4 generate the app icon"
+echo "==> 1/4 generate the app icon and stage the third-party NOTICE"
 # 必须在 `xcodegen generate` **之前** —— xcodegen 要求 project.yml 里列出的路径存在，
 # 缺了 macos/Resources/icon.icns 它会直接报错（与 sidecar 暂存同一个形状的前置条件）。
 # 纯 Python 渲染一张 1024 母版约 50 秒，所以只在脚本比产物新时才重跑。
@@ -70,6 +70,30 @@ if [ ! -f "$ICON_ICNS" ] || [ "$ICON_SCRIPT" -nt "$ICON_ICNS" ]; then
 else
   echo "    up to date, skipping (make-icon.py 未变)"
 fi
+
+# 随包分发的 NOTICE（PRD §28：`adb` 的 `NOTICE.txt` 必须跟包走）。
+# 它与 icon.icns 是**同一个形状的前置条件**：project.yml 把它列成了 bundle 资源，
+# 所以必须在 `xcodegen generate` 之前就位，而且它**不入库**（与 vendor/ 同理由：
+# 体积大 + 许可待法务确认，见 .gitignore）。
+NOTICE_SRC="$ROOT/vendor/platform-tools/NOTICE.txt"
+NOTICE_DST="$SWIFT_DIR/Resources/NOTICE.txt"
+if [ ! -f "$NOTICE_SRC" ]; then
+  cat >&2 <<'EOF'
+
+error: 缺少 vendor/platform-tools/NOTICE.txt
+
+       adb 的 Apache-2.0 声明必须**随包分发**（PRD §28），而 macos/project.yml
+       把它列成了 bundle 资源 —— 缺了它连 xcodegen generate 都跑不过。
+       而 vendor/ 是刻意不入库的，所以新克隆的机器上必然缺这一份。
+
+       先运行一次：
+           ./scripts/fetch-adb.sh
+
+EOF
+  exit 1
+fi
+cp -f "$NOTICE_SRC" "$NOTICE_DST"
+printf '    %s\n' "${NOTICE_DST#"$ROOT"/}"
 
 echo
 echo "==> 2/4 stage the Rust sidecar into macos/Sidecar/"

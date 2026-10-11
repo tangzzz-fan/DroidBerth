@@ -116,41 +116,23 @@ swiftc -O -o "$WORK/probe" \
   "$SCRIPT_DIR/main.swift"
 echo "   ✓ 编译通过"
 
-# ── entitlements ────────────────────────────────────────────────────────
-# app 侧：沙盒 + 三类实际要用的权限。
-cat > "$WORK/app-sandbox.entitlements" <<'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>com.apple.security.app-sandbox</key>
-	<true/>
-	<key>com.apple.security.network.client</key>
-	<true/>
-	<key>com.apple.security.network.server</key>
-	<true/>
-	<key>com.apple.security.device.usb</key>
-	<true/>
-	<key>com.apple.security.files.user-selected.read-write</key>
-	<true/>
-</dict>
-</plist>
-PLIST
-
-# 内嵌 helper 侧：App Review 要求所有 main executable 都带 app-sandbox，
-# 于是子进程要靠 `inherit` 才触发继承（沙盒本身与它无关 —— 子进程无论如何都继承父的）。
-cat > "$WORK/helper-sandbox.entitlements" <<'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>com.apple.security.app-sandbox</key>
-	<true/>
-	<key>com.apple.security.inherit</key>
-	<true/>
-</dict>
-</plist>
-PLIST
+# ── entitlements：**直接读工程里那两份，不再自己抄一遍** ──────────────────
+#
+# 原先这里是两份内联 heredoc。改成引用 `macos/Resources/` 的那两份，理由是**唯一来源**：
+# 探针要验的就是「要发的这一套 entitlements」，抄一份的后果是两者会分叉，
+# 而分叉的表现是「探针过了、真 app 没过」—— 最坏的一种：**它给了你绿灯**。
+MAS_ENTITLEMENTS="$ROOT/macos/Resources/DroidBerth-MAS.entitlements"
+HELPER_ENTITLEMENTS="$ROOT/macos/Resources/Helper-MAS.entitlements"
+for plist_file in "$MAS_ENTITLEMENTS" "$HELPER_ENTITLEMENTS"; do
+  if [ ! -f "$plist_file" ]; then
+    echo "找不到 ${plist_file} —— 探针要拿它当沙盒权限的来源，不能缺" >&2
+    exit 1
+  fi
+  plutil -lint "$plist_file" >/dev/null || { echo "${plist_file} 不是合法 plist" >&2; exit 1; }
+done
+echo "权限来源（唯一来源，与 MAS 版共用）："
+echo "  app    : ${MAS_ENTITLEMENTS#$ROOT/}"
+echo "  helper : ${HELPER_ENTITLEMENTS#$ROOT/}"
 
 make_bundle() {
   local name="$1" bid="$2"
@@ -182,11 +164,12 @@ SANDBOX_APP="$(make_bundle SandboxProbe "$SANDBOX_BID")"
 CONTROL_APP="$(make_bundle ControlProbe "$CONTROL_BID")"
 
 echo "── 3/4 签名（ad-hoc；对内嵌 adb 先签，再由外向内签 app）"
+# 由内向外：helper 带 `inherit` → app 带沙盒权限。顺序反了会把 app 的封装破坏掉。
 codesign --force --sign - \
-  --entitlements "$WORK/helper-sandbox.entitlements" \
+  --entitlements "$HELPER_ENTITLEMENTS" \
   "$SANDBOX_APP/Contents/Resources/adb"
 codesign --force --sign - \
-  --entitlements "$WORK/app-sandbox.entitlements" \
+  --entitlements "$MAS_ENTITLEMENTS" \
   "$SANDBOX_APP"
 
 # 对照组：adb 与 app 都不带 entitlements（父进程本来就不是沙盒，子进程自然也不是）。

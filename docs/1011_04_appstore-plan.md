@@ -91,14 +91,47 @@
 
 | # | 产物 | 说明 |
 |---|---|---|
-| E1 | `macos/Resources/DroidBerth-MAS.entitlements` | MAS 版的 app entitlements（沙盒 + 上表逐条） |
-| E2 | `macos/Resources/Helper-MAS.entitlements` | 内嵌 helper 的 `app-sandbox` + `inherit` |
-| E3 | `macos/project.yml` 加一个 **Release-MAS** 配置 | 带沙盒、指向 E1/E2、`CODE_SIGN_IDENTITY = Apple Distribution`、`PROVISIONING_PROFILE_SPECIFIER` |
-| E4 | `scripts/sign-embedded-tools-mas.sh` | 按顺序签：adb / droidberth-adb（带 E2）→ app（带 E1）→ 验签。现在的 `resign.sh` 只签 app |
-| E5 | `scripts/package-mas.sh` | `productbuild` 出 `.pkg`（或直接用 Xcode Organizer 归档，脚本只做校验） |
-| E6 | `scripts/check-mas-readiness.sh` | **上架前自检**：沙盒标识在不在、每个 Mach-O 的 entitlements 对不对、`LSApplicationCategoryType` 在不在、`NSHumanReadableCopyright` 非空、内嵌工具都带了 `inherit`、没有指向容器外的硬编码路径 |
-| E7 | 启动时的**授权引导流程**（代码改动） | 沙盒版第一次运行需要一个「选择素材目录」的步骤，并把结果落成 bookmark。**属 UI 改动 ⇒ 按项目约定先出图** |
-| E8 | 退出时 `adb kill-server`（代码改动） | 针对 2.4.5(iii) |
+| E1 | `macos/Resources/DroidBerth-MAS.entitlements` | ✅ **已落盘**。七条，逐条在文件里注明对应哪段代码；**刻意不放**的三类也写明了理由（`files.all` 已废弃 / `assets.*` 不需要因为照片走 PhotoKit / 三条 Hardened Runtime 例外不需要） |
+| E2 | `macos/Resources/Helper-MAS.entitlements` | ✅ **已落盘**。`app-sandbox` + `inherit`，并写明两者作用不同：前者是**审核要求**，后者才是继承机制，而**功能上子进程本来就继承** ⇒ 漏了 `inherit` 本地测不出来 |
+| E3 | `macos/project.yml` 加一个 **`Release-MAS`** 配置 | ✅ **已完成并实测构建通过**。配置类型显式写成 `release`（XcodeGen 按名字推断类型，不然会掉进 Debug 预设拿到 `-Onone`），生成结果核对过：`-O` + `wholemodule` ✅。目标级换 `Apple Distribution` + E1，`PROVISIONING_PROFILE_SPECIFIER` **刻意不写**（部署期数据，从命令行注入） |
+| E4 | `scripts/sign-embedded-tools-mas.sh` | ⬜ 待做。**当前 MAS 包里内嵌工具是 0 条 entitlements**（已实测），因为 `CodeSignOnCopy` 用的是 app 的 identity 但**不带 entitlements** |
+| E5 | `scripts/package-mas.sh` | ⬜ 待做 |
+| E6 | `scripts/check-mas-readiness.sh` | ⬜ 待做 |
+| E7 | 启动时的**授权引导流程**（代码改动） | ⬜ 待做。**先看 §4.1 的实测数据** —— `places()` 不只是「要授权」，现在这个形态会**骗人** |
+| E8 | 退出时 `adb kill-server`（代码改动） | ⬜ 待做 |
+
+### 4.1 实测：容器里的固定位置长什么样（2026-10-12，`places()` 的直接依据）
+
+拿 E1 那套 entitlements 打了一个沙盒探针（`scripts/spike-sandbox-adb.sh`，**权限来源已改成
+直接读 `macos/Resources/` 的那两份**，不再自己抄一遍 —— 抄一份就会分叉，而分叉的表现是
+「探针过了、真 app 没过」，那是最坏的一种：**它给你绿灯**）。
+
+沙盒里的 `NSHomeDirectory()` 指向 `~/Library/Containers/<bid>/Data`，里面：
+
+| 条目 | 是什么 | 读得动吗 |
+|---|---|---|
+| `Desktop` | 符号链接 → `../../../../Desktop` | ❌ **读不了**（`errno 257` = 没有权限） |
+| `Downloads` | 符号链接 → `../../../../Downloads` | ✅ 可读（8 项）—— 因为正好有 `files.downloads.read-write` |
+| `Movies` / `Pictures` / `Music` | 同上，符号链接 | ❌ **读不了**（`errno 257`） |
+| `Documents` | **真目录，空的** | ⚠️ **读得动，但是空的**（0 项）—— **不报错** |
+
+对照组（同一段代码、不带沙盒）：六项全部是真实目录、全部可读。
+
+**为什么这条比「要授权」严重得多：** `LocalFileSystem.places()` 现在就是
+`homeDirectoryForCurrentUser` 拼六个名字 + `fileExists()`，而 **`fileExists()` 会跟随符号链接**
+⇒ 在 MAS 版里它会把这六项**全部列出来**。然后：
+
+- 点「桌面」「影片」「图片」「音乐」→ 权限错误（4 项）
+- 点「下载」→ 正常（1 项）
+- 点「文稿」→ **打开一个空文件夹，而且不报任何错**（1 项）
+
+最后一条是**用户会以为文件丢了**的那种缺陷。所以 `places()` 在 MAS 版不能只是「加个授权」，
+要么重写成「只列真正有权限的位置」，要么整个拿掉、改成「只用用户授权过的目录」。
+
+> 顺带把方案 §2.3 里那条 `assets.pictures` 的疑问也答了：`places()` 列的 `~/Pictures`
+> 在沙盒下根本读不动，**加 entitlement 不是解法** —— 照片图库走的是 PhotoKit
+> （`Photos/PhotoLibraryModel.swift`），需要的是一条 `personal-information.photos-library`，
+> 已经放进 E1 了。
 
 ---
 
@@ -274,9 +307,9 @@ sandbox-exec -p '(version 1)(deny default)(allow file-read*)' /bin/echo ok   # �
 | U1 | `com.apple.security.device.usb` 是否足够让 adb 的 IOKit 通道工作 | 官方只承诺「USB device access APIs」，没有点名 adb 走的那条路。**已部分回答**：S1-c′ 证明沙盒内 IOKit 能枚举到 USB 设备（与不沙盒一致），但「**打开**设备」还没验 —— 需要 Android 真机（S1-c） |
 | U0 | ~~受限会话里跑不了沙盒进程~~ ❌ **这条结论是错的，已推翻（2026-10-12）** | 原判据的 profile 少了 `allow process-exec`，把「profile 生效」读成了「施加不了」。实测沙盒版探针在这里跑得完全正常，S1-a / S1-b 当场 PASS。详见 §6.1 |
 | U2 | adb server 在沙盒下的行为（能否 bind 5037、能不能 kill 干净、容器内的 `$HOME/.android` 是否被正确使用） | 要实测 |
-| U3 | 沙盒下 `~/Library/Logs/DroidBerth` 会落到容器内哪一层（我们要改 `AppPaths`，或接受重定向） | 要实测 |
-| U4 | `assets.pictures` / `movies` 这两组 entitlement 是否真需要（还是 user-selected 就够） | 要实测 |
-| U5 | Hardened Runtime 那三条例外是否还能去掉 | 要实测 |
+| U3 | 沙盒下 `~/Library/Logs/DroidBerth` 会落到容器内哪一层 | ✅ **已实测（2026-10-12）**：落到 `~/Library/Containers/dev.tango.droidberth/Data/Library/Logs/DroidBerth/`。⚠️ 但 app **自己报出来的仍是原样的 `~/Library/Logs/DroidBerth`** —— 那在 MAS 版里是个**不存在的路径**。用户按支持说明去找日志会找不到，所以 `AppPaths` / 诊断入口要报**解析后**的路径 |
+| U5 | Hardened Runtime 那三条例外是否还能去掉 | 🔶 **部分回答**：MAS 版（E1）**刻意没放**这三条，而 `Release-MAS` 实测**构建通过**。⇒ 至少**编译期不需要**。运行期是否需要要跑一遍才知道（属于方案 §3 的 R5） |
+| U4 | `assets.pictures` / `movies` 这两组 entitlement 是否真需要（还是 user-selected 就够） | ✅ **已回答（2026-10-12）**：**不需要**。照片图库走 PhotoKit（`Photos/PhotoLibraryModel.swift`），要的是 `personal-information.photos-library`（已放进 E1）；而 `places()` 列的 `~/Pictures` 在沙盒下**根本读不动**（§4.1 实测），加 entitlement 不是解法 |
 | U6 | 中国大陆上架需要的额外资质 | **我没有可靠判据，必须你或代理确认** |
 | U7 | MAS 版本的**体积**限制（我们要内嵌约 40 MB 的 platform-tools） | 各方资料口径不一，提交时以 App Store Connect 的提示为准 |
 

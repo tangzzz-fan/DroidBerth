@@ -205,6 +205,65 @@ if !usb.ok {
 say("USB-COUNT: \(usb.ok ? usb.count : -1)")
 
 // ─────────────────────────────────────────────────────────────
+// 1.5 容器「家目录」里那几个固定位置能不能读（直接决定 MAS 版的 places() 怎么写）
+// ─────────────────────────────────────────────────────────────
+//
+// 背景 —— 这是 2026-10-12 在**真容器**里量到的结构（不是推理）：
+//
+//     Desktop    -> ../../../../Desktop      符号链接，指向真实目录
+//     Downloads  -> ../../../../Downloads    符号链接
+//     Movies / Music / Pictures              符号链接
+//     Documents  **真目录，空的**            没有对应 read-write entitlement 时不给符号链接
+//
+// 而 `FileManager.fileExists()` 会**跟随符号链接** ⇒ `LocalFileSystem.places()`
+// 会把这六项**全部列出来**（现在的实现就是 fileExists + home 拼接）。
+// 列出来之后各自的结果差得远：
+//
+//   · Downloads   有 `files.downloads.read-write` ⇒ 能读
+//   · 其余四个    没有对应 entitlement ⇒ 读真实位置报 `Operation not permitted`
+//   · Documents   容器里的**空目录** ⇒ **读得动，但是空的**
+//
+// 最危险的是最后那条：**它不报错**。用户点「文稿」看到一个空文件夹，会以为文件丢了。
+// 所以这一节必须量，不能靠推 —— 而且它决定 places() 是「照着改」还是「整个删掉」。
+func containerPlaceReadability() -> [(String, String)] {
+    let home = NSHomeDirectory()
+    let names = ["Desktop", "Documents", "Downloads", "Movies", "Pictures", "Music"]
+    var rows: [(String, String)] = []
+    for name in names {
+        let path = (home as NSString).appendingPathComponent(name)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else {
+            rows.append((name, "**不存在** ⇒ places() 列不出来"))
+            continue
+        }
+        // 先判它是不是符号链接：这决定了「列得出来」与「读得动」是不是同一件事。
+        let symlinkTarget = try? FileManager.default.destinationOfSymbolicLink(atPath: path)
+        let kind = symlinkTarget.map { "符号链接 → \($0)" } ?? "真目录"
+        do {
+            let items = try FileManager.default.contentsOfDirectory(atPath: path)
+            if items.isEmpty {
+                rows.append((name, "\(kind)｜**可读但是空的**（0 项）← 不报错，最危险"))
+            } else {
+                rows.append((name, "\(kind)｜可读（\(items.count) 项）"))
+            }
+        } catch {
+            let errno = (error as NSError).code
+            rows.append((name, "\(kind)｜**读不了**（errno \(errno)）"))
+        }
+    }
+    return rows
+}
+
+let places = containerPlaceReadability()
+
+say()
+say("── 容器固定位置可读性（places() 的依据）")
+say("  home（沙盒下 = 容器 Data）: \(home)")
+for (name, verdict) in places {
+    say("    \(name.padding(toLength: 10, withPad: " ", startingAt: 0)) \(verdict)")
+}
+
+// ─────────────────────────────────────────────────────────────
 // 2. 找包内的 adb
 // ─────────────────────────────────────────────────────────────
 

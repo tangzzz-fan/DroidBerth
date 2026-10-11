@@ -8,6 +8,17 @@ options:
   groupSortPosition: top
   generateEmptyDirectories: true
 
+# 三个构建配置。**只有 Release-MAS 带沙盒** —— 侧载版继续用 Release，两者互不影响。
+#
+# 把类型（`debug` / `release`）显式写出来是有意的：XcodeGen 的「设置预设」按配置名
+# 推断类型，名字不落在这两类上时会**拿不到任何预设**。写清楚才能保证 Release-MAS
+# 拿到 release 那一套（`-O`、`SWIFT_COMPILATION_MODE=wholemodule` 等），
+# 而不是掉进 Debug 的默认（`-Onone`）—— 后者会让 MAS 版白白慢一大截且不易察觉。
+configs:
+  Debug: debug
+  Release: release
+  Release-MAS: release
+
 settings:
   base:
     SWIFT_VERSION: "6.0"
@@ -47,6 +58,14 @@ targets:
       #    xcodegen 会直接报 `has a missing source directory`。
       - path: Resources/NOTICE.txt
         buildPhase: resources
+      # entitlements 列进工程只为**可见、可 review**（`buildPhase: none` ⇒ 不进任何构建阶段）。
+      # 真正生效的是 `CODE_SIGN_ENTITLEMENTS` 那个 build setting，见下方 settings.configs。
+      - path: Resources/DroidBerth.entitlements
+        buildPhase: none
+      - path: Resources/DroidBerth-MAS.entitlements
+        buildPhase: none
+      - path: Resources/Helper-MAS.entitlements
+        buildPhase: none
       - path: Sidecar/droidberth-adb
         buildPhase:
           copyFiles:
@@ -89,6 +108,30 @@ targets:
         # Xcode 里点 Run 会报「Not allowed to attach to process」（2026-10-10 实测）。
         Debug:
           CODE_SIGN_INJECT_BASE_ENTITLEMENTS: YES
+        # MAS 版（方案 docs/1011_04_appstore-plan.md §4 的 E3）：换 entitlements、换签名身份。
+        #
+        # `PROVISIONING_PROFILE_SPECIFIER` **有意不在这里声明**，理由有两条：
+        #   ① 它是**部署期数据**（那串 profile 名字是 Apple 分配给你的），不是工程配置，
+        #      与 MARKETING_VERSION 同类 ⇒ 从命令行注入，而不是把本机的值写进仓库；
+        #   ② 本文件里若留一个空值占位，只会让 xcodebuild 的报错更难读。
+        # 注入方式（`xcodebuild` 不认环境变量为 build setting，必须走 build.sh 的口子）：
+        #
+        #   CONFIGURATION=Release-MAS \
+        #   XCODEBUILD_ARGS='PROVISIONING_PROFILE_SPECIFIER=DroidBerth MAS' ./scripts/build.sh
+        #
+        # ⚠️ 现在还**构建不了** —— 缺 Apple Distribution 对应的 provisioning profile，
+        #    也还没申请 `Mac Installer Distribution` 证书。属**预期**，不是坏了。
+        #    想在没有 profile 的情况下试这个配置：把签名换掉即可（entitlements 照旧生效）——
+        #
+        #   CONFIGURATION=Release-MAS \
+        #   XCODEBUILD_ARGS='CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual' ./scripts/build.sh
+        #
+        #    这样出来的包是 ad-hoc 签名、**本机可运行**，正好用来观察沙盒下的真实行为；
+        #    但它当然不能上架（签名不对），也不该拿去分发。
+        Release-MAS:
+          CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+          CODE_SIGN_ENTITLEMENTS: Resources/DroidBerth-MAS.entitlements
+          CODE_SIGN_IDENTITY: "Apple Distribution"
     preBuildScripts:
       - name: Verify staged sidecar
         basedOnDependencyAnalysis: false

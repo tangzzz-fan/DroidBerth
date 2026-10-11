@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Mac App Store 版（`Release-MAS` 配置）的 entitlements。
+
+  与侧载版**刻意分成两份**，不要合并：
+
+    DroidBerth.entitlements      侧载：三条 Hardened Runtime 例外，**没有沙盒**
+    DroidBerth-MAS.entitlements  MAS ：沙盒 + 逐条最小放开（本文件）
+
+  合并成一份的后果是**侧载版也被关进容器** —— 沙盒会反向改变产品能力
+  （方案 docs/1011_04_appstore-plan.md §2.1），那等于把两个不同的产品塞进一个构建配置。
+
+  逐条对应的代码（出处是方案 §2.3 那张表）：
+
+    app-sandbox                          MAS 硬性要求（Apple《Configuring the macOS App Sandbox》）
+    network.client                       adb 连 localhost；无线 ADB 连手机
+    network.server                       adb server 要监听端口
+                                         ⚠️ 它是**常驻进程**，撞 Guideline 2.4.5(iii)，见方案 §4 的 E8
+    device.usb                           adb 经 IOKit 直接与 Android 设备对话
+                                         判据：S1-c′ 已实测沙盒内 IOKit 能枚举到 USB 设备
+    files.user-selected.read-write       用户经 NSOpenPanel 亲自选中的素材目录
+                                         沙盒下这是**唯一的任意目录通路**（Guideline 2.5.2），见 E7
+    files.downloads.read-write           「下载」这个固定位置（Local/LocalFileSystem.places()）
+    personal-information.photos-library  「照片图库」来源
+                                         Photos/PhotoLibraryModel.swift 走的是 **PhotoKit**
+
+  **刻意不放**的几条 —— 想加先拿出判据，不要顺手加：
+
+    com.apple.security.files.all                   Apple 已标注 Deprecated
+    assets.pictures / assets.movies.read-*         照片图库走上面的 PhotoKit，不需要文件系统通路；
+                                                   而 places() 列出的 ~/Pictures 在沙盒下 home 已指向
+                                                   容器，本来就走不通（要改的是 places()，不是加权限）
+    cs.allow-jit / cs.allow-unsigned-… / cs.disable-library-validation
+                                                   Swift 原生不需要这些 Hardened Runtime 例外；
+                                                   审核偏好最小集（方案 §3 的 R5 要实测能否全去掉）
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.security.network.server</key>
+	<true/>
+	<key>com.apple.security.device.usb</key>
+	<true/>
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<key>com.apple.security.files.downloads.read-write</key>
+	<true/>
+	<key>com.apple.security.personal-information.photos-library</key>
+	<true/>
+</dict>
+</plist>

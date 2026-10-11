@@ -253,20 +253,34 @@ SUMMARY: V1=pass V2=fail V3=pass V4=pass      # 接上 Android 模拟器时的�
 
 ### 已实测（Android 模拟器，2026-10-11）
 
-本机装有 Android Studio 2026.2 与 SDK（`~/Library/Android/sdk`），AVD `Medium_Phone_API_37.0`。
+本机装有 Android Studio 2026.2 与 SDK（`~/Library/Android/sdk`），AVD **`Pixel_10`**。
 **这补上了一条不需要手机的自动化路径** —— `--spike-report` 的 `V4` 在有设备时才成立。
 
 | 项 | 实测结果 |
 |---|---|
 | 项目内嵌 adb 与 SDK 的 adb | **逐字节相同**（`sha256 1811e253…`，版本 `37.0.1-15733141`）⇒ 不存在「两套 adb 版本不一致静默改变行为」的风险；`doctor` 的 `adb.port_5037` 那项在这台机器上是无害的 |
 | 端到端 `V4` | **pass**（`push` → `ls -l` 复核 → `rm` 全通） |
-| 镜像 | Android **17**（API 37，`sdk_gphone64_arm64`，`google_apis_playstore`，`ro.build.type=user` ⇒ 无 `adb root`） |
+| 镜像 | Android **17 / API 37.2**，`google_apis_playstore_ps16k`，**16 KB 页大小**（`PAGE_SIZE=16384`，product `sdk_gphone16k_arm64`）。`ro.build.type=user` / `ro.debuggable=0` ⇒ **没有 `adb root`** |
 | **媒体入库（PRD §19）** | `push` 一张 JPEG 到 `/sdcard/DCIM/` 后**立刻**就能在 `content://media/external/images/media` 查到该行 ⇒ **API 37 上是自动入库的**，印证了 PRD §19.2「Android 11+ 起 MediaProvider 走 FUSE，可能自动入库」的推断 |
 | `cmd -l` 的扫描服务 | **没有** `media_scanner` / `media.scan` ⇒ app 会回退到广播 `MEDIA_SCANNER_SCAN_FILE`（广播返回 `result=0`）。文件本来就已经入库，所以兜底在这台设备上是**多余但无害**的 |
-| 剩余空间（§20） | `df -h /sdcard` 可用：`10G / 592M used / 8.9G avail` |
-| 设备自述（app 的解析器看到的） | `emulator-5554 device product:sdk_gphone64_arm64 model:sdk_gphone64_arm64 device:emu64a` |
+| 剩余空间（§20） | `df -h /sdcard` 可用 |
+| 设备自述（app 的解析器看到的） | `emulator-5554 device product:sdk_gphone16k_arm64 model:sdk_gphone16k_arm64 device:emu64a16k` |
 
-**两条必须记住的模拟器特性**
+**已修：「System UI isn't responding」的 ANR**
+
+根因是 AVD 的 **`hw.cpu.ncore=1`（单核）**，不是内存。判据与结果：
+
+| 判据 | 改之前 | 改之后（`ncore=4`） |
+|---|---|---|
+| `top` 的 idle | **7%**（唯一那个核 93% 在忙） | **95%**（`381%idle`） |
+| 90 秒观察窗 ANR | `ANR in` ≈ 10 条 + `Application Not Responding` 3 条 + 手势超时 1 条 | **0** |
+| `dumpsys window lastanr` | 有 ANR 窗口挂着 | `<no ANR has occurred since boot>` |
+
+原文很说明问题：**一大批不同进程同时中招**（`systemui` / `vending` / `googlequicksearchbox` /
+`com.android.phone` / `printspooler` / 输入法），其中 `com.android.systemui spent 20023ms processing
+MotionEvent` —— 这不是某个 app 的 bug，是**系统整体跑不动**。
+
+**三条必须记住的模拟器特性**
 
 1. **`sys.boot_completed=1` ≠ 存储就绪。** 实测：boot 完成后**立刻**访问 `/sdcard` 会 `Permission denied`
    （`push`、`ls`，连 `df` 都被拒），再等几秒到几十秒才正常。**判据必须是「实际写一次」**
@@ -275,11 +289,19 @@ SUMMARY: V1=pass V2=fail V3=pass V4=pass      # 接上 Android 模拟器时的�
    而 PRD §12.2 的假设是「Android 11+ 不可写入，所以不在 UI 里暴露」。原因大概是模拟器的 `shell`
    用户被授予了 `ext_data_rw` / `ext_obb_rw` 组。
    ⇒ **涉及设备端权限的结论不能只靠模拟器**，§12.2 仍须真机复核。
+3. **GPU 仍是软件渲染（可再优化，但已不必要）**：`dumpsys SurfaceFlinger` 显示
+   `ANGLE (... **SwiftShader** Device ... SwiftShader driver-5.0.0)`，即 `hw.gpu.mode=auto` 在这台机器上
+   落到纯软件光栅化。4 核下已经扛得住（95% idle），所以没动。要再压一层就把 `hw.gpu.mode` 改成
+   `host` —— **本机已证明它有效**（改后启动日志从 `gles_mode_selected:swangle` 变成 `gles_mode_selected:host`），
+   但改完必须重启模拟器。
 
-**范围边界**：SDK 里只有 **Android 17** 一个系统镜像，而 PRD §5 声明支持 **Android 10–16** ——
-API 37 在声明范围**之外**。所以它能回答「新版还能不能用」，但**替代不了** PRD §19 要求的
+**范围边界**：SDK 里只有 **Android 17** 一张镜像（37.0 与 37.2 两档，都是 API 37），而 PRD §5 声明支持
+**Android 10–16** —— API 37 在声明范围**之外**。所以它能回答「新版还能不能用」，但**替代不了** PRD §19 要求的
 「至少 3 个真实 Android 版本（建议 10 / 13 / 15）」。补镜像要在 Android Studio 的 SDK Manager 里下载
 （本机没有 `cmdline-tools`，因此没有 `avdmanager` / `sdkmanager` 命令行）。
+
+> **当前测试基线（2026-10-11 起）**：**先在 API 37 上测，以当前可用环境为准** ——
+> 不为了凑够「3 个版本」而先卡在下载镜像上。
 
 ### 未验证
 

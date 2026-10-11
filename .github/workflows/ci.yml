@@ -1,0 +1,102 @@
+name: CI
+
+# 每次推 main 与每个 PR 都跑。判据是「**能不能编出可运行的产物 + 三个回归守卫过不过**」。
+# 发布链（签名 / 公证 / DMG）在 release.yml 里，只由 tag 触发 —— 它是不可逆的对外动作，
+# 不该跟着每次提交跑。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 同一分支连续推送时掐掉上一次 —— 构建要装 Homebrew 包与 Rust 工具链，
+# 让过期的运行占着 runner 没有意义。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: 构建与回归守卫
+    # ⚠️ 必须是 **arm64**。本项目只发 Apple Silicon（PRD §5.1 已决策放弃 Intel，
+    # `ARCHS: arm64` 写死在 project.yml 里），而 `macos-15` 这个 label 在公开仓库
+    # 上就是 Apple Silicon；`macos-15-large` 才是 Intel。
+    runs-on: macos-15
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 工具链
+        run: |
+          set -euxo pipefail
+          # 先把版本打出来：编译失败时第一件要看的就是「CI 用的编译器是哪一版」。
+          xcodebuild -version
+          xcrun swift --version
+          sw_vers
+
+          brew install xcodegen
+          xcodegen --version
+
+          command -v rustup >/dev/null 2>&1 || {
+            echo "::error::runner 上没有 rustup。改用 dtolnay/rust-toolchain@stable，或换镜像。"
+            exit 1
+          }
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          cargo --version
+
+      # vendor/ 被 .gitignore 刻意排除（体积 + 许可待确认，PRD §28），所以 CI 必须自己取。
+      # 这一步钉版本 + 校验 sha256，拿到的是与我们验收过的那一份逐字节相同的 adb。
+      - name: 取 adb
+        run: ./scripts/fetch-adb.sh
+
+      - name: 构建
+        # CI 没有 Developer ID 证书 ⇒ 覆盖成 ad-hoc 签名。仍然走完整的**嵌套签名**流程
+        # （app + sidecar + adb 三个 Mach-O），所以「子二进制签不动 / 没带 hardened runtime」
+        # 这类缺陷在 CI 就会暴露，不必等到发布那一刻。release.yml 换成真证书即可，脚本不用改。
+        #
+        # ⚠️ 走 `XCODEBUILD_ARGS` 而**不是**环境变量：实测 xcodebuild **不会**把环境变量
+        # 当成 build setting —— `CODE_SIGN_IDENTITY=- xcodebuild …` 仍然用钥匙串里的真证书签。
+        # 只有命令行参数这条路可靠（已实测：命令行覆盖后得到 Signature=adhoc flags=0x10002）。
+        #
+        # 不覆盖 OTHER_CODE_SIGN_FLAGS：project.yml 里的 `--timestamp` 对 ad-hoc 是被**容忍**的
+        # （实测 `codesign --sign - --timestamp` 退出 0），少一个活动件。
+        run: ./scripts/build.sh
+        env:
+          XCODEBUILD_ARGS: "CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual"
+
+      - name: 回归守卫
+        run: ./scripts/check-all.sh
+
+      - name: 自检 V1 / V3
+        # 只断言 V1（sidecar 定位与执行）与 V3（进程封装）：
+        #   · V2 是 sidecar `doctor` 的裁决，其中「签名身份可用于公证」在 ad-hoc 下必然 fail
+        #     —— 那是**预期**，不是缺陷；
+        #   · V4 需要真机，CI 里恒为 manual。
+        # 所以这里不用 `--spike-report` 的退出码当闸门，而是显式断言这两项。
+        run: |
+          set -euo pipefail
+          APP="macos/build/dd/Build/Products/Release/DroidBerth.app/Contents/MacOS/DroidBerth"
+          SUMMARY="$("$APP" --spike-report | tail -1)"
+          echo "$SUMMARY"
+          case "$SUMMARY" in *V1=pass*) ;; *) echo "::error::V1 未通过"; exit 1 ;; esac
+          case "$SUMMARY" in *V3=pass*) ;; *) echo "::error::V3 未通过"; exit 1 ;; esac
+
+      - name: 产物摘要
+        if: always()
+        run: |
+          APP="macos/build/dd/Build/Products/Release/DroidBerth.app"
+          {
+            echo "### 构建产物"
+            echo
+            echo '| 项 | 值 |'
+            echo '| --- | --- |'
+            echo "| bundle 大小 | $(du -sh "$APP" 2>/dev/null | cut -f1) |"
+            echo "| Mach-O 个数 | $(find "$APP/Contents/MacOS" -type f 2>/dev/null | wc -l | tr -d ' ') |"
+            echo "| 签名 | $(codesign -dv "$APP" 2>&1 | sed -n 's/^Signature=//p') |"
+            echo "| hardened runtime | $(codesign -dv "$APP" 2>&1 | sed -n 's/.*flags=\(0x[0-9a-f]*\).*/\1/p') |"
+          } >> "$GITHUB_STEP_SUMMARY"

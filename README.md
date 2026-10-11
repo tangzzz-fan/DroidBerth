@@ -84,6 +84,21 @@ SidecarLocator.locate()          相对 Bundle.main.executableURL 的同级目�
 - Rust 工具链（由 `scripts/env.sh` 注入 `RUSTUP_HOME` / `CARGO_HOME`）
 - Developer ID 证书（仅签名 / 公证相关步骤需要）
 
+### 新克隆的仓库：先取一次 adb
+
+```bash
+./scripts/fetch-adb.sh
+```
+
+`vendor/` 被 `.gitignore` **刻意**排除（体积大 + 许可状态待确认，PRD §28 —— 见「依赖与许可」），
+所以新克隆的仓库里**没有 adb**，而构建需要它。这个脚本从 Google 官方源取
+**platform-tools r37.0.1**，校验 zip 与解出来的 `adb` 两道 sha256，然后落到 `vendor/platform-tools/`。
+
+> 为什么钉死版本而不是用 `-latest`：adb 版本不一致会**静默改变行为**（`doctor` 的 `adb.port_5037`
+> 就是为这个存在的），而项目里所有验收结论都是对着 `37.0.1-15733141` 那一份做的。
+> 实测脚本取到的 `adb` 与本机已测的那份**逐字节相同**。Google 若重新打包同一版本，校验会**明确报错**
+> 而不是静默换掉 —— 那是故意的，更新 pin 前请先重跑设备端验收。
+
 ### 一键构建
 
 ```bash
@@ -350,6 +365,81 @@ $APP --export-diagnostics=/tmp/out   # 指定落点（等号形式与空格形�
 - 磁盘：`~/Library/Logs/DroidBerth/DroidBerth-<日期>.log`（按天分、保留 7 天、单文件 4 MB 滚动）
 
 **刻意只记失败**：设备轮询每 1–5 秒一次 `adb devices -l`，全记进去会把真正出事的那行埋掉。
+
+---
+
+## CI 与发布（GitHub Actions）
+
+两个流水线，分工是**「能不能编出来」与「能不能发出去」分开** —— 后者是不可逆的对外动作，
+不该跟着每次提交跑。
+
+| 文件 | 触发 | 干什么 |
+|---|---|---|
+| `.github/workflows/ci.yml` | push 到 `main`、每个 PR、手动 | 装工具链 → **取 adb** → 构建（ad-hoc 签名）→ `scripts/check-all.sh` → 断言自检 V1/V3 |
+| `.github/workflows/release.yml` | 推 `v*` tag；或手动（干跑） | 装证书 → 构建（Developer ID + tag 版本号）→ 回归守卫 → **公证 app 与 DMG** → 校验票据与 Gatekeeper → 建 GitHub Release |
+
+### 为什么 CI 也要走签名
+
+CI 没有 Developer ID 证书，所以把签名身份覆盖成 ad-hoc：
+
+```bash
+XCODEBUILD_ARGS="CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual" ./scripts/build.sh
+```
+
+**但嵌套签名的流程一步不少** —— app + sidecar + adb 三个 Mach-O 照样各签一遍。
+这样「子二进制签不动 / 没带 hardened runtime」这类缺陷在 CI 就会暴露，不必等到发布那一刻。
+`release.yml` 只是换成真证书（把 `XCODEBUILD_ARGS` 换成版本号，身份由钥匙串自动识别），脚本一行不用改。
+
+> ⚠️ **不能用环境变量代替这个口子**。实测 xcodebuild **不会**把环境变量当成 build setting：
+> `CODE_SIGN_IDENTITY=- xcodebuild …` 仍然用钥匙串里的真证书签，
+> `MARKETING_VERSION=9.9.9 xcodebuild …` 产出的 `Info.plist` 仍是 `0.1.0`。
+> 只有**命令行参数**这条路径可靠（实测命令行覆盖后得到 `Signature=adhoc flags=0x10002`、
+> 版本号 9.9.9）。`scripts/build.sh` 的 `XCODEBUILD_ARGS` 就是为此留的透传口子。
+
+### 闸门是什么
+
+- `scripts/check-all.sh` —— 三个回归守卫（图标映射 / 传输语义 / 诊断包）。本项目**没有测试 target**，
+  这是那类「静默错」唯一的自动化防线，所以 CI 必须跑。
+- 自检只断言 **V1**（sidecar 定位）与 **V3**（进程封装）。**V2 在 CI 里必然 fail**（它含
+  「签名身份可用于公证」，ad-hoc 下不成立）、**V4 需要真机**恒为 manual —— 这两项是预期，不是缺陷。
+
+### 需要的 Repository secrets
+
+在 **Settings → Secrets and variables → Actions** 里加 6 个（`release.yml` 的第一步会逐个检查，
+缺哪个会直接报出来）：
+
+| Secret | 是什么 | 怎么拿 |
+|---|---|---|
+| `BUILD_CERTIFICATE_BASE64` | Developer ID Application 证书的 `.p12`，base64 后的**单行** | `base64 -i cert.p12 \| pbcopy` |
+| `P12_PASSWORD` | 导出 `.p12` 时设的密码 | 导出时自己设的 |
+| `KEYCHAIN_PASSWORD` | 任意随机串；CI 上临时钥匙串的密码 | 自己编一个 |
+| `APPLE_ID` | Apple ID 邮箱 | — |
+| `APPLE_APP_SPECIFIC_PASSWORD` | app-specific password | [appleid.apple.com](https://appleid.apple.com) → 登录与安全 → App 专用密码 |
+| `APPLE_TEAM_ID` | 10 位 Team ID | 本项目是 `UKXWZ3FS84` |
+
+> 变量名对不上是刻意的：secret 叫 `APPLE_APP_SPECIFIC_PASSWORD`，但流水线里映射成环境变量
+> `APPLE_PASSWORD` —— 因为 `scripts/notarize.sh` 读的是 `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID`。
+
+### 怎么发一个版本
+
+```bash
+# 先把 project.yml 里的 MARKETING_VERSION 与 CHANGELOG 准备好，然后：
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+tag 里的版本号会覆盖 `MARKETING_VERSION`（`Info.plist` 用的是 `$(MARKETING_VERSION)`），
+`CFBundleVersion` 用 `github.run_number`，保证同一版本号下多次构建可区分。
+产物是 `DroidBerth-<版本>.dmg` + `.zip` + `SHA256SUMS.txt`，挂在自动生成的 Release 下。
+
+**干跑**（不建 Release，只出 artifact）：Actions → Release → Run workflow → 填一个版本号。
+用于在真正打 tag 之前验证签名与公证这条链 —— 值得在第一次发版前跑一次。
+
+### 一条注意
+
+runner 用的是 `macos-15`。选它是因为在公开仓库上这个 label 就是 **Apple Silicon**，
+而本项目只发 arm64（`ARCHS: arm64` 写死在 `project.yml`）—— 换成 `macos-15-large` 会拿到 Intel。
+若某天编译在新版 Xcode 上失败，改这两处 `runs-on:` 即可（`ci.yml` 与 `release.yml` 各一处）。
 
 ---
 

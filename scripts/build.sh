@@ -83,11 +83,27 @@ USER="$(id -un)" "$XCODEGEN" generate
 
 echo
 echo "==> 4/4 xcodebuild ($CONFIGURATION)"
+# 额外传给 xcodebuild 的 build setting，空格分隔。CI 与发布链靠它做两件脚本本身不该管的事：
+#
+#   XCODEBUILD_ARGS="CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual"        # 无证书的 CI：ad-hoc 签名
+#   XCODEBUILD_ARGS="MARKETING_VERSION=0.2.0 CURRENT_PROJECT_VERSION=42" # 发布：版本号取 tag
+#
+# ⚠️ **不能用环境变量代替**：实测 xcodebuild **不会**把环境变量当成 build setting ——
+#    `CODE_SIGN_IDENTITY=- xcodebuild …` 仍然用钥匙串里的真证书签，
+#    `MARKETING_VERSION=9.9.9 xcodebuild …` 产出的 Info.plist 仍是 0.1.0。
+#    只有**命令行参数**这条路径可靠，所以留了这个显式口子（默认空，本地行为不变）。
+EXTRA_ARGS=()
+if [ -n "${XCODEBUILD_ARGS:-}" ]; then
+  read -r -a EXTRA_ARGS <<< "$XCODEBUILD_ARGS"
+  echo "    XCODEBUILD_ARGS: ${EXTRA_ARGS[*]}"
+fi
+
 xcodebuild \
   -project "$SWIFT_DIR/DroidBerth.xcodeproj" \
   -scheme DroidBerth \
   -configuration "$CONFIGURATION" \
   -derivedDataPath "$SWIFT_DIR/build/dd" \
+  "${EXTRA_ARGS[@]}" \
   build
 
 echo

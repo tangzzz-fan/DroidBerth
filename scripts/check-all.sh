@@ -11,7 +11,8 @@
 # | `check-grid-navigation` | 网格的顺序 / 列数 / 方向键落点 / 字母跳转 | 视图排一次序、键盘再排一次，误差不报错也不崩，只会**让 ↓ 跳到肉眼看不见的地方** |
 # | `check-transfer-semantics` | 折叠规则、冲突改名、名称校验、缩略图范围 | 全是纯函数判据；错的方向会让**用户手机上的文件被静默覆盖** |
 # | `check-diagnostics-bundle` | 诊断包条目数 / 中文名编码 / 无真实用户名泄露 | 缺陷表现是「**产物打开来才发现**」——曾经产出过一个只有根目录的空包，不报任何错 |
-# | `check-local-place-policy` | 沙盒版「固定位置」该不该显示（容器外 + 真的能列） | 这条分支**只在沙盒下才有区别** ⇒ 侧载版跑一百遍都走「都放行」那一路，编译、肉眼、手跑全都没有反馈；错了的后果是用户点开「文稿」看到**空文件夹**，以为文件丢了 |
+# | `check-local-place-policy` | 沙盒版「固定位置」该不该显示、容器内部该不该列出 | 这条分支**只在沙盒下才有区别** ⇒ 侧载版跑一百遍都走「都放行」那一路，编译、肉眼、手跑全都没有反馈；错了的后果是用户点开「文稿」看到**空文件夹**，以为文件丢了 |
+# | `check-bookmarked-folders` | 「最近使用」目录列表的合并规则（去重键 / 置顶 / 截断顺序） | 错法全都很安静：按名字去重会顶掉同名目录、先截断会丢掉刚选的那项 —— 不报错，只让用户觉得「它老是记不住」 |
 #
 # ⚠️ 本项目**没有测试 target**（`project.yml` 里没有 unit-test target）。这几道检查目前
 #    是这类「静默错」唯一的自动化防线，所以 CI 必须跑它们。
@@ -126,6 +127,10 @@ run_swift_check check-transfer-semantics \
 
 run_swift_check check-local-place-policy \
   "$SWIFT_SRC/Support/LocalPlacePolicy.swift"
+
+run_swift_check check-bookmarked-folders \
+  "$SWIFT_SRC/Support/BookmarkedFolders.swift" \
+  "$SWIFT_SRC/Support/AppPaths.swift"
 
 if [ ! -x "$APP_BIN" ]; then
   echo "找不到已构建的 app：$APP_BIN" >&2

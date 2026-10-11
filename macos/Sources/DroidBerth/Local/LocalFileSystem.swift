@@ -118,6 +118,28 @@ enum LocalFileSystem {
 
     static func list(_ directory: URL, showHidden: Bool) -> ListingResult {
         let fileManager = FileManager.default
+
+        // ── 保护：**不进自己容器里的东西** ─────────────────────────────────
+        // 沙盒里 `NSHomeDirectory()` 就是 App 自己的容器，里面有 `Library` / `SystemData` /
+        // `tmp` / `Documents` 这些管道。2026-10-12 实测：沙盒版**开局就站在那里**，
+        // 列表把它们原样列了出来，而当时这一层**没有任何保护**。
+        //
+        // 判据与 `places()` 同一条（`LocalPlacePolicy`），守在这里而不是只在 `navigateLocal`：
+        // 这个函数是**列目录的唯一入口**，放这儿所有调用点一起受保护。
+        //
+        // ⚠️ 必须**先解析符号链接**：<容器>/Downloads 解析后是真实家目录下的 Downloads，
+        //    在容器**之外** ⇒ 那是用户的文件夹，要放行。
+        let container = AppPaths.containerDirectory.map {
+            URL(fileURLWithPath: $0).resolvingSymlinksInPath().path
+        }
+        if !LocalPlacePolicy.isBrowsable(
+            resolvedPath: directory.resolvingSymlinksInPath().path,
+            containerPath: container
+        ) {
+            AppLog.warning("拒绝列出容器内部路径：\(directory.path)", .transfer)
+            return .failure("这个位置是 DroidBerth 自己的容器，不是你的文件。请从「位置」里选目录。")
+        }
+
         let keys: [URLResourceKey] = [
             .isDirectoryKey,
             .isSymbolicLinkKey,

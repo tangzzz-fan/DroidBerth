@@ -1,0 +1,91 @@
+进程   : DroidBerth pid=38703
+窗口数 : 1
+── UI 树（深度上限 20，只打有文字的节点）
+  [窗口 0]
+    AXWindow title=「DroidBerth」
+            AXImage desc=「笔记本电脑」
+            AXStaticText value=「这台 Mac」
+            AXPopUpButton value=「Finder 位置」
+            AXButton desc=「返回」 enabled=0
+            AXButton desc=「前进」 enabled=0
+            AXButton desc=「向上」 enabled=1
+            AXButton desc=「水平左侧拆分视图」 enabled=1
+              AXButton desc=「/」 enabled=1
+              AXImage desc=「紧凑向右V形」
+              AXButton desc=「Users」 enabled=1
+              AXImage desc=「紧凑向右V形」
+              AXButton desc=「tango」 enabled=1
+              AXImage desc=「紧凑向右V形」
+              AXButton desc=「Downloads」 enabled=1
+            AXCheckBox desc=「隐藏文件」 value=「0」
+                      AXStaticText value=「android-studio-rabbit1-mac_arm.dmg」
+                      AXStaticText value=「DMG 文稿」
+                      AXStaticText value=「1.5 GB」
+                      AXStaticText value=「1天前」
+                      AXStaticText value=「IMG_9095.JPG」
+                      AXStaticText value=「JPG 文稿」
+                      AXStaticText value=「683 KB」
+                      AXStaticText value=「2026年9月13日 16:10」
+                      AXStaticText value=「IMG_9096.JPG」
+                      AXStaticText value=「JPG 文稿」
+                      AXStaticText value=「619 KB」
+                      AXStaticText value=「2026年9月13日 16:10」
+                      AXStaticText value=「IMG_9097.JPG」
+                      AXStaticText value=「JPG 文稿」
+                      AXStaticText value=「644 KB」
+                      AXStaticText value=「2026年9月13日 16:10」
+                      AXStaticText value=「IMG_9098.JPG」
+                      AXStaticText value=「JPG 文稿」
+                      AXStaticText value=「656 KB」
+                      AXStaticText value=「2026年9月13日 16:11」
+                      AXStaticText value=「TRAE-darwin-arm64.dmg」
+                      AXStaticText value=「DMG 文稿」
+                      AXStaticText value=「451 MB」
+                      AXStaticText value=「2天前」
+                  AXButton title=「名称」 enabled=1
+                  AXButton title=「种类」 enabled=1
+                  AXButton title=「大小」 enabled=1
+                  AXButton title=「修改日期」 enabled=1
+            AXStaticText value=「6 个项目」
+            AXStaticText value=「已选 1 个」
+            AXStaticText value=「空格预览」
+            AXStaticText value=「设备可用 9.5 GB」
+          AXSplitter value=「698」
+            AXImage desc=「Iphone，第三代」
+            AXStaticText value=「sdk gphone16k arm64」
+            AXMenuButton title=「位置」
+            AXButton desc=「返回」 enabled=0
+            AXButton desc=「前进」 enabled=0
+            AXButton desc=「向上」 enabled=1
+              AXButton desc=「/」 enabled=1
+              AXImage desc=「紧凑向右V形」
+              AXButton desc=「内部存储」 enabled=1
+              AXImage desc=「紧凑向右V形」
+              AXButton desc=「Pictures」 enabled=1
+                      AXStaticText value=「iap-review-trial.png」
+                      AXStaticText value=「PNG 文稿」
+                      AXStaticText value=「89 KB」
+                      AXStaticText value=「3天前」
+                  AXButton title=「名称」 enabled=1
+                  AXButton title=「种类」 enabled=1
+                  AXButton title=「大小」 enabled=1
+                  AXButton title=「修改日期」 enabled=1
+                  AXMenuItem title=「打开」
+                  AXMenuItem title=「重命名…」
+                  AXMenuItem title=「下载到 Mac」
+                  AXMenuItem title=「删除…」
+            AXStaticText value=「1 个项目」
+            AXStaticText value=「已选 1 个」
+            AXStaticText value=「空格预览」
+            AXStaticText value=「可用 9.5 GB」
+        AXButton desc=「交换两侧」 enabled=1
+          AXMenuButton title=「sdk gphone16k arm64」
+          AXRadioGroup desc=「浏览形态」
+            AXRadioButton desc=「列表」 value=「1」
+            AXRadioButton desc=「分栏」 value=「0」
+            AXRadioButton desc=「网格」 value=「0」
+        AXButton desc=「上传到设备」 enabled=1
+        AXButton desc=「下载到 Mac」 enabled=1
+          AXImage desc=「搜索」
+          AXMenuButton title=「更多」
+      AXStaticText value=「DroidBerth」

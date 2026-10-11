@@ -101,6 +101,10 @@ run_swift_check check-icon-mapping \
   "$SWIFT_SRC/Support/FileTypeIcon.swift" \
   "$SWIFT_SRC/Support/ByteFormat.swift"
 
+# ⚠️ 下面每个 `run_swift_check` 的文件清单是**手写的**：给某个源文件新增一条引用，
+#    就要把被引用的那个文件也加进对应清单，否则**编译直接失败**（不是静默出错 —— 这点还好）。
+#    2026-10-12 一天里因此断了两次（`LocalFileSystem.swift` 先后新增了对
+#    `LocalPlacePolicy` 与被 `AppLog` 的引用）。
 run_swift_check check-grid-navigation \
   "$SWIFT_SRC/Support/GridNavigation.swift" \
   "$SWIFT_SRC/Support/NameComparison.swift" \
@@ -109,6 +113,7 @@ run_swift_check check-grid-navigation \
   "$SWIFT_SRC/Local/LocalFileSystem.swift" \
   "$SWIFT_SRC/Support/AppPaths.swift" \
   "$SWIFT_SRC/Support/LocalPlacePolicy.swift" \
+  "$SWIFT_SRC/Support/AppLog.swift" \
   "$SWIFT_SRC/Support/FileTypeIcon.swift" \
   "$SWIFT_SRC/Support/ByteFormat.swift"
 

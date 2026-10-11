@@ -354,6 +354,7 @@ SUMMARY: V1=pass V2=fail V3=pass V4=pass      # 接上 Android 模拟器时的�
 | 用子串匹配判 hardened runtime            | runtime 是 CodeDirectory 的 **`0x10000` 这一位**。ad-hoc 签名的构建是 `flags=0x10002(adhoc,runtime)`，**不含子串 `10000`** ⇒ grep 会把 ad-hoc 构建误报成「没开 hardened runtime」（本项目第一次跑就中招，同一个包从全 PASS 变成 FAIL）。**位掩码判**，别 grep |
 | 从**受限会话**的子进程启动沙盒 app         | 症状是 **`exit 133`（SIGTRAP）+ 一行输出都没有**，`.ips` 里栈顶是 `libsystem_secinit.dylib _libsecinit_appsandbox` —— **沙盒初始化失败**，不是 app 坏了。**用 `open`（LaunchServices）或 Finder 启动**：那样 app 由 launchd 拉起，不继承你所在进程的沙盒 |
 | 把「本会话能不能施加限制性沙盒」当**稳定**事实 | **同一台机器、同一天会话内都会变**：2026-10-12 06:20 判据返回 **0**、06:41 返回 **71**。⇒ 每次验沙盒前**现测一次**，别引用上一轮结论 |
+| 用 `contentsOfDirectory(at:includingPropertiesForKeys:)` 去列**容器里的符号链接** | 2026-10-12 实测：列 `<容器>/Downloads`（一个指向真实 `~/Downloads` 的符号链接）报 **`NSFileReadNoPermissionError`**；而**同一时刻**用路径版 `contentsOfDirectory(atPath:)` 能列出 **8 项**，真 app 里把路径换成**解析后的真实路径**（`/Users/<你>/Downloads`）也能列出 6 项 ⇒ **URL 版 + 预取子项属性这一步在穿过容器符号链接时会被拒**。要列就把路径先 `resolvingSymlinksInPath()`。⚠️ 别把「探针能列」当成「app 也能列」——**两者用的 API 不同，结论就不通用** |
 
 ---
 

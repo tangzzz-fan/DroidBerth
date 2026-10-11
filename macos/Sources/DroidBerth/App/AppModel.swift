@@ -77,7 +77,7 @@ final class AppModel {
     var focus: Pane = .mac
     var macSource: MacSource = .files
 
-    var localDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+    var localDirectory: URL = AppPaths.defaultLocalStartDirectory
     private(set) var localEntries: [LocalEntry] = []
     var localSelection: Set<String> = []
     private(set) var localHistory: [URL] = []

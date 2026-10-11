@@ -80,10 +80,26 @@ check("分量边界：isInside 对超短路径为假", LocalPlacePolicy.isInside
 check("反向：别的 app 的容器不算我的", usable("/Users/a/Library/Containers/com.example.other/Data", container: container, canList: true), true)
 check("反向：真实家目录不在容器里", usable("/Users/a/Documents", container: container, canList: true), true)
 
+// ── ⑦ 列目录 / 导航这一层：容器里的东西一律**不可浏览** ─────────────────────
+// 同一个判据的第二个用处。2026-10-12 实测过它的缺口：沙盒版开局就站在容器里，
+// 而当时这一层没有保护 —— `Library` / `SystemData` / `tmp` / `Documents` 被当成用户文件列出来。
+check("不可浏览：容器根", LocalPlacePolicy.isBrowsable(resolvedPath: container, containerPath: container), false)
+check("不可浏览：容器里的 Library", LocalPlacePolicy.isBrowsable(resolvedPath: container + "/Library", containerPath: container), false)
+check("不可浏览：容器里的 SystemData", LocalPlacePolicy.isBrowsable(resolvedPath: container + "/SystemData", containerPath: container), false)
+check("不可浏览：容器里的 tmp", LocalPlacePolicy.isBrowsable(resolvedPath: container + "/tmp", containerPath: container), false)
+check("不可浏览：容器里的深层日志目录", LocalPlacePolicy.isBrowsable(resolvedPath: container + "/Library/Logs/DroidBerth", containerPath: container), false)
+check("不可浏览：`..` 折掉仍然在里面", LocalPlacePolicy.isBrowsable(resolvedPath: container + "/Library/..", containerPath: container), false)
+check("可浏览：容器内符号链接**解析后**在外面（Downloads）", LocalPlacePolicy.isBrowsable(resolvedPath: "/Users/a/Downloads", containerPath: container), true)
+check("可浏览：非沙盒一律放行", LocalPlacePolicy.isBrowsable(resolvedPath: container + "/Library", containerPath: nil), true)
+check("可浏览：空串按非沙盒处理", LocalPlacePolicy.isBrowsable(resolvedPath: container + "/Library", containerPath: ""), true)
+// 两者的关系：`isUsable` = `isBrowsable` + 「真的能列」。
+check("关系：能列但不可浏览 ⇒ 仍不可用", usable(container + "/Documents", container: container, canList: true), false)
+
 // ─────────────────────────────────────────────────────────────
 
 print("覆盖：非沙盒放行 · 容器外能列 / 列不了 · 容器内（含容器根、深层、`..`）· "
-      + "路径分量边界 · `isInside` 的三个方向 · 别的 app 的容器不算数")
+      + "路径分量边界 · `isInside` 的三个方向 · 别的 app 的容器不算数 · "
+      + "**列目录/导航层的不可浏览判据**")
 if failures.isEmpty {
     print("ALL OK")
 } else {

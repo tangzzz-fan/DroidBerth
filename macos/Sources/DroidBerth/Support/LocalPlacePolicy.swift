@@ -31,6 +31,22 @@ enum LocalPlacePolicy {
     ///     实测沙盒下这两个对那四项都返回「可以」，只有真去列才报 `errno 257`
     static func isUsable(resolvedPath: String, containerPath: String?, canList: Bool) -> Bool {
         guard canList else { return false }
+        return isBrowsable(resolvedPath: resolvedPath, containerPath: containerPath)
+    }
+
+    /// 这个路径**能不能作为本地浏览位置**（列出来、走进去）。
+    ///
+    /// 沙盒里 `NSHomeDirectory()` 就是 App 自己的容器，里面有 `Library` / `SystemData` / `tmp` /
+    /// `Documents` 这些**App 自己的管道**。它们既不是用户的文件，用户点进去也看不懂。
+    ///
+    /// ⚠️ 2026-10-12 实测：沙盒版**开局就站在那里**，列表把那些管道原样列了出来 ——
+    /// 而当时**这一层没有任何保护**（`places()` 只挡住了弹窗那一处）。判据是同一条，
+    /// 只是用在「列目录 / 导航」而不是「弹窗里列不列」。
+    ///
+    /// 注意**容器内的符号链接是例外**：`<容器>/Downloads` 解析后是 `/Users/<你>/Downloads`，
+    /// 落在容器**之外** ⇒ 它是用户的真实文件夹，照样可浏览。`resolvingSymlinksInPath` 是调用方的
+    /// 责任（本函数只做纯文本比较）。
+    static func isBrowsable(resolvedPath: String, containerPath: String?) -> Bool {
         guard let containerPath, !containerPath.isEmpty else { return true }
         return !isInside(resolvedPath, containerPath)
     }

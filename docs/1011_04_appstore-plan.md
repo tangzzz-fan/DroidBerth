@@ -206,6 +206,47 @@ CONFIGURATION=Release-MAS ./scripts/check-mas-readiness.sh      # PASS 23 · FAI
 ⚠️ 这与 `places()` 的过滤是**两件事**：过滤管「弹窗里列不列它」，F2 管「在列表里长什么样」——
 而因为 F1，列表里**一定会看到这五项**，所以 F2 不是理论问题。
 
+### 4.4 沙盒版当前**能访问哪些文件夹**（2026-10-12 实测）
+
+用户问的就是这个。下面每一条都是**在这台机器上量出来的**，不是从 entitlements 推的：
+
+| 位置 | 能读吗 | 判据 |
+| --- | --- | --- |
+| 真实 `~/Downloads` | ✅ **能** | 真 app 里实测：列出 6 项真实文件（`.dmg` / `.JPG` …） |
+| 真实家目录 `~` 本身 | ❌ **不能** | 真 app 里按「向上」→ `未能打开文件"tango"，因为你没有查看它的权限。` |
+| `~/Desktop` `~/Movies` `~/Pictures` `~/Music` | ❌ 不能 | 沙盒探针实测 `errno 257` |
+| `~/Documents` | ❌ 读不到真实那份 | 探针：容器里那个 `Documents` 是**空目录** |
+| `/` | 能列，但**只剩 4 项**（Applications / Library / System / Users） | 真 app 实测 |
+| 照片图库 | ✅ 有 `personal-information.photos-library`（走 PhotoKit） | **未跑过真实相册验证** |
+| 外置卷 / SD 卡 | ❓ **未实测** | 机制上只能靠用户经面板授权 |
+| **任意素材目录** | ✅ **靠 `NSOpenPanel` + bookmark** | 就是 E7 |
+
+⇒ **「用户的视频、照片不止在 Documents 中」正是要点。** 靠 entitlement 永远只能覆盖**有限的几个固定
+位置**，而且每加一条就多一个要向审核解释的东西。**唯一能覆盖「素材在任意位置」的机制，是
+「用户亲手选一次 + 记住 security-scoped bookmark」** —— 也就是 E7。
+
+所以 **E7 不是「为了合规额外加的步骤」，它就是产品能力本身**：没有它，MAS 版**根本到不了用户的素材**。
+
+> 可选便利（**建议先不做**）：加 `assets.movies.read-write` / `assets.pictures.read-write` 能让
+> 「影片 / 图片」这两个固定位置开箱可读。但那仍然只是两个固定位置，不改变上面的结论。
+
+### 4.5 同一轮补上的保护（用户指出「反倒没有保护」）
+
+原先 `places()` 的过滤只挡住了**弹窗那一处**，而 `Library` / `SystemData` / `tmp` / `Documents`
+照样被当成用户文件**列出来、还能走进去**。补了两处：
+
+1. **`LocalFileSystem.list()` 拒绝列出容器内的路径** —— 放在这里而不是 `navigateLocal`，
+   因为它是**列目录的唯一入口**，所有调用点一起受保护。判据与 `places()` **同一条**
+   （`LocalPlacePolicy.isBrowsable`）。拒绝时用现成的错误态 UI（「打不开这个位置」+「重试」），
+   文案明说「这是 DroidBerth 自己的容器，不是你的文件」。
+2. **起始目录从「容器」改成「真实 `~/Downloads`」** —— 用户第一次打开看到的是**自己的文件**，
+   而不是 App 的容器管道。
+
+> ⚠️ 具体的取舍：起始目录**必须给真实路径**，不能给容器里那个链接名 ——
+> 实测 `<容器>/Downloads` 用 `contentsOfDirectory(at:includingPropertiesForKeys:)` **列不出来**
+> （`NSFileReadNoPermissionError`），而同一时刻用路径版 `contentsOfDirectory(atPath:)` 能列出 8 项。
+> 原因见 `1011_05` 的「别做」清单。
+
 ---
 
 ## 5. App Store Connect 侧要准备的材料

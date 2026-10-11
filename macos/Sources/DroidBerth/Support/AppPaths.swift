@@ -22,6 +22,32 @@ enum AppPaths {
         return home
     }
 
+    /// 本地窗格的**起始目录**。
+    ///
+    /// 侧载版：家目录（与从前完全一样）。
+    ///
+    /// 沙盒版：**不能**用 `NSHomeDirectory()` —— 那是 App 自己的容器，里面
+    /// `Library` / `SystemData` / `tmp` / `Documents` 全是管道，而列表现在也会拒绝进入容器
+    /// （见 `LocalFileSystem.list`）。退到容器里的 `Downloads`：它是**符号链接指向真实目录**，
+    /// 而我们正好有 `files.downloads.read-write` ⇒ 那里是**用户的真实下载文件夹**，
+    /// 也正好是这类传输工具最自然的落点。
+    ///
+    /// 连这个符号链接都没有时（权限集变了之类）退回容器根 —— 那时列表会明说
+    /// 「这是 DroidBerth 自己的容器」，而不是默默把管道当成用户文件列出来。
+    static var defaultLocalStartDirectory: URL {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        guard containerDirectory != nil else { return home }
+        // ⚠️ 必须返回**解析符号链接之后**的路径，不能返回容器里的那个链接名。
+        // 2026-10-12 实测：`<容器>/Downloads` 这个符号链接本身**列不出来** ——
+        // `contentsOfDirectory(at:includingPropertiesForKeys:)`（URL 版 + 预取子项属性）
+        // 对它报 `NSFileReadNoPermissionError`，而**同一时刻**用
+        // `contentsOfDirectory(atPath:)`（路径版、不预取）能列出 8 项。
+        // 直接给真实路径就绕开了那一步。
+        let downloads = home.appendingPathComponent("Downloads", isDirectory: true)
+        let resolved = downloads.resolvingSymlinksInPath()
+        return FileManager.default.fileExists(atPath: resolved.path) ? resolved : home
+    }
+
     static var supportDirectory: URL {
         let base = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)

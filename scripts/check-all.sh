@@ -10,7 +10,8 @@
 # | `check-icon-mapping` | 同一扩展名在两栏（Mac / 设备）得到同一个符号 | 缺陷表现是「**静默分叉**」——两处 switch 各写一遍，`.apk` 在一边变通用文稿，没有任何编译错误 |
 # | `check-grid-navigation` | 网格的顺序 / 列数 / 方向键落点 / 字母跳转 | 视图排一次序、键盘再排一次，误差不报错也不崩，只会**让 ↓ 跳到肉眼看不见的地方** |
 # | `check-transfer-semantics` | 折叠规则、冲突改名、名称校验、缩略图范围 | 全是纯函数判据；错的方向会让**用户手机上的文件被静默覆盖** |
-# | `check-diagnostics-bundle` | 诊断包条目数 / 中文名编码 / 无隐私泄露 | 缺陷表现是「**产物打开来才发现**」——曾经产出过一个只有根目录的空包，不报任何错 |
+# | `check-diagnostics-bundle` | 诊断包条目数 / 中文名编码 / 无真实用户名泄露 | 缺陷表现是「**产物打开来才发现**」——曾经产出过一个只有根目录的空包，不报任何错 |
+# | `check-local-place-policy` | 沙盒版「固定位置」该不该显示（容器外 + 真的能列） | 这条分支**只在沙盒下才有区别** ⇒ 侧载版跑一百遍都走「都放行」那一路，编译、肉眼、手跑全都没有反馈；错了的后果是用户点开「文稿」看到**空文件夹**，以为文件丢了 |
 #
 # ⚠️ 本项目**没有测试 target**（`project.yml` 里没有 unit-test target）。这几道检查目前
 #    是这类「静默错」唯一的自动化防线，所以 CI 必须跑它们。
@@ -23,25 +24,24 @@ source "$(cd "$(dirname "$0")" && pwd)/env.sh"
 SWIFT_SRC="$SWIFT_DIR/Sources/DroidBerth"
 APP_BIN="$APP_PATH/Contents/MacOS/$APP_NAME"
 
-# ── swiftc 的沙箱逃逸：**必要性未被证实**，保留只因为它不命中时零影响 ──────────
+# ── swiftc 的沙箱逃逸：**必要性已证实，而且它随时会需要** ────────────────────
 #
-# 初衷是：受限沙箱挡住 swift-plugin-server，症状是宏（`@Observable` / `@State`）报
+# 起因：受限沙箱挡住 swift-plugin-server，症状是宏（`@Observable` / `@State`）报
 # `malformed response` —— 看着像代码错误，其实是环境。
 #
-# ⚠️ 但这条机制的**判据曾经写反**，而且 2026-10-12 实测：完整 `build.sh`（xcodebuild）
-#    在不加 `-Xfrontend -disable-sandbox` 的情况下 **BUILD SUCCEEDED**，日志里
-#    `sandbox_apply` / `malformed response` 一条都没有。`swiftc -typecheck` 同理。
-#    ⇒ 「本机的 agent 会话需要它」这个前提**站不住**。
+# ⚠️ 这条机制一度被判为「必要性未被证实」，因为 2026-10-12 早上（06:20 前后）不带参数
+#    也构建得过。**同一天 07:08 又需要了** —— 实录：
 #
-# 原判据为什么反：`sandbox-exec -p '...' /bin/echo ok` —— 那份 profile 里**没有
-# `allow process-exec`**，而 `sandbox-exec` 施加完 profile 还要 exec 目标程序，
-# 于是「profile 自己拒绝 exec」被读成了「profile 施加不了」。判据错一个方向，
-# 挡住的是自己的路（详见 scripts/spike-sandbox-adb.sh 的预检注释）。
+#      sandbox-exec: sandbox_apply: Operation not permitted
+#      error: ... 'ObservationMacros.ObservableMacro' could not be found ... produced malformed response
 #
-# 现在的判据是**一个能正常跑起来的最小放开集**：施加成功 ⇒ exit 0。两个细节都要对：
-# ① profile 要带 `allow process-exec`；② 程序要写 `/usr/bin/true`（macOS **没有 `/bin/true`**）。
-# 任一处写错都报 71，症状和「施加不了」完全一样 —— 这条探针已经连错两次，别再改回去。
-# 保留这个函数的理由是它在探测不命中时什么都不做 —— 万一某天真在一个受限环境里跑，还能兜一下。
+#    中间**没有任何人改过配置**，只是会话的沙盒策略翻了回去。⇒ 结论不是「需不需要」，
+#    而是「**它随时可能在两种状态之间切换**」，所以自动判断这件事本身是承重的：
+#    常量加、常量不加，都会在某一半时间里是错的。
+#
+# 判据（`sandbox_escape_args`）：**能跑起来的最小放开集** —— profile 要带
+# `allow process-exec`、程序用 `/usr/bin/true`（macOS 没有 `/bin/true`）。实测它与真实需求同步：
+# 判据返回 71 的那些时刻，上面那段 `malformed response` 必然出现。
 sandbox_escape_args() {
   if ! command -v sandbox-exec >/dev/null 2>&1; then return 0; fi
   local code=0
@@ -107,6 +107,8 @@ run_swift_check check-grid-navigation \
   "$SWIFT_SRC/Support/BrowserEntry.swift" \
   "$SWIFT_SRC/ADB/RemoteEntry.swift" \
   "$SWIFT_SRC/Local/LocalFileSystem.swift" \
+  "$SWIFT_SRC/Support/AppPaths.swift" \
+  "$SWIFT_SRC/Support/LocalPlacePolicy.swift" \
   "$SWIFT_SRC/Support/FileTypeIcon.swift" \
   "$SWIFT_SRC/Support/ByteFormat.swift"
 
@@ -116,6 +118,9 @@ run_swift_check check-transfer-semantics \
   "$SWIFT_SRC/Support/DeviceNameRules.swift" \
   "$SWIFT_SRC/Support/ThumbnailPolicy.swift" \
   "$SWIFT_SRC/Support/ByteFormat.swift"
+
+run_swift_check check-local-place-policy \
+  "$SWIFT_SRC/Support/LocalPlacePolicy.swift"
 
 if [ ! -x "$APP_BIN" ]; then
   echo "找不到已构建的 app：$APP_BIN" >&2

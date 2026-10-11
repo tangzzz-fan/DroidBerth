@@ -63,10 +63,9 @@ open build/dd/Build/Products/Release/DroidBerth.app
 仓库会同时存在 `macos/build/Release/` 与 `macos/build/dd/Build/Products/Release/`。  
 **验证 UI 改动前先核对进程启动时间是否晚于源码 mtime**，否则会看着旧二进制下结论 —— 这个坑真实踩到过。
 
-### 1.5 逃逸参数 `-Xfrontend -disable-sandbox`（**必要性未被证实**）
+### 1.5 逃逸参数 `-Xfrontend -disable-sandbox`（**随时可能在需要与不需要之间切换**）
 
-曾经的判断是：本机（agent 会话）的受限沙箱挡住 `swift-plugin-server`，症状是宏报
-`malformed response` / `@State` 未展开。用法（**只加在命令行上，绝不写进 `build.sh` 或工程文件**）：
+**只加在命令行上，绝不写进 `build.sh` 或工程文件**：
 
 ```bash
 # swiftc
@@ -75,11 +74,19 @@ open build/dd/Build/Products/Release/DroidBerth.app
 XCODEBUILD_ARGS="OTHER_SWIFT_FLAGS=-disable-sandbox" ./scripts/build.sh
 ```
 
-> ⚠️ **2026-10-12 实测：不带这个参数也能构建。** 完整 `build.sh`（`xcodebuild`）与
-> `swiftc -typecheck` 都不加该参数 ⇒ 均通过，日志里 `sandbox_apply` / `malformed response`
-> 一条都没有。⇒**「本机需要它」这个前提站不住**（当初的判定依据是一条写反了的探针，
-> 见 §10）。参数与 `check-all.sh` 里的自动探测都**保留**（探测不命中时零影响，
-> 万一真在受限环境里跑还能兜一下），但**不要再说它是本机的必需项**。
+> ⚠️ 这条的**状态在同一天里翻过一次**，两次都是实测：
+>
+> | 时刻 | 不带参数的结果 |
+> | --- | --- |
+> | 2026-10-12 **06:20** | `swiftc -typecheck` 与完整 `build.sh` 都**通过**，日志里 `sandbox_apply` / `malformed response` 一条都没有 |
+> | 2026-10-12 **07:08** | `sandbox-exec: sandbox_apply: Operation not permitted` + `'ObservationMacros.ObservableMacro' could not be found … produced malformed response` —— **必须加** |
+>
+> 中间**没有任何人改过配置**，只是会话的沙盒策略翻了回去（见 §10.1）。
+>
+> ⇒ 结论既不是「需要」也不是「不需要」，而是「**它随时可能在两种状态之间切换**」。
+> 所以**自动判断这件事本身是承重的**：常量加、常量不加，都会在某一半时间里是错的。
+> `check-all.sh` 里的 `sandbox_escape_args()` 就是那个判断，实测它与真实需求**同步** ——
+> 判据返回 71 的那些时刻，上面那段 `malformed response` 必然出现。
 
 ---
 
@@ -398,7 +405,12 @@ sandbox-exec -p '(version 1)(deny default)(allow file-read*)(allow process-exec)
 ```
 06:20  sandbox-exec -p '(version 1)(deny default)(allow file-read*)(allow process-exec)' /usr/bin/true  → 0
 06:41  同一条命令                                                                                          → 71
+07:08  同一条命令                                                                                          → 71
 ```
+
+而且**后果也跟着翻**：06:20 时 `swiftc` 不带逃逸参数能过；07:08 时同样的构建就在
+`swift-plugin-server` 上炸出 `malformed response`（§1.5）。⇒ 「需不需要逃逸参数」不是配置问题，
+**是会话状态问题**。
 
 06:20 时沙盒版探针跑通、S1-a/S1-b PASS；06:41 之后连探针自己都跑不起来，而中间**谁也没改过任何配置**
 （跨了一个回合）。⇒ 这是**会话环境的策略变化**，不是我们的代码或工程配置。

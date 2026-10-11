@@ -1,7 +1,26 @@
+import Darwin
 import Foundation
 
 enum AppPaths {
     static let bundleIdentifier = "dev.tango.droidberth"
+
+    /// 沙盒容器根（`…/Containers/<bundle-id>/Data`）；**不在沙盒里时是 `nil`**。
+    ///
+    /// 判据与 S1 探针（`scripts/spike-sandbox-adb/`）同源：**`NSHomeDirectory()` 与 passwd
+    /// 数据库里的家目录不一致** ⇒ 被沙盒化了。passwd 那份沙盒改不到，所以它才是基准。
+    ///
+    /// 刻意**不**用 `getenv("APP_SANDBOX_CONTAINER_ID")` 之类的旁证 —— 实测过的那条更可靠，
+    /// 而且它顺带回答了「我到底有没有被沙盒化」这个所有沙盒判据的前提问题。
+    ///
+    /// 返回 `nil` 的意义不是「没有家目录」，而是「**这里不是沙盒，`NSHomeDirectory()` 就是真实家目录**」——
+    /// 调用方靠它决定要不要做「路径必须在容器外」这类检查。搞反了会把侧载版的固定位置全判成非法。
+    static var containerDirectory: String? {
+        let home = NSHomeDirectory()
+        guard let entry = getpwuid(getuid()) else { return nil }
+        let realHome = String(cString: entry.pointee.pw_dir)
+        guard !realHome.isEmpty, home != realHome else { return nil }
+        return home
+    }
 
     static var supportDirectory: URL {
         let base = FileManager.default

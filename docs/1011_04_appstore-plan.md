@@ -133,6 +133,22 @@
 > （`Photos/PhotoLibraryModel.swift`），需要的是一条 `personal-information.photos-library`，
 > 已经放进 E1 了。
 
+**已修（2026-10-12）**：判据落成两个纯函数，`Support/LocalPlacePolicy.swift`：
+
+1. **解析符号链接后必须落在容器之外** —— 拦掉容器里的空真目录（`Documents`）
+2. **真的能列出内容** —— 拦掉容器外的符号链接但没权限的那些（`Desktop`/`Movies`/`Pictures`/`Music`）
+
+`LocalFileSystem.places()` 按它过滤；`AppPaths.containerDirectory` 用**与 S1 探针同源**的判据
+（`NSHomeDirectory()` vs passwd 家目录）判断「在不在沙盒里」，不在沙盒里时传 `nil` ⇒ 侧载版
+行为**与从前完全一致**（也就说这条分支只在沙盒下生效）。
+
+取证时有两个坑写进了代码注释：**不能用 `fileExists` 代替「能不能列」**（实测沙盒下它返回 true）、
+`canList` **必须真的开一次目录**（`errno 257` 只有真列才报）。另外 `places()` 在 `MainView` 的
+`body` 里被调用，所以结果**算一次就缓存** —— 否则每帧都做 IO。
+
+新增第 5 道回归守卫 `scripts/check-local-place-policy.swift`：**这条分支靠手跑跑不出来**
+（侧载版一百遍都走「都放行」那一路），只能把沙盒那一侧的输入直接喂进去。已接进 `check-all.sh`。
+
 ### 4.2 怎么验沙盒版：**不需要证书，也不需要 App Store Connect**
 
 实测一遍完整流程（每步都验过）：

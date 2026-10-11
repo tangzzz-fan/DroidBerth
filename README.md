@@ -195,10 +195,11 @@ Rust 工具链（`scripts/env.sh` 会注入 `RUSTUP_HOME` / `CARGO_HOME`）· De
 | `.github/workflows/ci.yml` | push 到 `main`、每个 PR、手动 | 装工具链 → **取 adb** → 构建（ad-hoc 签名）→ `scripts/check-all.sh` → 断言自检 V1/V3 |
 | `.github/workflows/release.yml` | **仅手动**（`workflow_dispatch`） | 装证书 → 构建 → 守卫 → 公证 → 校验 → 建 Release。**默认不用**，见工程笔记 §6 |
 
-CI 的判据是「能不能编出可运行的产物 + 四个回归守卫过不过」。**它已经抓到过 4 处
+CI 的判据是「能不能编出可运行的产物 + 四道回归守卫过不过」。**它已经抓到过 4 处
 「本地编译过、CI 编译器（Xcode 16.4）编译不过」的问题** —— 那是它最值钱的地方，与签名无关。
 
-**闸门**：`scripts/check-all.sh` —— 四个回归守卫（图标映射 / 网格导航 / 传输语义 / 诊断包）。
+**闸门**：`scripts/check-all.sh` —— 四道回归守卫（图标映射 / 网格导航 / 传输语义 / 诊断包）
++ 一道 shell 静态检查（`$VAR` 后面跟全角标点这个 bash 3.2 陷阱）。
 本项目**没有测试 target**，这是那类「静默错」唯一的自动化防线，所以 CI 必须跑。
 自检只断言 **V1** 与 **V3**（V2 在 ad-hoc 下必然 fail、V4 需要真机 —— 两项都是预期，不是缺陷）。
 

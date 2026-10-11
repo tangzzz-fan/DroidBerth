@@ -2,19 +2,20 @@
 # 跑**全部**回归守卫。CI 与本地共用同一个入口 —— 这样「CI 绿了但本地是另一套检查」
 # 这种最常见的失配从结构上不会发生。
 #
-# 四个守卫各有分工，**都不能省**：
+# 守卫各有分工，**都不能省**：
 #
 # | 守卫 | 守什么 | 为什么编译器不管 |
 # | --- | --- | --- |
+# | shell 静态检查 | `$VAR` 后面紧跟非 ASCII 字符 | bash 3.2 会把全角标点**算进变量名** ⇒ 运行时才 unbound。本项目脚本全中文，天天会撞 |
 # | `check-icon-mapping` | 同一扩展名在两栏（Mac / 设备）得到同一个符号 | 缺陷表现是「**静默分叉**」——两处 switch 各写一遍，`.apk` 在一边变通用文稿，没有任何编译错误 |
 # | `check-grid-navigation` | 网格的顺序 / 列数 / 方向键落点 / 字母跳转 | 视图排一次序、键盘再排一次，误差不报错也不崩，只会**让 ↓ 跳到肉眼看不见的地方** |
 # | `check-transfer-semantics` | 折叠规则、冲突改名、名称校验、缩略图范围 | 全是纯函数判据；错的方向会让**用户手机上的文件被静默覆盖** |
 # | `check-diagnostics-bundle` | 诊断包条目数 / 中文名编码 / 无隐私泄露 | 缺陷表现是「**产物打开来才发现**」——曾经产出过一个只有根目录的空包，不报任何错 |
 #
-# ⚠️ 本项目**没有测试 target**（`project.yml` 里没有 unit-test target）。这四个脚本目前
+# ⚠️ 本项目**没有测试 target**（`project.yml` 里没有 unit-test target）。这几道检查目前
 #    是这类「静默错」唯一的自动化防线，所以 CI 必须跑它们。
 #
-# 前置：先构建（`scripts/build.sh`）。第四个守卫会去跑 app 的导出命令。
+# 前置：先构建（`scripts/build.sh`）。最后一道（诊断包）会去驱动 app 的导出命令。
 set -euo pipefail
 
 source "$(cd "$(dirname "$0")" && pwd)/env.sh"
@@ -43,6 +44,27 @@ echo
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
+
+# ── 第 0 道守卫：shell 的 `${VAR}` 陷阱 ────────────────────────────────
+#
+# macOS 自带的 bash 是 **3.2**，它会把 `"$VAR，"` 里的**全角标点算进变量名** ——
+# 运行时才报 `VAR，: unbound variable`，而代码看起来完全正常。
+# 这一条在本项目已经栽过四次（最近两次都在同一天、同一个新脚本里），
+# 因为本项目所有脚本的注释与输出都是中文，天天会撞。
+#
+# 判据一眼可查、零成本，所以直接进守卫，不再靠「记得」。
+echo "── shell：\$VAR 后面紧跟非 ASCII 字符"
+SHELL_TRAP="$(grep -rnE '\$[A-Za-z_][A-Za-z0-9_]*[^ -~]' \
+  "$ROOT"/scripts/*.sh "$ROOT"/macos/Scripts/*.sh 2>/dev/null \
+  | grep -vE ':[0-9]+: *#' || true)"
+if [ -n "$SHELL_TRAP" ]; then
+  echo "FAIL —— 这些写法在 bash 3.2 下会变成「变量名里带全角标点」："
+  printf '%s\n' "$SHELL_TRAP"
+  echo "改法：写成 \${VAR}，或把标点挪出引号。"
+  exit 1
+fi
+echo "   OK"
+echo
 
 SDK="$(xcrun --show-sdk-path --sdk macosx)"
 # shellcheck disable=SC2206

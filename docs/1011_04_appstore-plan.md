@@ -119,8 +119,8 @@
 
 | 项 | 说明 |
 |---|---|
-| `Apple Distribution` 证书（app 签名） | 现在只有 `Developer ID`，**要新申请一张** |
-| `Mac Installer Distribution` 证书（`.pkg` 签名） | 同上 |
+| `Apple Distribution` 证书（app 签名） | ✅ **已经有了**（2026-10-11 实测 `security find-identity -v -p codesigning` 里就有 `Apple Distribution: zhenzhi Tang (UKXWZ3FS84)`）。本文件初稿写「要新申请一张」，是错的 |
+| `Mac Installer Distribution` 证书（`.pkg` 签名） | ⬜ **要新申请**（本机目前只有 Apple Development / Developer ID Application / Apple Distribution 三张） |
 | **Mac App Store provisioning profile** | MAS 与侧载最大的差别之一：**必须有 profile**，绑定 App ID 与你勾选的 entitlements。开发自测另需一个 **Mac App Development** profile |
 | App ID 的 capability 勾选 | 要与你声明的 entitlements 一致，漏勾会在签名/上传时失败 |
 
@@ -188,6 +188,54 @@ S6  首次提交 → 应对审核反馈（预留 1–3 个来回）
 **关键判断：S1 的结论决定后面全部。** 而那半天是**可以现在就做的**——
 不需要任何新证书、不需要 App Store Connect 记录，只要一个沙盒 flag 加在本机构建上。
 
+### 6.1 S1 探针已经写好了：`scripts/spike-sandbox-adb.sh`
+
+它做三件互相独立的事，因为三者的结论完全不同：
+
+| 判据 | 问的是 |
+|---|---|
+| **S1-a** | 沙盒里能不能**执行**包内内嵌的 adb |
+| **S1-b** | adb 的 server 能不能在沙盒里**起在自定义端口**（要 `network.server`） |
+| **S1-c** | 沙盒里 adb 能不能**通过 USB 看见真机** |
+
+跑法（**在你自己的终端里**，原因见下）：
+
+```bash
+./scripts/spike-sandbox-adb.sh          # 默认端口 15037，刻意避开你自己的 5037
+```
+
+它同时打**两个** bundle：沙盒版 + **不带沙盒的对照组**（两边跑同一段代码）。
+对照组是必需的 —— 只测沙盒版的话，「adb 失败」既可能是沙盒挡的，也可能是探针自己打包错了，
+**分不清的两件事等于没测**。跑完自动注销 LaunchServices 记录、删掉临时目录与它创建的容器。
+
+**2026-10-11 已跑出的结果（只完成了一半，见下）**
+
+| 项 | 结论 |
+|---|---|
+| 对照组（未沙盒） | ✅ 探针本身没坏：`adb version` 与 `adb devices -l` 都退出码 0，server 起在 `tcp:15037` |
+| **S1-a / S1-b（沙盒版）** | ⏸ **本次没测到** —— 见下面那条环境限制 |
+| **S1-c（USB）** | ⏸ **未验证**。当时只有 `emulator-5554`，而**模拟器走 TCP，USB 通路根本没被走过** ⇒ 这一项必须插真机 |
+
+> ⚠️ **环境限制（重要，不是代码问题）**：App Sandbox 的本质是一份 `(deny default)` 的**限制性** profile，
+> 而**受限会话不允许再往下施加限制性 profile** —— 内核直接拒。判据是这条探针：
+>
+> ```bash
+> sandbox-exec -p '(version 1)(allow default)'            /bin/echo ok   # 0   宽松：可以
+> sandbox-exec -p '(version 1)(deny default)(allow file-read*)' /bin/echo ok  # 71  限制性：被拒
+> ```
+>
+> 后果极具误导性：被沙盒化的进程**一行输出都没有**就被信号打死
+> （实测 ad-hoc 签名 `Trace/BPT trap` = 133、Developer ID 签名 = 137），
+> 因为它是**启动阶段**就死的，连 stdio 缓冲里的东西都带不走。
+> **只看现象会得出「沙盒挡住了 adb」这个完全错误的结论。**
+> 脚本已经内置了这条预检，遇到就明说「本次沙盒版结论无效」并让你换终端重跑，而不是报一个假 FAIL。
+>
+> （排查过程中确认：容器 `~/Library/Containers/<bundle-id>` **确实被创建了** —— 说明 secinitd 走到了
+> 最后一步才被拒。所以这不是签名或 entitlements 写错。）
+
+**要拿到 S1 的真结论，需要你两件事**：① 在一个**不受限的终端**里跑上面的脚本；
+② 插一台**真机**并确认 USB 调试已授权（否则 S1-c 只能是「未验证」）。
+
 ---
 
 ## 7. 需要你先拍板的三件事
@@ -204,7 +252,8 @@ S6  首次提交 → 应对审核反馈（预留 1–3 个来回）
 
 | # | 项 | 为什么不确定 |
 |---|---|---|
-| U1 | `com.apple.security.device.usb` 是否足够让 adb 的 IOKit 通道工作 | 官方只承诺「USB device access APIs」，没有点名 adb 走的那条路 |
+| U1 | `com.apple.security.device.usb` 是否足够让 adb 的 IOKit 通道工作 | 官方只承诺「USB device access APIs」，没有点名 adb 走的那条路。**S1-c 就是为它准备的判据**（`scripts/spike-sandbox-adb.sh`） |
+| U0 | **受限会话里跑不了沙盒进程**（已确认，不是待确认） | 限制性 profile 被内核拒（`sandbox_apply: Operation not permitted`，71）⇒ 本机 agent 会话里做不了 S1，**必须在你自己的终端跑**。已写进工程笔记 §10 |
 | U2 | adb server 在沙盒下的行为（能否 bind 5037、能不能 kill 干净、容器内的 `$HOME/.android` 是否被正确使用） | 要实测 |
 | U3 | 沙盒下 `~/Library/Logs/DroidBerth` 会落到容器内哪一层（我们要改 `AppPaths`，或接受重定向） | 要实测 |
 | U4 | `assets.pictures` / `movies` 这两组 entitlement 是否真需要（还是 user-selected 就够） | 要实测 |

@@ -158,12 +158,13 @@ swiftc -typecheck -target arm64-apple-macos14.0 \
 去掉 `-typecheck` 换成 `-o /tmp/x` 还能顺带验证链接（能确认 `_QuickLook_SwiftUI` 这类  
 Swift overlay 框架被正确自动链接）。
 
-### 4.2 四个回归守卫
+### 4.2 四个回归守卫（+ 一道 shell 静态检查）
 
 统一入口 `./scripts/check-all.sh`（**先构建** —— 第四个守卫会驱动 app 自己的导出命令）。
 
 | 守卫                         | 守什么                       | 为什么编译器不管                                    |
 | -------------------------- | ------------------------- | ------------------------------------------- |
+| **shell 静态检查**（第 0 道）      | `$VAR` 后面紧跟非 ASCII 字符     | bash 3.2 会把全角标点**算进变量名** ⇒ 运行时才 `unbound variable`。本项目脚本全中文，天天会撞     |
 | `check-icon-mapping`       | 同一扩展名在两栏（Mac / 设备）得到同一个符号 | 「**静默分叉**」：两处 switch 各写一遍，`.apk` 在一边变通用文稿   |
 | `check-grid-navigation`    | 网格的顺序 / 列数 / 方向键落点 / 字母跳转 | 视图排一次序、键盘再排一次，误差不报错也不崩，只会**让 ↓ 跳到肉眼看不见的地方** |
 | `check-transfer-semantics` | 折叠规则、冲突改名、名称校验、缩略图范围      | 错的方向会让**用户手机上的文件被静默覆盖**                     |
@@ -333,6 +334,34 @@ SUMMARY: V1=pass V2=fail V3=pass V4=pass      # 接上 Android 模拟器时的�
 | 在报错的文件里找 `self is immutable`        | 真错误常在**别的文件**。先跑全量 `swiftc -typecheck`，它会给真正的文件与行号                                                            |
 | 用 `sips -z` 缩图标                     | 会得到糊的 16pt 档。要 2×2 面积平均，且**必须在预乘 alpha 空间**（`make-icon.py` 已实现）                                               |
 | 用 `ps -o args=` 判进程                 | 它会截断，`grep "MacOS/DroidBerth$"` 永远匹配不到。用 `pgrep -fl`，杀之前先打 pid 与 args                                         |
-| shell 里写 `"$VAR，"`                  | macOS 的 bash 3.2 会把全角标点的字节算进变量名 ⇒ `unbound variable`。写 `${VAR}，`                                              |
+| shell 里写 `"$VAR，"`                  | macOS 的 bash 3.2 会把全角标点的字节算进变量名 ⇒ `unbound variable`。写 `${VAR}，`。**已从「靠记得」升级成 `check-all.sh` 的第 0 道守卫**（静态扫 `scripts/*.sh`）                              |
 | 在 `unzip -l` 里判中文名编码                | macOS 的 `unzip` 不认 EFS 标志，照样显示乱码，**但解压到磁盘是对的**。自研 ZIP 的中文名要显式置 EFS `0x0800`                                   |
 | 拿 `sm list-volumes` 枚举设备卷           | vold 旧接口，Android 10+ 已限制。用 `ls /storage/`                                                                     |
+
+---
+
+## 10. 受限会话里跑不了**沙盒**进程（做 App Store 必须知道）
+
+App Sandbox 的本质是一份 `(deny default)` + 逐条放开 的**限制性** profile。而**受限会话不允许
+再往下施加限制性 profile** —— 内核直接拒。
+
+判据（两条都会用到）：
+
+```bash
+sandbox-exec -p '(version 1)(allow default)'                  /bin/echo ok   # 0   宽松：可以施加
+sandbox-exec -p '(version 1)(deny default)(allow file-read*)' /bin/echo ok   # 71  限制性：被拒
+```
+
+**症状极具误导性**：被沙盒化的进程**一行输出都没有**就被信号打死
+（实测 ad-hoc 签名 → `Trace/BPT trap` 133；Developer ID 签名 → 137 `SIGKILL`）。
+因为它是**启动阶段**就死的，连 stdio 缓冲里的东西都带不走 —— 而 `print` 在管道下面是块缓冲的。
+
+只看现象会得出「**沙盒挡住了 adb**」这个完全错误的结论。排查时确认过：
+
+- 容器 `~/Library/Containers/<bundle-id>` **确实被创建了** ⇒ secinitd 走到了最后一步才被拒，
+  **不是**签名或 entitlements 写错（换 Developer ID 身份、补 `application-identifier` 都一样死）。
+- 对照组（同一段代码、不带沙盒）一切正常 ⇒ 探针打包没问题。
+
+⇒ **结论：要在本机验沙盒行为，必须在不受限的终端里跑**（你自己开的 iTerm / Terminal）。
+`scripts/spike-sandbox-adb.sh` 已内置这条预检，遇到就明说「本次沙盒版结论无效」，
+而不是报一个假 FAIL —— 与 `check-all.sh` 的 `sandbox_escape_args()` 是同一条判据。

@@ -468,3 +468,53 @@ cwd  DIR   /Users/tango/Library/Containers/dev.tango.droidberth/Data
 | `spctl -a` 报 `rejected` | 那是 **Gatekeeper 的「能不能分发给别人」评估**，不是「能不能在本机运行」 |
 | 从 shell 跑可执行文件 → 133 | **启动方式**问题（§10.2） |
 | 真机上游这条说法的**正当**来源 | 给二进制加上**受限** entitlement（`com.apple.developer.*`）却没有对应 profile，内核会在启动时直接 `SIGKILL`（137）。**我们没用到任何受限 entitlement**，所以不落入这一条 |
+
+---
+
+## 11. 截图与 UI 验证（更正「本机无法截图」）
+
+**结论：不是「无法截图」，是缺「屏幕录制」权限。** 这条差别很要紧 —— 前者是死路，后者是**一次授权**。
+
+### 11.1 实测到的边界
+
+| 试什么 | 结果 |
+|---|---|
+| `command -v screencapture` | ✅ 在（`/usr/sbin/screencapture`） |
+| 找窗口（`CGWindowListCopyWindowInfo`）拿 id / 标题 / 边界 | ✅ **不需要任何权限**，实测拿到 `id=7257 bounds=640,144,1396,863` |
+| 按窗口 id 抓像素（`screencapture -l <id>`） | ❌ `could not create image from window` |
+| 整屏抓（`screencapture -x`） | ❌ `could not create image from display` |
+| 把外层沙箱整个摘掉再抓 | ❌ 同样两句 ⇒ **是 TCC，不是沙箱** |
+| 读 UI 树（`AXUIElementCopyAttributeValue`） | ❌ `err=-25211`（没有「辅助功能」权限）——**另一条独立的路，也一起被挡** |
+
+⇒ 所以「本机看不到界面」是**权限问题**，不是能力问题。这两条权限任一开，
+都能让 UI 这块从「只能人眼」变成「机器可验」。
+
+### 11.2 授权方式
+
+系统设置 → 隐私与安全性：
+- **屏幕录制** → 勾上**运行命令的那个 app**（在 WorkBuddy 里跑就勾 WorkBuddy；在自己终端里跑就勾该终端）→ **重启那个 app**。
+- （可选）**辅助功能** → 同一个 app。给了它就能读 UI 树，能验的比像素更多（控件文案、层级、状态），
+  而且**不受分辨率与窗口遮挡影响**。
+
+### 11.3 工具：`scripts/ui-shot.sh`
+
+```bash
+./scripts/ui-shot.sh                    # 默认找 DroidBerth 的窗口
+./scripts/ui-shot.sh "<app 名片段>" <输出 png>
+```
+
+它做三件事：**按拥有者找主窗口**（`scripts/ui-shot.swift`，`layer == 0` 过滤掉菜单/阴影等附属窗口）
+→ `screencapture -x -o -l <id>` **只抓那个窗口**（不抓整屏，避免把无关内容一起吃进来）
+→ 打印**大小与像素尺寸**。
+
+**为什么打印尺寸而不只看退出码**：没有权限时 `screencapture` 可能仍产出文件，
+只是**窗口内容不在里面** —— 只看退出码会误判成成功。脚本自己也会在失败时
+把「该开哪个开关」打出来，不用回来翻文档。
+
+> ⚠️ 截图里会有你的文件名。落在 `reports/`（不入库），**看完就删**。
+
+### 11.4 这件事改变了什么
+
+原先「UI 全部未验收」是**1.0.0 的主阻塞项之一**（路线图 §5 的 A 类、验收清单 20 分钟全靠人眼）。
+两条权限里任一条一开，这一块就能变成：**起 app → 截图/读树 → 逐条判据自动核对**。
+App Store 那几张「必须是真实运行界面」的截图同理 —— 现在它是一项**可自动化的**工作。

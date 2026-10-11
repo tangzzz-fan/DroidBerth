@@ -214,7 +214,7 @@ CONFIGURATION=Release-MAS ./scripts/check-mas-readiness.sh      # PASS 23 · FAI
 | 项 | 要求 | 谁 |
 |---|---|---|
 | App 图标（1024×1024） | 已有（`scripts/make-icon.py` 的母版） | ✅ |
-| **macOS 截图** | App Store 要求若干张，且**必须是真实运行界面**。本机无法截图（README 记过这条限制） | **你** |
+| **macOS 截图** | App Store 要求若干张，且**必须是真实运行界面**。⚠️ 更正（2026-10-12）：不是「本机无法截图」，而是**缺「屏幕录制」权限** —— 工具已就绪（`scripts/ui-shot.sh`，按窗口 id 精确截图，避开整屏）。**权限一开，这一项我能做** | **授权后我出图**；否则才需要你 |
 | 预览视频（可选） | | 你 |
 
 > 截图这一项要设计几个脚本：**双栏主界面**、**网格视图带缩略图**、**传输进行中**、
@@ -432,7 +432,7 @@ Its private key, though, is created on one Mac. So the question every team hits 
 | `gym`（构建） | ❌ **不值** | 它只是包一层 `xcodebuild`。而 `build.sh` 是**四步链**（图标 → NOTICE 暂存 → sidecar → xcodegen → xcodebuild），`gym` 顶多替最后一步。更关键的是 `build.sh` 里攒着一批踩过的坑（bash 3.2 空数组展开、`XCODEBUILD_ARGS` 这个唯一可靠的口子）。换掉它 = **同一件事两份实现**，正是这个仓库反复修过的形状 |
 | `scan`（测试） | ❌ **接不上** | 本项目**没有测试 target**；四道守卫是独立编译的脚本（`check-all.sh`），不是 XCTest |
 | `notarize` | ❌ **不值** | `notarize.sh` 已经做了 app + DMG **双**公证 + staple，并带三条踩过的坑（`zip -X -y`、`ditto` vs `cp -R`、DMG 本身的签名）。替换的风险 > 收益 |
-| `snapshot`（截图） | ❌ 不适用 | 不是 iOS；macOS 截图必须人工操作（本机无法截图，见 README） |
+| `snapshot`（截图） | ❌ 不适用 | 不是 iOS。macOS 截图靠 `screencapture -l <window-id>`（`scripts/ui-shot.sh`）—— **前提是有「屏幕录制」权限**（见 `1011_05` §11） |
 
 ⚠️ 还有一个**容易忽略的冲突**：`match` 会把证书装进钥匙串并**改动 Xcode 的签名设置**，
 而本项目是 `CODE_SIGN_STYLE: Manual` + 写死 `CODE_SIGN_IDENTITY`。

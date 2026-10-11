@@ -1,15 +1,25 @@
 name: Release
 
-# 发布链是**不可逆的对外动作**，所以只由 tag 触发，不跟每次提交跑。
-#   · 推 `v*` tag        → 构建 + 签名 + 公证 + 打 DMG + 建 GitHub Release
-#   · 手动 workflow_dispatch → 只构建与公证，产物作为 workflow artifact（干跑，不发 Release）
+# ⚠️ **本项目的正式发版不走这里**，走 `./scripts/release-local.sh <版本> --publish`。
+#
+# 理由（2026-10-11 决策）：Developer ID 私钥一旦放进 GitHub，就是一份**你无法收回的副本** ——
+# 而它能做的不是「读你的数据」，而是**以你的名义签发任何 macOS 都信任的软件**。这个仓库是
+# public 的，能推 workflow 的人就能把它打出来（Actions 日志也是公开的，secret 掩码只在原样
+# 出现时生效，base64 一下就绕过）。而本机本来就有全套凭据，一条命令 4 分钟跑完。
+#
+# 这个 workflow **保留为可选路径**，且刻意只有 `workflow_dispatch` ——
+# 免得每次打 tag 都跑出一个注定失败（缺 secret）的签名 job。
+# 等你决定按 README「CI 与发布」里的加固清单（受保护 environment + required reviewers +
+# action 钉 SHA）把凭据放上来，再把下面的 tags 触发器恢复即可：
+#
+#   on:
+#     push:
+#       tags: ["v*"]
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
     inputs:
       version:
-        description: "用于干跑的版本号（形如 0.2.0）。留空则用 project.yml 里的 MARKETING_VERSION"
+        description: "版本号（形如 0.2.0）。留空则用 project.yml 里的 MARKETING_VERSION"
         required: false
 
 permissions:
@@ -202,56 +212,13 @@ jobs:
           esac
 
       # ── 收产物 ──────────────────────────────────────────────────────
+      #
+      # 打包**不在这里写第二份** —— 交给 `scripts/package-release.sh`，
+      # 与本地发版（`scripts/release-local.sh`）**共用同一份规则**。
+      # DMG / app zip / NOTICE / 校验和格式 / Release 说明都只写一遍，否则两条路
+      # 产出的附件迟早会不一样（而这类分叉在本项目已经真实发生过多次）。
       - name: 整理分发产物
-        run: |
-          set -euo pipefail
-          mkdir -p dist
-          cp macos/build/dmg/DroidBerth.dmg "dist/DroidBerth-${APP_VERSION}.dmg"
-          # 顺带把 app 也压一份 —— 有人习惯直接拖 app，不给的话他们只能挂 DMG。
-          #
-          # 用 `zip -X -y` 而**不是** Apple 文档推荐的 `ditto -c -k`：本机实测，只要源文件带
-          # `com.apple.provenance` 这类扩展属性，ditto 就会给每个成员写一个**同目录的
-          # `._<名字>` AppleDouble 边车**（现成的 app 里 13 个，连 `._CodeResources` 都有），
-          # 在 Windows / Linux 上解压就是一堆垃圾文件；`--norsrc --noextattr` 拦不住（实测），
-          # 先 `xattr -cr` 也拦不住（ditto 自己会再打上 provenance）。`zip -X` 得到 0 个。
-          # `-y` 是让软链仍以软链存储（`-X` 去掉的只是扩展属性与额外字段）。
-          #
-          # 安全性已实测：app 的签名在 `Contents/_CodeSignature/CodeResources` 这个**普通文件**里，
-          # 不依赖扩展属性 —— 解压后 `codesign --verify --deep --strict`、`stapler validate`、
-          # `spctl -a -vvv` 三项均通过（`source=Notarized Developer ID`）。
-          APP_ZIP="$PWD/dist/DroidBerth-${APP_VERSION}.zip"
-          ( cd macos/build/dd/Build/Products/Release \
-            && /usr/bin/zip -q -r -X -y "$APP_ZIP" DroidBerth.app )
-
-          # adb（Android platform-tools）的 Apache-2.0 声明。它本来就在 app 包里
-          # （`Contents/Resources/NOTICE.txt`，PRD §28 要求随包分发），这里再单独挂一份 ——
-          # 让人不必先下 40 MB 的 DMG 才能看到许可。
-          cp vendor/platform-tools/NOTICE.txt dist/
-
-          # 仓库自身的许可 / 变更记录，有就一起挂。
-          # ⚠️ 不能写成 `[ -f x ] && cp …`：在 `set -e` 下前者为假会让整步非零退出。
-          # 也不要在这里再挂 NOTICE —— 上面那份就是 NOTICE.txt，会互相覆盖。
-          for extra in LICENSE LICENSE.txt CHANGELOG.md; do
-            if [ -f "$extra" ]; then
-              cp "$extra" dist/
-            fi
-          done
-
-          ls -lh dist
-          # 校验和用**裸文件名**（在 dist 里生成），这样用户下载后直接
-          # `shasum -a 256 -c SHA256SUMS.txt` 就能验，不必假设目录结构。
-          # 逐个 `[ -f ]` 而不是通配展开：未命中的通配符会原样传给 shasum 并报错。
-          (
-            cd dist
-            files=()
-            for f in ./*.dmg ./*.zip ./NOTICE.txt ./LICENSE ./LICENSE.txt ./CHANGELOG.md; do
-              if [ -f "$f" ]; then
-                files+=("$f")
-              fi
-            done
-            shasum -a 256 "${files[@]}" > SHA256SUMS.txt
-          )
-          cat dist/SHA256SUMS.txt
+        run: ./scripts/package-release.sh "${APP_VERSION}"
 
       - name: 上传产物
         uses: actions/upload-artifact@v4
@@ -260,49 +227,19 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+      # 只有 tag 触发时才建 Release。当前触发器是 workflow_dispatch（见文件头），
+      # 所以手动干跑不会发布 —— 恢复 tags 触发器后这一步才会生效。
       - name: 建 GitHub Release
         if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-
-          # 说明文字用**引号 heredoc**（不展开），否则 markdown 里的反引号会被当成命令替换。
-          # 版本号用占位符代进去。
-          cat > "$RUNNER_TEMP/notes.tpl" <<'TPL'
-          ## 下载
-
-          | 文件 | 说明 |
-          | --- | --- |
-          | **`DroidBerth-__VERSION__.dmg`** | **推荐**。已签名 + 已公证 + 已 staple。打开后把 DroidBerth 拖进左边的「应用程序」即可 |
-          | `DroidBerth-__VERSION__.zip` | 同一份 app 的压缩包；习惯直接拖 app 的人用这个 |
-          | `NOTICE.txt` | `adb`（Android platform-tools）的 Apache-2.0 声明。它也在 app 包内（`Contents/Resources/NOTICE.txt`） |
-          | `SHA256SUMS.txt` | 上面各文件的 SHA-256 |
-          | Source code (zip / tar.gz) | GitHub 自动附带的源码快照 |
-
-          **需要 Apple Silicon（M 系列）**，macOS 14 或更高。本项目不发 Intel 版本。
-
-          ## 安装
-
-          1. 打开 `DroidBerth-__VERSION__.dmg`
-          2. 把 **DroidBerth** 拖到左边的 **Applications**
-          3. 直接打开即可 —— 包已公证，不需要「右键 → 打开」绕过 Gatekeeper
-
-          ## 校验（可选）
-
-          ```bash
-          shasum -a 256 -c SHA256SUMS.txt
-          ```
-
-          ## 内容
-          TPL
-          sed "s/__VERSION__/${APP_VERSION}/g" "$RUNNER_TEMP/notes.tpl" > "$RUNNER_TEMP/notes.md"
-
           # GitHub 会把 `--notes-file` 的内容**前置**到自动生成的变更清单之上
           # （REST API 的 body + generate_release_notes 语义），所以两者可以并用。
           gh release create "${GITHUB_REF_NAME}" \
             --title "DroidBerth ${GITHUB_REF_NAME}" \
-            --notes-file "$RUNNER_TEMP/notes.md" \
+            --notes-file dist/RELEASE-NOTES.md \
             --generate-notes \
             --verify-tag \
             dist/*

@@ -80,8 +80,15 @@ macos/                    Swift 原生外壳（唯一应用工程）
   Scripts/build-sidecar.sh  编译 Rust sidecar 并暂存到 macos/Sidecar/
 sidecar/droidberth-adb/   Rust sidecar（1788 行 / 5 文件，零第三方依赖）
                           version / doctor / resolve / exec / raw 五个子命令
-scripts/                  构建、签名、公证脚本（Swift 路线）
+scripts/                  构建、签名、公证、发布脚本（Swift 路线）
   make-icon.py              App 图标生成器（零依赖；几何与投影参数见 docs/design/DESIGN.md §6）
+  build.sh                  唯一构建入口（图标 → NOTICE → sidecar → xcodegen → xcodebuild）
+  notarize.sh               公证链五步（zip → staple → DMG → 公证 DMG → staple）
+  release-local.sh          **本机发版**：构建 → 守卫 → 公证 → 验证 → 打包 → 建 Release
+  package-release.sh        打 dist/（本机与 CI 共用；含 Release 说明）
+  setup-release-secrets.sh  把 6 个 Repository secret 一次写进 GitHub（只在你要走 CI 签名时用）
+  check-all.sh              三个回归守卫的统一入口
+  fetch-adb.sh              新克隆后取 platform-tools（钉版本 + 双 sha256）
 vendor/                   adb 源码与 platform-tools（见「依赖与许可」）
 docs/                     产品文档、验证方案、实现文档、UI/UX 改造方案、视觉审计报告
   design/                  设计令牌（DESIGN.md，唯一来源）+ open-design 稿快照
@@ -437,17 +444,51 @@ $APP --export-diagnostics=/tmp/out   # 指定落点（等号形式与空格形�
 
 ---
 
-## CI 与发布（GitHub Actions）
+## 发行与发布
 
-两个流水线，分工是**「能不能编出来」与「能不能发出去」分开** —— 后者是不可逆的对外动作，
-不该跟着每次提交跑。
+### 怎么发一个版本（本机，推荐）
+
+```bash
+./scripts/release-local.sh 0.1.0             # 干跑：构建 → 守卫 → 公证 → 打包，不碰 GitHub
+./scripts/release-local.sh 0.1.0 --publish   # 真发版：打 tag、推 tag、建 Release（会二次确认）
+```
+
+一条命令跑完 **构建 → `check-all` → 公证（app + DMG）→ 验证票据与 Gatekeeper → 打包 → 建 Release**。
+版本号通过 `XCODEBUILD_ARGS` 注入（`Info.plist` 用的是 `$(MARKETING_VERSION)`），
+所以 app 里显示的版本与 Release 上的 tag 一定一致。
+
+Release 附件由 `scripts/package-release.sh` 产出 —— 本机与 CI **共用同一份规则**：
+
+| 附件 | 来源 |
+|---|---|
+| `DroidBerth-<版本>.dmg` | 已签名 + 已公证 + 已 staple，含 `/Applications` 软链 |
+| `DroidBerth-<版本>.zip` | 同一份 app（`zip -X -y`，无 `._` 垃圾项） |
+| `NOTICE.txt` | `adb` 的 Apache-2.0 声明（也在 app 包内，PRD §28） |
+| `SHA256SUMS.txt` | 上面各文件的校验和（**裸文件名**，下载后可直接 `-c`） |
+| Source code (zip / tar.gz) | **GitHub 自动附带**，不需要我们做任何事 |
+
+Release 说明取自 `dist/RELEASE-NOTES.md`（「下载 / 安装 / 校验」那一段），
+`gh --generate-notes` 自动生成的变更清单接在其后（REST API 的 `body` + `generate_release_notes` 就是这个语义）。
+
+> **为什么签名不走 CI。** Developer ID 私钥一旦放进 GitHub，就是一份**你无法收回的副本** ——
+> 而它能做的不是「读你的数据」，而是**以你的名义签发任何 macOS 都信任的软件**。
+> 这个仓库是 public 的：能推 workflow 的人就能把它打出来，而 **Actions 日志是公开的**
+> （secret 掩码只在原样出现时生效，`base64` 一下就绕过）。本机本来就有全套凭据，这条链 4 分钟跑完。
+> **所以签名与公证的凭据一步都不离开这台机器。**
+
+### CI 做什么
+
+两个流水线，分工是**「能不能编出来」与「能不能发出去」分开**。
 
 | 文件 | 触发 | 干什么 |
 |---|---|---|
 | `.github/workflows/ci.yml` | push 到 `main`、每个 PR、手动 | 装工具链 → **取 adb** → 构建（ad-hoc 签名）→ `scripts/check-all.sh` → 断言自检 V1/V3 |
-| `.github/workflows/release.yml` | 推 `v*` tag；或手动（干跑） | 装证书 → 构建（Developer ID + tag 版本号）→ 回归守卫 → **公证 app 与 DMG** → 校验票据与 Gatekeeper → 建 GitHub Release |
+| `.github/workflows/release.yml` | **仅手动**（`workflow_dispatch`） | 装证书 → 构建 → 守卫 → 公证 → 校验 → 建 Release。只在你有意走 CI 签名时才用，见下面「如果你确实想用 CI 签名」 |
 
-### 为什么 CI 也要走签名
+CI 的判据是「能不能编出可运行的产物 + 三个回归守卫过不过」。**它已经抓到过 4 处「本地编译过、
+CI 编译器（Xcode 16.4）编译不过」的问题** —— 那是它最值钱的地方，与签名无关。
+
+### CI 构建为什么也要走签名流程
 
 CI 没有 Developer ID 证书，所以把签名身份覆盖成 ad-hoc：
 
@@ -472,22 +513,37 @@ XCODEBUILD_ARGS="CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual" ./scripts/build.sh
 - 自检只断言 **V1**（sidecar 定位）与 **V3**（进程封装）。**V2 在 CI 里必然 fail**（它含
   「签名身份可用于公证」，ad-hoc 下不成立）、**V4 需要真机**恒为 manual —— 这两项是预期，不是缺陷。
 
-### 需要的 Repository secrets
+### 如果你确实想用 CI 签名
 
-共 6 个。`release.yml` 的第一步会逐个检查并**报出缺的是哪个**，所以漏了不会让你猜。
+**别裸传。** 先把这几件事做掉，再考虑把凭据放上去：
 
-**最快的做法** —— 三件凭据本来就在 `.env` 里，不必去网站上翻：
+1. **secret 放进 Environment 并设 required reviewers**（比如叫 `release`）—— 这样任何 workflow
+   引用它之前都必须人工批准，「偷推一个 workflow」就不能静默取用。
+   本仓库当前 **environment 数 = 0**，等于完全没有闸门。
+2. **action 钉 commit SHA** 而不是 tag（tag 可以被移动）。
+3. 优先用 **App Store Connect API key**（`notarytool --key/--issuer/--key-id`）而不是 Apple ID 的
+   app-specific password：作用域更窄、可单独吊销、不影响 Apple ID 本身。
+   ⚠️ `scripts/env.sh` 与 `build.sh` 已经预留了 `APPLE_API_KEY` / `APPLE_API_ISSUER`，
+   但 `scripts/notarize.sh` 目前只实现了 profile 与 Apple ID 两条路，要用得先补。
+4. **恢复 `release.yml` 的 tag 触发器**（当前刻意只有 `workflow_dispatch`，免得每次打 tag 都跑出一个
+   注定失败（缺 secret）的 job）：
+
+   ```yaml
+   on:
+     push:
+       tags: ["v*"]
+     workflow_dispatch:
+   ```
+
+**6 个 secret**（`release.yml` 的第一步会逐个检查并报出缺哪个，所以漏了不会让你猜）。
+其中三件本来就在 `.env` 里，所以最快是一条命令：
 
 ```bash
-# 1) 先从「钥匙串访问」导出只含 Developer ID 的 .p12（理由见下面的警告）
-#    钥匙串访问 → 左边选「登录」→ 分类选「我的证书」
-#    → 找到「Developer ID Application: …」→ 右键 → 导出… → 存成 .p12 → 设密码
-# 2) 一条命令把 6 个全写上
+# 先导出只含 Developer ID 的 .p12（见下面的警告），然后：
 ./scripts/setup-release-secrets.sh --p12 ~/Desktop/证书.p12
 ```
 
-脚本只做「把本机已有的凭据搬进仓库设置」这一步：不生成新凭据，也不打印任何凭据值。
-
+脚本只做「把本机已有的凭据搬进仓库设置」这一步：不生成新凭据、不打印任何凭据值。
 手工也行（**Settings → Secrets and variables → Actions → New repository secret**，一次一个）：
 
 | Secret | 是什么 | 从哪来 |
@@ -506,30 +562,6 @@ XCODEBUILD_ARGS="CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual" ./scripts/build.sh
 >
 > 变量名对不上是刻意的：secret 叫 `APPLE_APP_SPECIFIC_PASSWORD`，流水线里映射成环境变量
 > `APPLE_PASSWORD` —— 因为 `scripts/notarize.sh` 读的是 `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID`。
-
-### 怎么发一个版本
-
-```bash
-# 先把 project.yml 里的 MARKETING_VERSION 与 CHANGELOG 准备好，然后：
-git tag v0.2.0
-git push origin v0.2.0
-```
-
-tag 里的版本号会覆盖 `MARKETING_VERSION`（`Info.plist` 用的是 `$(MARKETING_VERSION)`），
-`CFBundleVersion` 用 `github.run_number`，保证同一版本号下多次构建可区分。
-
-产物挂在自动生成的 Release 下：
-
-| 附件 | 来源 |
-|---|---|
-| `DroidBerth-<版本>.dmg` | 已签名 + 已公证 + 已 staple，含 `/Applications` 软链 |
-| `DroidBerth-<版本>.zip` | 同一份 app 打包 |
-| `NOTICE.txt` | `vendor/platform-tools/NOTICE.txt`（也在 app 包内） |
-| `SHA256SUMS.txt` | 上面各文件的校验和（**裸文件名**，下载后可直接 `-c`） |
-| Source code (zip / tar.gz) | GitHub 自动附带，无需我们做任何事 |
-
-Release 说明由 `release.yml` 写死一段「下载 / 安装 / 校验」在前，`gh --generate-notes`
-自动生成的变更清单接在其后（REST API 的 `body` + `generate_release_notes` 就是这个语义）。
 
 **干跑**（不建 Release，只出 artifact）：Actions → Release → Run workflow → 填一个版本号。
 用于在真正打 tag 之前验证签名与公证这条链 —— 值得在第一次发版前跑一次。

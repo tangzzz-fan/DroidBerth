@@ -32,6 +32,9 @@ swiftc -O -o "$WORK/ui-shot" \
   "$ROOT/scripts/ui-shot.swift"
 
 WINDOW_LINE="$("$WORK/ui-shot" "$TARGET")"
+# 一个 app 可能不止一个主窗口，工具会**每个窗口打一行** —— 这里只取第一行。
+# 少了这一步，下面那几个 `awk -F'\t'` 会对每一行都打一次，输出里多出几行光秃秃的坐标。
+WINDOW_LINE="${WINDOW_LINE%%$'\n'*}"
 WINDOW_ID="${WINDOW_LINE%%$'\t'*}"
 BOUNDS="$(printf '%s' "$WINDOW_LINE" | awk -F'\t' '{print $3}')"
 TITLE="$(printf '%s' "$WINDOW_LINE" | awk -F'\t' '{print $2}')"

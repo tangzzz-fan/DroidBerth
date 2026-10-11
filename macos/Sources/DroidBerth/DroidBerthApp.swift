@@ -145,6 +145,11 @@ final class DroidBerthAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // 未捕获异常处理器要在「可能出事之前」装好，所以放在这里而不是按需。
         CrashSentinel.installExceptionHandler()
+        // Finder「服务」菜单的接收端（PRD §P1）。系统按响应者链找 `NSApp.servicesProvider`，
+        // 所以挂在 App 代理上、在启动时装上。这里的时机 09-26 在真机上验证过 ——
+        // `pbs -dump` 能登记到它、`NSPerformService` 两条路径都通。
+        // ⚠️ 要求 app 装在 `/Applications`，构建目录里启动不会被系统登记（详见该类注释）。
+        NSApp.servicesProvider = FinderServiceProvider.shared
         AppLog.notice("应用启动完成（界面已就绪）", .app)
     }
 

@@ -178,6 +178,11 @@ final class AppModel {
         AppPaths.clearThumbnails()
         photos.refreshAccess()
         wireless.attach(monitor: monitor)
+        // Finder 的「服务 → 发送到 DroidBerth」可能在 App 启动**之前**就被点了 ——
+        // 系统会把 App 拉起来，而那些请求此刻已经到达，所以在 provider 里排队，装 handler 时补投。
+        FinderServiceProvider.shared.install { [weak self] urls in
+            self?.handleFinderService(urls)
+        }
         monitor.start()
         navigateLocal(to: localDirectory, resetHistory: true)
         Task { await bootstrapRemote() }
@@ -417,7 +422,15 @@ final class AppModel {
         }
     }
 
-    func uploadDestination(for device: AndroidDevice) -> (path: String, reason: String) {
+    /// 上传落点的**唯一判据**（PRD §15 落点分流 / §18）。
+    ///
+    /// 收成「按候选文件名」的纯函数，是为了让**窗格内上传**与 **Finder 服务上传**共用同一份规则 ——
+    /// 候选名不同（一个是窗格选中项，一个是 Finder 传来的文件），判据必须同一个。
+    /// 两处各写一遍必然分叉，而这类分叉在本项目真实发生过（文件类型图标那一次）。
+    func uploadDestination(
+        for device: AndroidDevice,
+        candidateNames: [String]
+    ) -> (path: String, reason: String) {
         // 用户已经进到某个目录里了，就不该再把文件按类型挪去别处 —— 分流与「记住上次」
         // 只在窗格停在**卷根**上时介入。
         guard isAtDeviceVolumeRoot else {
@@ -427,7 +440,7 @@ final class AppModel {
            !isOnUnmountedVolume(remembered) {
             return (remembered, "上次使用的目录")
         }
-        if settings.routingEnabled, let name = uploadCandidateNames.first {
+        if settings.routingEnabled, let name = candidateNames.first {
             // 分流目标跟随**当前卷**：在 SD 卡上就该分到 SD 卡，而不是内部存储。
             let root = currentDeviceVolume.path
             if name.isVideoFile { return (root + "/Movies", "按文件类型分流") }
@@ -435,6 +448,11 @@ final class AppModel {
             return (root + "/Download", "按文件类型分流")
         }
         return (remoteDirectory, "设备窗格当前目录")
+    }
+
+    /// 窗格内上传的便利入口（候选名 = 当前选中项）。
+    func uploadDestination(for device: AndroidDevice) -> (path: String, reason: String) {
+        uploadDestination(for: device, candidateNames: uploadCandidateNames)
     }
 
     func uploadSelection() async {
@@ -552,6 +570,68 @@ final class AppModel {
         }
 
         return exported
+    }
+
+    // MARK: - Finder 服务（PRD §P1「Services 菜单入口」）
+
+    /// Finder 的「右键 → 服务 → 发送到 DroidBerth」把文件交过来时走这里。
+    ///
+    /// **刻意不重写传输逻辑**：落点判据复用 `uploadDestination(for:candidateNames:)`，
+    /// 传输本身复用 `uploadFiles(_:toRemotePath:reason:)` —— 后者的落点校验
+    /// （PRD §12.2 的不可写目录）、冲突策略、入队与「记住上次目录」因此都只有一份实现。
+    /// 本函数只多做两件事：**等设备**（App 可能刚被系统拉起来）与**记日志**。
+    func handleFinderService(_ urls: [URL]) {
+        AppLog.notice("Finder 服务：收到 \(urls.count) 个项目", .transfer)
+        // 服务多半是后台触发的，把窗口提到前面来，用户才看得见随后的 banner 与传输面板。
+        NSApp.activate()
+        Task { await uploadFromFinderService(urls) }
+    }
+
+    private func uploadFromFinderService(_ urls: [URL]) async {
+        let existing = urls.filter { FileManager.default.fileExists(atPath: $0.path) }
+        guard !existing.isEmpty else {
+            banner = Banner(
+                level: .warning,
+                title: "Finder 传来的项目已不存在",
+                detail: "\(urls.count) 个项目都无法读取"
+            )
+            return
+        }
+
+        // App 未运行时由系统按 `NSPortName` 拉起，此刻设备往往还没枚举完 —— 等一会儿，
+        // 而不是直接报「没有设备」（那会让用户以为得重来一遍）。
+        if !(monitor.activeDevice?.state.isUsable ?? false) {
+            banner = Banner(
+                level: .info,
+                title: "正在等待设备",
+                detail: "已从 Finder 收到 \(existing.count) 个项目，正在识别 Android 设备…"
+            )
+            guard await waitForUsableDevice() != nil else {
+                banner = Banner(
+                    level: .warning,
+                    title: "没有可用的设备",
+                    detail: "已从 Finder 收到 \(existing.count) 个项目，但没有等到可用的 Android 设备。连上设备后请重新执行一次。"
+                )
+                AppLog.warning("Finder 服务：等不到可用设备，\(existing.count) 个项目未上传", .transfer)
+                return
+            }
+        }
+
+        guard let device = monitor.activeDevice else { return }
+        let destination = uploadDestination(for: device, candidateNames: existing.map(\.lastPathComponent))
+        await uploadFiles(existing, toRemotePath: destination.path,
+                          reason: "Finder 服务 · \(destination.reason)")
+    }
+
+    /// 等一台可用设备。只在 Finder 服务这条路径上用 —— 它是唯一「App 可能刚被拉起」的入口。
+    private func waitForUsableDevice(timeout: TimeInterval = 20) async -> AndroidDevice? {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            await monitor.refresh()
+            if let device = monitor.activeDevice, device.state.isUsable { return device }
+            try? await Task.sleep(for: .milliseconds(500))
+        }
+        return nil
     }
 
     // MARK: - 下载

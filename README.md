@@ -36,7 +36,7 @@ ADB 二进制内嵌在 app 内 —— 用户不需要装 Android SDK、不需要
 | 产品定义 | 完成（`docs/0926_01_PRD.md`，**v2.1**） |
 | 技术路线验证 | **完成，判 Go**（`docs/0926_02_swift-native-spike-plan.md`） |
 | Swift 原生外壳 MVP | **已实现，核心链路真机验证通过**（`docs/0926_03_swift-native-mvp-implementation.md`） |
-| 视觉与交互 | **已补齐（2026-10-11）**：交互层早于 2026-10-10 全绿；随后一轮视觉与图标审计补上三条 P0 —— **应用图标**（原来完全缺失，`scripts/make-icon.py` 是个从未被调用的孤儿脚本）、**文件类型图标单一来源**（原来两栏各写一遍 switch 且已分叉）、**PRD §17.1 的连接引导卡片**（原来只是一行字符串）。另补品牌色定义、空态结构（四类各有图标与动作）与 WCAG AA 的数据列文字。**运行时行为与图标观感待人工验收**；VoiceOver 按要求跳过；动态字体与对比度只做到部分。审计与设计稿见 `docs/1010_01_ui-icon-design-report.md`，**设计令牌唯一来源**是 `docs/design/DESIGN.md` |
+| 视觉与交互 | **已补齐（2026-10-11）**：交互层早于 2026-10-10 全绿；随后一轮视觉与图标审计补上三条 P0 —— **应用图标**（原来完全缺失，`scripts/make-icon.py` 是个从未被调用的孤儿脚本）、**文件类型图标单一来源**（原来两栏各写一遍 switch 且已分叉）、**PRD §17.1 的连接引导卡片**（原来只是一行字符串）。另补品牌色定义、空态结构（四类各有图标与动作）与 WCAG AA 的数据列文字。**运行时行为与图标观感待人工验收**；VoiceOver 按要求跳过；动态字体与对比度只做到部分。审计与设计稿见 `docs/1010_01_ui-icon-design-report.md`，**设计令牌唯一来源**是 `docs/design/DESIGN.md`。2026-10-11 还把 P1 的 **Finder 服务菜单**从一条 09-26 的老分支移植进来（**按当前代码重写**，不是 merge） |
 | 公证与分发 | **链已跑通（2026-10-11）**：`build.sh` → `notarize.sh`（app zip 与 DMG 双双 `Accepted`、staple 通过）→ `checklist.sh`；GitHub Actions 的 `ci.yml` / `release.yml` 已就绪，CI **实跑全绿**。**尚未正式发版** —— 打 `v*` tag 前要先补 6 个 Repository secret。架构范围已决策 **arm64-only**（放弃 Intel，PRD §5.1） |
 
 ---
@@ -265,6 +265,45 @@ XcodeGen 会报 `Couldn't find current username` 且**静默不生成工程**。
 >
 > 全部计划内的快捷键都已接通。开着预览窗格时，**窗口最小宽从 900 提到 1180**（预览栏 260pt，没有弹性）。
 
+### Finder 集成（服务菜单）
+
+在 Finder 里选中文件或文件夹 → 右键 → **服务** → **发送到 DroidBerth**，直接推送到设备。
+
+落点规则与窗格内上传**用的是同一份判据**（`AppModel.uploadDestination(for:candidateNames:)`）：
+优先「上次使用的目录」，否则按文件类型分流（视频 → `Movies`、图片 → `DCIM`、其它 → `Download`）。
+传输本身也复用 `AppModel.uploadFiles(_:toRemotePath:reason:)`，所以不可写目录的守卫（PRD §12.2）、
+冲突策略、入队都只有一份实现。
+
+> ⚠️ **App 必须装在 `/Applications`（或其子目录）。** Apple 对 services 的要求原文是
+> *"install it in the Applications folder (or a subfolder)"*。实测中确实能观察到“登记路径跟着
+> LaunchServices 里当前那份走”——第一次登记到的是构建目录里的副本，注销后才是 `/Applications`。
+> 装完若菜单里没出现：`/System/Library/CoreServices/pbs -update` 触发重扫
+> （`pbs` 在 macOS 27 上参数已变，**不是**老文档里的 `-dump_pboard`）；
+> 仍不出现就注销重新登录 —— 服务列表是在**登录时**构建的。
+>
+> ⚠️ **别留同 bundle id 的第二份副本。** 服务按 bundle id / LaunchServices 记录路由，
+> 多份副本会让它路由到错的那一份（这与「图标不生效」是同一类问题）。
+> 自检登记到的是哪一份：
+>
+> ```bash
+> /System/Library/CoreServices/pbs -dump | grep -A9 -i droidberth   # 看 NSBundlePath
+> ```
+
+**已验证 / 未验证**（2026-10-11 实测）：
+
+| 项 | 结果 |
+|---|---|
+| `NSServices` 声明被系统登记 | ✅ `pbs -dump` 里有 `NSMessage = sendToDevice`、`NSSendFileTypes = public.item`、菜单项「发送到 DroidBerth」 |
+| `NSPerformService("发送到 DroidBerth", …)` | ✅ 返回 `true`（服务可按名字解析到） |
+| 消息送达 provider 并解析出文件 | ✅ App 在运行时实测：`sendToDevice 解析出 1 个项目` → `收到 1 个项目` |
+| 交给 `AppModel` 之后的链路 | ✅ 走到 `正在等待设备` →（无设备时）20 秒后 `没有可用的设备`，两条 banner 与日志都对 |
+| 真实上传到设备 | ❌ 未验证（测试时没有设备连着；设备端落点规则复用既有路径，风险低） |
+| **App 未运行时由系统按 `NSPortName` 拉起** | ❓ **未定论**。三次尝试里有一次确实把 App 拉起来了（日志有「会话开始」），另两次 `NSPerformService` 返回 `true` 但 App 根本没启动。**别在文档里断言它可用**，需要时请手动在 Finder 里点一次确认 |
+
+> 排查时最有用的一条：`sendToDevice` 里**没有错误可以外传**（services 的失败只表现为「点了没反应」），
+> 所以它落了一行日志，把「没送达」与「送达了但解析出 0 个文件」分开 ——
+> 日志在 `~/Library/Logs/DroidBerth/`。
+
 ### 编译验证（无需 Rust 工具链 / adb）
 
 本机没有 Rust 工具链与 adb 二进制时，完整 `xcodebuild` 跑不通，可以用这一条做 Swift 侧回归：
@@ -435,19 +474,37 @@ XCODEBUILD_ARGS="CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual" ./scripts/build.sh
 
 ### 需要的 Repository secrets
 
-在 **Settings → Secrets and variables → Actions** 里加 6 个（`release.yml` 的第一步会逐个检查，
-缺哪个会直接报出来）：
+共 6 个。`release.yml` 的第一步会逐个检查并**报出缺的是哪个**，所以漏了不会让你猜。
 
-| Secret | 是什么 | 怎么拿 |
+**最快的做法** —— 三件凭据本来就在 `.env` 里，不必去网站上翻：
+
+```bash
+# 1) 先从「钥匙串访问」导出只含 Developer ID 的 .p12（理由见下面的警告）
+#    钥匙串访问 → 左边选「登录」→ 分类选「我的证书」
+#    → 找到「Developer ID Application: …」→ 右键 → 导出… → 存成 .p12 → 设密码
+# 2) 一条命令把 6 个全写上
+./scripts/setup-release-secrets.sh --p12 ~/Desktop/证书.p12
+```
+
+脚本只做「把本机已有的凭据搬进仓库设置」这一步：不生成新凭据，也不打印任何凭据值。
+
+手工也行（**Settings → Secrets and variables → Actions → New repository secret**，一次一个）：
+
+| Secret | 是什么 | 从哪来 |
 |---|---|---|
-| `BUILD_CERTIFICATE_BASE64` | Developer ID Application 证书的 `.p12`，base64 后的**单行** | `base64 -i cert.p12 \| pbcopy` |
-| `P12_PASSWORD` | 导出 `.p12` 时设的密码 | 导出时自己设的 |
-| `KEYCHAIN_PASSWORD` | 任意随机串；CI 上临时钥匙串的密码 | 自己编一个 |
-| `APPLE_ID` | Apple ID 邮箱 | — |
-| `APPLE_APP_SPECIFIC_PASSWORD` | app-specific password | [appleid.apple.com](https://appleid.apple.com) → 登录与安全 → App 专用密码 |
-| `APPLE_TEAM_ID` | 10 位 Team ID | 本项目是 `UKXWZ3FS84` |
+| `BUILD_CERTIFICATE_BASE64` | Developer ID 证书的 `.p12`，base64 后的**单行** | `base64 -i cert.p12 \| pbcopy` |
+| `P12_PASSWORD` | 导出 `.p12` 时设的密码 | 导出时你自己设的 |
+| `KEYCHAIN_PASSWORD` | 任意随机串；CI 上临时钥匙串的密码 | 随便编一个 |
+| `APPLE_ID` | Apple ID 邮箱 | `.env` 里已有 |
+| `APPLE_APP_SPECIFIC_PASSWORD` | app-specific password | `.env` 里已有；否则 [appleid.apple.com](https://appleid.apple.com) → 登录与安全 → App 专用密码 |
+| `APPLE_TEAM_ID` | 10 位 Team ID | `UKXWZ3FS84` |
 
-> 变量名对不上是刻意的：secret 叫 `APPLE_APP_SPECIFIC_PASSWORD`，但流水线里映射成环境变量
+> ⚠️ **导出 `.p12` 时只选 Developer ID 那一张，不要「导出所有项目」。**
+> 本项目实测过 `security export -t identities` 也能无 GUI 导出，但它带出来的是**三个身份**
+> （Apple Development / Apple Distribution / Developer ID）。CI 只需要 Developer ID 那一把 ——
+> 多搬两把私钥是没必要的暴露面。
+>
+> 变量名对不上是刻意的：secret 叫 `APPLE_APP_SPECIFIC_PASSWORD`，流水线里映射成环境变量
 > `APPLE_PASSWORD` —— 因为 `scripts/notarize.sh` 读的是 `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID`。
 
 ### 怎么发一个版本
@@ -570,6 +627,8 @@ MotionEvent` —— 这不是某个 app 的 bug，是**系统整体跑不动**�
 | Quick Look 面板本身 | 改用 `QLPreviewPanel` 后，**面板能否真的被带出（响应者链那一步）在本机无法实测**；面板内方向键切换、跟随选择同样未验。见 PRD §23 |
 | 网格「点空白处取消选择」与「单击选中」的延迟手感 | 单击与双击手势共存时 SwiftUI 会让单击等一个双击间隔；是否能接受需运行时确认 |
 | 照片图库作为素材来源 | 需要人工在授权弹窗点「允许」 |
+| **Finder 服务在 App 未运行时的拉起路径** | **未定论**：三次尝试里只有一次真的把 App 拉起来了（日志有「会话开始」），另两次 `NSPerformService` 返回 `true` 但 App 根本没启动。**App 已在运行时的送达与解析已实测通过**。详见上面「Finder 集成（服务菜单）」一节 |
+| Finder 服务完成一次真实上传 | 测试时没有设备连着，只走到「没有可用的设备」；设备端落点规则与窗格内上传共用，风险低但未端到端跑过 |
 | App Translocation | 需要先有一个**已公证**的产物才能构造该场景 |
 | 设备窗格 → Finder 拖出 | **未实现**（需 `NSFilePromiseProvider`），见 `docs/1009_01_uiux-revamp-plan.md` §2.6 |
 | 设备端重命名 / 移动 | **已实现**（Phase 4），且**同名判据已修**（原先也是精确比较，与上传同一条缺陷，现走 `NameConflict`）。但**运行时行为仍未验证**：`mv` 的成功 / 失败提示、冲突整批拒绝的提示文案、⌘X→⌘V 的移动链路都没跑过 |

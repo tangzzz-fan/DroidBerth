@@ -1,0 +1,11 @@
+设备上真实存在的名字：["Photo.JPG"]
+
+上传「photo.jpg」时：
+  旧判据 `Set(deviceNames).contains(name)`        → 判为不冲突 ✗（会静默覆盖设备上的 Photo.JPG）
+  新判据 `NameConflict.keepBothName(...)`       → 判为冲突 ✓，改名为「photo (1).jpg」
+
+把 photo.jpg 直接写到设备上（绕过冲突检测）之后，目录里只剩 1 个文件：
+  /sdcard/Download/DroidBerthConflict/Photo.JPG
+  ⇒ 设备端确实把两者当同一个文件（这就是旧判据会造成的**数据丢失**）
+
+判定：旧判据漏判、新判据拦住 —— 修复在真实数据上成立 ✓

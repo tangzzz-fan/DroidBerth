@@ -14,15 +14,15 @@
 自动化能覆盖的部分**全部跑通**（自检 `V1=pass V2=fail V3=pass V4=pass`、`df` 解析正确、媒体自动入库）。
 但量出**两条真缺陷**，并**推翻了代码里的两处前提**：
 
-| # | 结论 | 级别 | 证据 |
-|---|---|---|---|
-| **F1** | **远端缩略图成品率只有 3/8**，视频**全部失败**。而且失败的机制**不是 PRD 预言的那一个** | P0（功能） | §1 |
-| **F2** | **上传方向在不区分大小写的设备卷上会静默覆盖**用户手机上的文件 —— 而默认策略正是承诺「保留两者」 | P0（数据丢失） | §2 |
-| **F3** | 重命名长度校验用**字符数**，设备端用**字节数**：100 个汉字 / 200 个 emoji 能通过校验，但在设备上 `File name too long` | P1 | §3.2 |
-| **F4** | 设备端**自己就拒绝** FAT32 的非法字符集（`EPERM`）⇒ app 的校验缺口是**提示质量问题**，**不是**数据安全问题（比原先判断的轻） | P2 | §3.1 |
-| **F5** | `/sdcard` **不区分大小写，且把 Unicode 归一化到 NFC** —— 与 `TransferPlanner` 注释里的前提相反 | P0/P1 | §2 |
+| # | 结论 | 级别 | 证据 | 状态 |
+|---|---|---|---|---|
+| **F1** | **远端缩略图成品率只有 3/8**，视频**全部失败**。而且失败的机制**不是 PRD 预言的那一个** | P0（功能） | §1 | **已修**（§9.2） |
+| **F2** | **上传方向在不区分大小写的设备卷上会静默覆盖**用户手机上的文件 —— 而默认策略正是承诺「保留两者」。**同族还有两处**（重命名、移动），一并修掉 | P0（数据丢失） | §2 | **已修**（§9.1） |
+| **F3** | 重命名长度校验用**字符数**，设备端用**字节数**：100 个汉字 / 200 个 emoji 能通过校验，但在设备上 `File name too long` | P1 | §3.2 | **已修**（§9.3） |
+| **F4** | 设备端**自己就拒绝** FAT32 的非法字符集（`EPERM`）⇒ app 的校验缺口是**提示质量问题**，**不是**数据安全问题（比原先判断的轻） | P2 | §3.1 | **已修**（§9.3） |
+| **F5** | `/sdcard` **不区分大小写**，且折叠规则与 macOS 默认卷**完全是同一张表**（含 `ß`↔`ss`、`ﬁ`↔`fi` 这类**完整**大小写折叠） | P0/P1 | §2 | 已并入 F2 的修法 |
 
-**三处要改的既有陈述**在 §7。**本环境测不到的项**在 §8。
+**三处要改的既有陈述**在 §7。**本环境测不到的项**在 §8。**决定与实施**在 §9。
 
 ---
 
@@ -80,16 +80,11 @@ PRD §13.3 写的是「**JPEG 通常能解出部分图像，但 HEIC / 视频容
    ⇒ moov 位置**是一个真实的额外代价**（同尺寸文件 1 MB vs 18 MB 的差别），但**不是**唯一原因。
 3. **TIFF 要整个文件**（15.7 MB）⇒ 它根本不该进这条通道。
 
-### 建议（三选一，需你定）
+### 处置
 
-| 方案 | 做法 | 代价 |
-|---|---|---|
-| **甲（推荐）** | 远端缩略图**只做 jpg/jpeg/png/heic/heif**（64 KB 已实测够用）；其余类型直接回退类型图标，**连取头都不发** | 视频在网格里没有缩略图 —— 而视频正是主场景素材。换来的是**零浪费流量**、以及「不做假承诺」 |
-| 乙 | 按类型分档：图片 64 KB；gif/视频 1 MB | 每条视频取 1 MB 头（对 1.78 MB 的文件是 57% 流量，对大文件可接受）；`moov` 在尾的仍失败 |
-| 丙 | 文件 ≤ 2 MB 直接拉整文件，否则按类型取头 | 逻辑最复杂，但对小视频效果最好 |
-
-**我不建议**为了视频把常量一律提到 1 MB —— 那会让「看一眼缩略图」变成「下载一半」。
-若选乙，建议同时加一条：**只在文件大小 ≥ 某阈值时才对视频取头**（否则整文件更划算）。
+**已拍板并实施**：走**方案甲**的变体 —— 远端**只做图片**，并且**只做本地能做、远端也不确定的那一侧**
+（本地仍保留视频缩略图，因为文件就在本机，实测 8/8 全通过）；已知必失败的 gif/tiff 连请求都不发。
+判据集中在 `ThumbnailPolicy`（纯函数，可单测）。理由与取舍见 §9.2。
 
 ---
 
@@ -105,23 +100,72 @@ PRD §13.3 写的是「**JPEG 通常能解出部分图像，但 HEIC / 视频容
 | `adb push Report.txt`（内容 AAAA）→ `adb push report.txt`（内容 BBBB） | 目录里只剩 `report.txt`，**内容是 BBBB** ⇒ 第二个 push **静默替换**了第一个 |
 | 分别建 NFC `café.txt` 与 NFD `cafe\U0301.txt` | 只剩**一个**文件，`od -c` 显示是 **NFC**（`caf 303 251 .txt`） |
 
-⇒ 设备端 `/sdcard` 是**不区分大小写、且归一化到 NFC** 的卷。
+⇒ 设备端 `/sdcard` 是**不区分大小写**的卷。
+
+### 折叠维度不止「大小写」—— 两侧是**同一张表**
+
+第一轮只测了大小写与 NFC。把「近似等价关系」往深挖一层才发现，真正的规则是
+**Unicode 完整大小写折叠**（`CaseFolding.txt` 的 C+F 映射），而且
+**macOS 默认卷（APFS）与设备端折叠的是完全相同的一组**：
+
+| 对 | macOS `/tmp`（APFS 默认卷） | Android `/sdcard`（FUSE） |
+|---|---|---|
+| `IMG.JPG` ↔ `img.jpg` | **折叠** | **折叠** |
+| `café`（NFC）↔ `café`（NFD） | **折叠** | **折叠** |
+| `ß.txt` ↔ `ss.txt` | **折叠** | **折叠** |
+| `ﬁle.txt` ↔ `file.txt`（连字） | **折叠** | **折叠** |
+| `K.txt`（KELVIN U+212A）↔ `k.txt` | **折叠** | **折叠** |
+| `Å.txt`（ANGSTROM U+212B）↔ `Å.txt`（U+00C5） | **折叠** | **折叠** |
+| `σ` ↔ `ς`（希腊词尾 sigma） | **折叠** | **折叠** |
+| `İ`（U+0130）↔ `i`+组合点 | **折叠** | **折叠** |
+| `A.txt` ↔ 全角 `Ａ.txt` | 不折叠 | 不折叠 |
+| `o.txt` ↔ 带圈 `ⓞ.txt` | 不折叠 | 不折叠 |
+| `café.txt` ↔ `cafe.txt` | 不折叠 | 不折叠 |
+| `a.txt` ↔ `a.txt `（尾随空格） | 不折叠 | 不折叠 |
+| `a.txt` ↔ `a.txt.`（尾随点） | 不折叠 | 不折叠 |
+
+判据是拿四个「**只有完整折叠才会折叠**」的字符去两侧试出来的：KELVIN / ANGSTROM /
+词尾 sigma / `İ` 全部折叠，而阴性对照 `é`↔`e`、`ﬁ`↔`f` 都不折叠。
+证据：`06-name-fold.txt`（设备端第一轮）、`08-two-sided-fold.txt`（两侧对照）、
+`07-fold-recipe.txt`（Swift 侧四个候选配方的对比）。
+
+**这条结论让实现变简单了**：两侧同一张表 ⇒ `NameComparison.folded` 一个公式对两侧都对，
+不需要按侧分叉。而「全角不折叠、尾随空格不折叠」也各有实测支撑，不该顺手加进去
+（会多出无缘无故的 ` (1)`）。
+
+> **一处需要更正我自己的说法**：NFC/NFD 其实**不构成**独立的缺陷路径 ——
+> Swift 的 `String ==` 与 `Set.contains` 本来就按 **Unicode 规范等价**比较，
+> 所以旧代码里的 `Set<String>` 已经处理了 NFC。
+> 真正漏掉的是**大小写**与**完整折叠**（`ß`/`ﬁ`/`ς` 与规范化是两回事，它们是大小写折叠映射）。
+> 用 `lowercased()` 也不够：它**不做完整折叠**（`ß` 不动、`ﬁ` 不动），四个候选配方里它错 3 项。
 
 ### 为什么这是数据丢失
 
-`TransferPlanner.upload` 的冲突检测（第 137 行）是**精确字符串比较**：
+`TransferPlanner.upload` 的冲突检测是**精确字符串比较**：
 
 ```swift
+existingByDirectory[directory] = Set(entries.map { $0.name })   // 设备上已有的名字
 if policy == .keepBoth, var taken = existingByDirectory[directory], taken.contains(name) {
 ```
 
-而 `AppSettings.conflictPolicy` 的默认值是 **`.keepBoth`（保留两者）**（第 168 行）。
+而 `AppSettings.conflictPolicy` 的默认值是 **`.keepBoth`（保留两者）**。
 于是：Mac 上上传 `photo.jpg`、设备上已有 `Photo.JPG` →
 `taken.contains("photo.jpg")` **为假** → 判为「不冲突」→ 计划里 `remotePath` 就是 `.../photo.jpg`
 → `adb push` 在不区分大小写的卷上**替换掉 `Photo.JPG`**。
 
 **用户手机上原有的文件没了，而设置里写着「保留两者」，界面上也不会报任何冲突。**
-NFC/NFD 是同一类的第二条路径（macOS 落盘常用 NFD，设备归一化到 NFC）。
+更隐蔽的一点：文件名**保持不变**（仍是 `Photo.JPG`），只是内容被换掉了 ——
+所以事后连「哪个文件被动过」都不容易看出来。
+
+### 同一族还有两处（本轮一并修掉）
+
+按同一个判据把全仓的「同名比较」扫了一遍，另有两处是同一个形状：
+
+| 位置 | 后果 |
+|---|---|
+| `AppModel.renameRemoteEntry`：`remoteEntries.contains(where: { $0.path == destination })` | 把 `b.txt` 改名成 `A.TXT` 时，设备上已有的 `a.txt` 被判为「不冲突」⇒ `mv` 覆盖它的内容 |
+| `AppModel.moveRemotePaths`：`Set(listed.map(\.name))` + `contains` | 把 `photo.jpg` 移进已有 `Photo.JPG` 的目录 ⇒ `mv` 覆盖 |
+| `AppModel.makeRemoteDirectory`：**完全没有冲突检查** | `mkdir -p` 对已存在的目录静默成功，而 `Photos` 与 `photos` 是同一个目录 ⇒ 「新建」退化成一次看不出问题的空动作（PRD §16 要求「重名时提示」） |
 
 ### 代码里的前提是错的
 
@@ -133,15 +177,10 @@ NFC/NFD 是同一类的第二条路径（macOS 落盘常用 NFD，设备归一�
 底下的 ext4 是否区分已经不重要 —— 用户面对的是 FUSE 这一层。
 （下载方向不受影响：它用的是本机目标卷的 `volumeSupportsCaseSensitiveNames`，本机默认卷 → `false` → 会折叠。）
 
-### 建议
+### 处置
 
-1. **上传方向也折叠**：把 `conflictKey` 的判据改成对设备侧也生效。
-   最贴合本项目既有做法的方案是**运行时探测**（与 `MediaScanner` 探测扫描命令同一个套路）：
-   在目标目录建一个临时文件 `DroidBerth.CaseProbe`，测 `test -f droidberth.caseprobe`，删掉，
-   按结果决定是否折叠 —— **问设备自己**，比按 Android 版本写死可靠。
-2. 或者更保守：**上传方向无条件折叠**（`precomposedStringWithCanonicalMapping.lowercased()`）。
-   误判代价不对称 —— 多出一个 ` (1)` 只是碍眼，静默覆盖是丢数据。这与 `conflictKey` 里已有的
-   「取不到时按不区分」是同一条推理。
+**已拍板并实施**：上传方向**无条件折叠**，判据集中在 `NameComparison`；
+冲突判定与改名抽成 `NameConflict`（纯函数，可单测）。理由与取舍见 §9.1。
 
 ---
 
@@ -265,15 +304,112 @@ PRD 附录 B #3「传输开销 ≤ 裸 `adb push` 的 110%」**仍无法在此�
 
 ---
 
-## 9. 建议的执行顺序
+## 9. 决定与实施（2026-10-11 拍板，已落地）
 
-| # | 动作 | 级别 |
+原则：**尽量让用户看到的交互是简洁的**。两个决定都按这条推出来的 ——
+**可预期 > 覆盖得广**，而且两条的修法都是**把判据收进一个纯函数**（而不是在调用点各写一遍），
+所以顺带把这一族缺陷的其他实例一起收掉了。
+
+### 9.1 上传方向的「同名」判定 → **无条件折叠**
+
+**怎么定的**：两个候选是「运行时探测目标卷的大小写语义」与「无条件折叠」。
+选后者，理由是：
+
+1. **探测自己会失败。** 它要在用户的目标目录里建临时文件 —— 目录只读、权限被拒、超时都得兜底，
+   于是多出一个状态机与一个「探测失败时按哪边」的二次决策。而折叠只需要一个纯函数。
+2. **探测是多余的。** 复核把两侧的折叠表量完之后，结论是 **macOS 默认卷与设备端折叠的是同一张表**
+   （§2）—— 既然两侧一样，就没有「按卷决定」的必要。
+3. **误判代价不对称。** 多折一次最多多出一个 ` (1)`（碍眼）；少折一次是**丢用户手机上的数据**。
+   这与 `NameComparison` 里「取不到卷信息时按不区分处理」是同一条推理。
+
+**改了什么**：
+
+| 文件 | 变化 |
+|---|---|
+| **新增** `Support/NameComparison.swift` | 折叠规则的唯一入口。`folding(options: .caseInsensitive)` + NFC —— **不用 `lowercased()`**（它不做完整折叠，四个候选配方里错 3 项） |
+| **新增** `Transfer/NameConflict.swift` | 冲突判定与改名（纯函数）：`foldedSet` / `conflicting(_:existing:excluding:)` / `keepBothName(for:taken:)` |
+| `Transfer/TransferPlanner.swift` | 上传：设备上已有的名字**也折叠**后再比；改名走 `NameConflict`。下载：`conflictKey` 转发给 `NameComparison.key` |
+| `App/AppModel.swift` | **重命名**与**移动**的冲突预检同样折叠（原先也是精确比较，同样会静默覆盖）；**新建文件夹**补上缺失的冲突检查（PRD §16 要求「重名时提示」） |
+
+`excluding:` 参数专为「重命名」而设：把 `a.txt` 改成 `A.txt` 是按折叠判据当然会与自己冲突，
+但它是**合法**的改大小写操作，所以要把被改的那一项本身排除掉。
+
+### 9.2 远端缩略图 → **只做图片，且只在能保证成功的地方做**
+
+**怎么定的**：三个候选（甲：只做 jpg/png/heic；乙：按类型分档到 1 MB；丙：小文件直接拉整文件）。
+选**甲的变体**：
+
+1. **视频的成败取决于容器的 `moov` 位置 —— 用户既看不见也猜不到。**
+   后果是同一批视频「有的有缩略图、有的没有」，而且看起来随机。**稳定地没有，好过不稳定地有**：
+   前者用户能建立预期（视频就是类型图标），后者只会让人觉得这个 app 时好时坏。
+2. **不做假承诺。** 走乙的话，每条视频要拉 1 MB 头 —— 对 1.78 MB 的文件是 57% 的流量，
+   而**结果仍然不确定**。花了大代价买到一个不确定的收益，是这笔账最难看的地方。
+3. **本地那一侧照做。** `QLThumbnailGenerator` 对完整文件实测 8/8 全通过 ⇒
+   这不是「砍掉视频缩略图」，而是**只在能保证成功的那一侧做**。
+4. **已知必失败的连请求都不发**（gif / tif / tiff）。省下的不只是一次 64 KB 往返：
+   `EntryGrid` 在 `.loading` 时显示 `ProgressView`，不请求就直接落到类型图标 ⇒
+   也省掉了「转圈 → 还是类型图标」的闪烁。
+
+**改了什么**：
+
+| 文件 | 变化 |
+|---|---|
+| **新增** `Support/ThumbnailPolicy.swift` | `allowsLocalFile` / `allowsRemoteFile` / `isKnownRemoteFailure` |
+| `Support/ThumbnailStore.swift` | `isThumbnailable` 改为按来源分派给 `ThumbnailPolicy`，自身只剩「目录不做」这一条 |
+
+要恢复远端视频预览，应该另开一条**能保证成功**的通道（例如按需下载完整文件、
+或在设备端生成），而不是把取头量往上加着碰运气。这条列为后续候选，不在本轮。
+
+### 9.3 顺带一起对齐的两条（都在同一族里，一起改成本最低）
+
+| # | 动作 | 依据 |
 |---|---|---|
-| 1 | **上传方向的「同名」判定加折叠**（§2）—— 唯一会丢用户数据的一条 | P0 |
-| 2 | **重命名长度校验改成 UTF-8 字节数**（§3.2）—— 改一行 | P1 |
-| 3 | 远端缩略图按 §1 的方案甲/乙收敛（需你选） | P0（功能） |
-| 4 | `validateRemoteName` 补上 `: * ? " < > \|` 的**前置提示**（§3.1，只改善文案） | P2 |
-| 5 | 改 §7 的三处陈述 | P2 |
+| 3 | **名称长度校验从「字符数」改成「UTF-8 字节数」**（新增 `Support/DeviceNameRules.swift`，`AppModel.validateRemoteName` 转发） | 设备端限 255 **字节**，而旧校验数的是 Swift 字素簇：100 个汉字（304 字节）/ 200 个 emoji（804 字节）通过校验却在设备上 `File name too long` |
+| 4 | **`: * ? " < > \| \` 制表符的前置提示**（同上文件） | 设备端自己就拒（`EPERM`）。前移不是为了挡下本来能成功的操作，而是把 `mv: '...': Operation not permitted` 换成人话，并在提交**之前**禁用「确定」 |
+
+### 9.4 对应的测试
+
+| 产物 | 内容 |
+|---|---|
+| **新增** `scripts/check-transfer-semantics.swift` | 四段断言：**折叠实测表 14 行**（正反各一遍）、`NameConflict` 冲突与改名（含 F2 的回归断言「设备上有 `Photo.JPG` 时 `photo.jpg` 必须判为冲突」）、`DeviceNameRules` 的长度边界与字符集（含实测放行的那些必须放行）、`ThumbnailPolicy` 33 个扩展名 + 「远端许可集是本地真子集」的不变式 |
+| **新增** `docs/device-acceptance/2026-10-11/09-conflict-e2e.txt` | **设备端集成证明**：拿真实设备返回的文件名跑新旧两套判据 —— 旧判据漏判、新判据拦住、并确认设备端确实把两者当同一个文件 |
+
+跑法（不需要 Rust / adb，约 5 秒，写在脚本头）：
+
+```bash
+mkdir -p /tmp/transfercheck && cp scripts/check-transfer-semantics.swift /tmp/transfercheck/main.swift
+swiftc -O -o /tmp/transfercheck/run \
+  -target arm64-apple-macos14.0 -sdk "$(xcrun --show-sdk-path --sdk macosx)" \
+  -swift-version 6 -strict-concurrency=complete -Xfrontend -disable-sandbox \
+  macos/Sources/DroidBerth/Support/NameComparison.swift \
+  macos/Sources/DroidBerth/Transfer/NameConflict.swift \
+  macos/Sources/DroidBerth/Support/DeviceNameRules.swift \
+  macos/Sources/DroidBerth/Support/ThumbnailPolicy.swift \
+  macos/Sources/DroidBerth/Support/ByteFormat.swift \
+  /tmp/transfercheck/main.swift && /tmp/transfercheck/run
+```
+
+> 为什么是独立脚本而不是测试 target：本项目没有测试 target（见 `0926_03` §5.3），
+> 与既有的 `scripts/check-icon-mapping.swift` 同一套做法。
+> **代价要认**：这些脚本不会在 CI / 构建时自动跑，靠人记得跑。目前有两份。
+>
+> 测试本身也踩过一次坑：我给「NFC/NFD 两个字面量必须不同」写了断言，结果它**失败了** ——
+> 因为 Swift 的 `String ==` 按规范等价比较。这个失败是对的（用例在测一个恒真的东西），
+> 改成按 `utf8` 字节比之后才有效。**一个从不失败的断言等于没有断言**。
+
+### 9.5 验收结果
+
+| 项 | 结果 |
+|---|---|
+| `swiftc -typecheck`（全量，`-strict-concurrency=complete`） | **0 输出，退出码 0** |
+| `xcodebuild Release` | **BUILD SUCCEEDED**，0 error / 0 warning |
+| `scripts/check-transfer-semantics.swift` | **ALL OK** |
+| `scripts/check-icon-mapping.swift`（回归） | **ALL OK**（77 个扩展名） |
+| 设备端集成证明 | 旧判据漏判、新判据拦住 ✓ |
+| 新增源文件已进工程 | 4 个（`xcodegen generate` 后逐个核对 `project.pbxproj`） |
+
+**仍需人工 / 真机**：上传与重命名/移动这几条改动都是**行为变更**，要在运行时确认
+（尤其是「保留两者」的 note 文案与 ` (1)` 名字在界面上的呈现）；以及 §8 列的那些项。
 
 ---
 
@@ -297,6 +433,22 @@ cd docs/device-acceptance/2026-10-11
 
 # 05 取头大小的成功率曲线
 ./test-thumb-sweep.sh
+
+# 06–08 折叠语义：设备端全维度 / 设备端规则判定 / 两侧对照
+/usr/bin/python3 test-name-fold.py       # 06 尾随空格、全角、连字…逐维度过一遍
+/usr/bin/python3 test-fold-rule.py       # 07 用四个「只有完整折叠才会折叠」的字符判定规则
+/usr/bin/python3 test-mac-fold.py        # 08 macOS 侧同一批（镜子测试）
+```
+
+**不经设备**的两件（几秒，改完代码就该跑）：
+
+```bash
+# 传输语义回归（折叠表 / 冲突与改名 / 校验规则 / 缩略图策略）
+#   跑法见 scripts/check-transfer-semantics.swift 的文件头
+
+# 设备端集成证明（拿真实设备返回的文件名跑新旧两套判据）—— 需要设备
+swiftc -O -o /tmp/e2e/run ... macos/Sources/DroidBerth/Support/NameComparison.swift \
+  macos/Sources/DroidBerth/Transfer/NameConflict.swift ... && /tmp/e2e/run
 ```
 
 脚本里有两个**必须保留**的写法，改掉就会得到错误结论：
@@ -306,3 +458,5 @@ cd docs/device-acceptance/2026-10-11
    这也正是 app 的 `AppPaths.makeThumbnailScratchFile(named:)` 保留原名的原因。
 2. **判「文件是否真的存在」用 `find` 数，不要数 `ls -a` 的行** —— `adb shell` 的 stdout 走 pty，
    `ls` 的列输出与转义在 pty 下不可靠。（同源问题：`fetchHeader` 必须用 `exec-out` 而不是 `shell`。）
+3. **别用 `print(String(format: "%-10s", swiftString))`** —— `%s` 要的是 C 字符串，
+   传 Swift `String` 会直接 `SIGSEGV`（exit 139）。要么用 `%@`，要么自己按 `count` 补空格。

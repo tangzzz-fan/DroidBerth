@@ -46,21 +46,12 @@ enum TransferPlanner {
         return output
     }
 
-    /// 「保留两者」在**下载**方向的冲突判据。
+    /// 「保留两者」的冲突判据。
     ///
-    /// macOS 默认卷（APFS / HFS+）**不区分大小写**，也不区分 Unicode 组合形式 ——
-    /// `IMG.JPG` 与 `img.jpg` 在同一目录里就是同一个文件。而设备端（ext4 / f2fs）
-    /// 区分大小写，所以手机上可以同时存在这两个名字。一旦按设备侧的语义去比较，
-    /// 第二个文件会被判为「不冲突」，写过去**静默覆盖**第一个 —— 一次无声的数据丢失。
-    ///
-    /// 判据取自目标卷自身的 `volumeSupportsCaseSensitiveNames`，不是写死的假设
-    /// （外接 APFS 区分大小写的卷是合法的）。取不到时按**不区分**处理：这一侧的
-    /// 误判代价不对称 —— 多出一个 ` (1)` 只是碍眼，静默覆盖是丢数据。
-    ///
-    /// **上传方向刻意不折叠**：设备端主存储是 ext4 / f2fs 派生，确实区分大小写；
-    /// 而 FAT32 格式的 SD 卡不区分 —— 那一种要等真机实测后再定（PRD §16 待验证项）。
+    /// **规则本身在 `NameComparison` 里**（连同实测证据）—— 这里只负责把「目标卷是否
+    /// 区分大小写」这个信息喂给它。上传方向没有这个信息可用，所以无条件折叠。
     private static func conflictKey(_ name: String, caseSensitiveVolume: Bool) -> String {
-        caseSensitiveVolume ? name : name.precomposedStringWithCanonicalMapping.lowercased()
+        NameComparison.key(name, caseSensitiveTargetVolume: caseSensitiveVolume)
     }
 
     static func upload(
@@ -113,7 +104,13 @@ enum TransferPlanner {
         if policy == .keepBoth {
             for directory in sortedDirectories {
                 if case .success(let entries) = shell.list(directory) {
-                    existingByDirectory[directory] = Set(entries.map { $0.name })
+                    // 设备上已有的名字**也要折叠**后才能比 —— 只折一边等于没折。
+                    // 设备端卷不区分大小写、且做 Unicode 完整大小写折叠（实测见
+                    // `NameComparison`），按原样比较正是「上传静默覆盖」的来源。
+                    //
+                    // 目录**不**折叠：设备上 `Photos/` 与 `photos/` 本来就是同一个目录，
+                    // `mkdir -p` 会落到一起，不需要额外处理（也不可能分开）。
+                    existingByDirectory[directory] = NameConflict.foldedSet(entries.map(\.name))
                 } else {
                     existingByDirectory[directory] = []
                 }
@@ -134,17 +131,13 @@ enum TransferPlanner {
                 : remoteDirectory + "/" + parentComponents.joined(separator: "/")
             var name = candidate.components.last ?? candidate.local.lastPathComponent
 
-            if policy == .keepBoth, var taken = existingByDirectory[directory], taken.contains(name) {
-                let stem = (name as NSString).deletingPathExtension
-                let ext = (name as NSString).pathExtension
-                var index = 1
-                var candidateName: String
-                repeat {
-                    candidateName = ext.isEmpty ? "\(stem) (\(index))" : "\(stem) (\(index)).\(ext)"
-                    index += 1
-                } while taken.contains(candidateName)
-                name = candidateName
-                taken.insert(candidateName)
+            // 冲突判定与改名都在 `NameConflict` 里（纯函数，可单测）。
+            // 上传方向**无条件折叠**（`NameComparison.folded`），因为上传时没有
+            // 「查询设备卷大小写语义」的接口。判错方向的代价不对称：多一个 ` (1)` 只是
+            // 碍眼，漏判就是静默覆盖用户手机上的文件。理由与实测证据见 `NameComparison`。
+            if policy == .keepBoth, var taken = existingByDirectory[directory],
+               let renamed = NameConflict.keepBothName(for: name, taken: &taken) {
+                name = renamed
                 existingByDirectory[directory] = taken
                 conflictCount += 1
             }

@@ -209,6 +209,29 @@ swiftc -O -o /tmp/iconcheck/run -target arm64-apple-macos14.0 \
 `.apk` 在 Mac 栏显示成通用文稿、`.app` 在设备栏显示成通用文稿这类问题 ——
 这些都不会被编译器或任何既有测试发现。
 
+**传输语义的回归核对**（约 5 秒；折叠规则 / 冲突与改名 / 名称校验 / 缩略图范围）：
+
+```bash
+mkdir -p /tmp/transfercheck && cp scripts/check-transfer-semantics.swift /tmp/transfercheck/main.swift
+swiftc -O -o /tmp/transfercheck/run -target arm64-apple-macos14.0 \
+  -sdk "$(xcrun --show-sdk-path --sdk macosx)" \
+  -swift-version 6 -strict-concurrency=complete -Xfrontend -disable-sandbox \
+  macos/Sources/DroidBerth/Support/NameComparison.swift \
+  macos/Sources/DroidBerth/Transfer/NameConflict.swift \
+  macos/Sources/DroidBerth/Support/DeviceNameRules.swift \
+  macos/Sources/DroidBerth/Support/ThumbnailPolicy.swift \
+  macos/Sources/DroidBerth/Support/ByteFormat.swift /tmp/transfercheck/main.swift
+/tmp/transfercheck/run
+```
+
+它守的是**同一族**缺陷的第二种形态 —— 前者是「同一份事实写两遍分叉」，
+它是「**同一个概念在两端语义不同，代码只按一端写**」，而这一族的默认后果是
+**静默覆盖用户手机上的文件**（设备端卷不区分大小写）或**静默的功能缺失**
+（远端 64 KB 通道对视频必失败）。断言直接由**实测表**驱动，理由与证据见
+`docs/1011_01_device-acceptance-report.md` §2 与 §9。
+
+> 代价要认：这两个脚本**不会**在构建或 CI 里自动跑，靠人记得跑。
+
 ### 验证面板
 
 把技术验证的判据逐条重跑（不依赖 UI）：
@@ -259,8 +282,9 @@ SUMMARY: V1=pass V2=fail V3=pass V4=pass      # 接上 Android 模拟器时的�
 > 本节是**环境与连通性**的实测。**功能层面的完整验收**（缩略图成品率、设备卷语义、文件名字符集与长度、
 > 媒体入库三态）在同一环境下另跑了一轮，结论与可重跑脚本见
 > **`docs/1011_01_device-acceptance-report.md`** 与 `docs/device-acceptance/2026-10-11/`。
-> 其中量出两条真缺陷：**上传方向在不区分大小写的设备卷上会静默覆盖**（会丢用户数据）、
-> **远端缩略图成品率只有 3/8**（视频全失败）。
+> 那一轮量出两条真缺陷 —— **上传方向在不区分大小写的设备卷上会静默覆盖**（会丢用户数据）、
+> **远端缩略图成品率只有 3/8**（视频全失败）—— 并**已连同同族的另外两处一起修掉**（报告 §9），
+> 各带一份可重跑的回归（`scripts/check-transfer-semantics.swift`）。
 
 | 项 | 实测结果 |
 |---|---|
@@ -316,16 +340,17 @@ MotionEvent` —— 这不是某个 app 的 bug，是**系统整体跑不动**�
 | 视觉与交互验收（双击、拖拽、布局、Quick Look、跨栏粘贴、排序、搜索、网格选择、分栏铺列、菜单、重命名、移动、预览窗格、**空态与设备引导卡片、系统彩色文件图标、数据列文字**） | 开发环境无法截图 / 无法模拟点击，**需要人工操作**。双击 / 右键打开已人工确认可用；**Phase 1–4、预览窗格与 2026-10-11 的视觉层改动仍未验收** |
 | **图标观感**（App 图标是否与 Finder 并排无异物感、系统彩色文件图标在深色模式下的表现、16pt 档在 Finder 列表里的可辨识度） | 本机不能截图。几何与投影已用数值核对过（与系统图标的实测剖面均方误差约 0.77/255），**人眼结论需实测** |
 | **设备厂商文案的准确性** | 小米 / OPPO / vivo / 三星 / 华为的额外授权步骤来自各家公开文档，**未逐机型真机核对**（本机只有一台华为 Android 10） |
-| **~~网格缩略图的远端成品率~~** → **已实测，结论是「只有 3/8」** | 2026-10-11 在 API 37 模拟器上复刻真实路径测得（`docs/1011_01_device-acceptance-report.md` §1）：**jpg / png / heic 通过，gif / tiff / mp4 / mov 回退类型图标**；完整文件对照组 8/8 全通过，所以失败与截断有关。**原推断「HEIC 很可能解不出来」被推翻**（HEIC 的 `meta` 在文件头，64 KB 够）；**视频失败的头号原因是 `mdat` 字节数不足而非 `moov` 位置**（faststart mp4 512 KB 仍失败、1 MB 才成功）。**是否需要按类型收敛待决策** |
+| **~~网格缩略图的远端成品率~~** → **已实测 3/8，并按结论收敛** | 2026-10-11 在 API 37 模拟器上复刻真实路径测得（`docs/1011_01_device-acceptance-report.md` §1）：**jpg / png / heic 通过，gif / tiff / mp4 / mov 回退类型图标**；完整文件对照组 8/8 全通过，所以失败与截断有关。**原推断「HEIC 很可能解不出来」被推翻**（HEIC 的 `meta` 在文件头，64 KB 够）；**视频失败的头号原因是 `mdat` 字节数不足而非 `moov` 位置**（faststart mp4 512 KB 仍失败、1 MB 才成功）。**已决策并实施**：远端**只做图片**，`gif` / `tif` / `tiff` 连请求都不发；**本地仍保留视频缩略图**（文件就在本机，QL 实测 8/8 全通过）——这是「只在能保证成功的那一侧做」，不是砍功能。判据在 `Support/ThumbnailPolicy.swift` |
 | 分栏视图的运行时行为 | `NSBrowser` 的铺列、异步补行、单选、双击预览、底部路径栏均未运行过；**行内类型图标**还多一层不确定 —— `willDisplayCell` 在 item-based 浏览器里是否被调用，Apple 文档没有明确承诺（不调用则退化为纯文本行，功能不受影响） |
 | Quick Look 面板本身 | 改用 `QLPreviewPanel` 后，**面板能否真的被带出（响应者链那一步）在本机无法实测**；面板内方向键切换、跟随选择同样未验。见 PRD §23 |
 | 网格「点空白处取消选择」与「单击选中」的延迟手感 | 单击与双击手势共存时 SwiftUI 会让单击等一个双击间隔；是否能接受需运行时确认 |
 | 照片图库作为素材来源 | 需要人工在授权弹窗点「允许」 |
 | App Translocation | 需要先有一个**已公证**的产物才能构造该场景 |
 | 设备窗格 → Finder 拖出 | **未实现**（需 `NSFilePromiseProvider`），见 `docs/1009_01_uiux-revamp-plan.md` §2.6 |
-| 设备端重命名 / 移动 | **已实现**（Phase 4），但运行时未验证：`mv` 的成功/失败提示、冲突整批拒绝的判定、⌘X→⌘V 的移动链路都没在真机上跑过 |
-| **设备端文件名的合法字符集** | **已实测**（2026-10-11）：设备端**自己就拒绝** FAT32 那一组（`:` `*` `?` `"` `<` `>` `\|` `\` 与制表符，`EPERM`），`touch`/`mv` 与 `adb push` 两条通道被拒集合一致 ⇒ app 现在不挡这组字符**不会损坏数据**（只剩提示质量问题）。**但长度判据有一个真缺陷**：设备端限 **255 UTF-8 字节**，而校验数的是 Swift 字素簇 —— 100 个汉字 / 200 个 emoji 能通过校验却在设备上 `File name too long`。判据应改成 `name.utf8.count > 255` |
-| **上传方向的「同名」判定会静默覆盖** ← **本轮最高优先级** | 2026-10-11 实测：设备端 `/sdcard` **不区分大小写、且归一化到 NFC**（`test -f case.txt` 对 `Case.txt` 为真；`adb push Report.txt` 后 `adb push report.txt` 只剩一个文件、内容是后者 —— 内容级证明）。而 `TransferPlanner.upload` 是**精确字符串比较**，`conflictPolicy` 默认又是 **`.keepBoth`（保留两者）** ⇒ 上传 `photo.jpg` 时设备上已有 `Photo.JPG` 会被判为不冲突，**静默替换掉用户手机上的文件**。`TransferPlanner.conflictKey` 里「设备端确实区分大小写」的注释**不成立**（底下的 ext4 区分，但用户面对的是 FUSE 这一层） |
+| 设备端重命名 / 移动 | **已实现**（Phase 4），且**同名判据已修**（原先也是精确比较，与上传同一条缺陷，现走 `NameConflict`）。但**运行时行为仍未验证**：`mv` 的成功 / 失败提示、冲突整批拒绝的提示文案、⌘X→⌘V 的移动链路都没跑过 |
+| **~~设备端文件名的合法字符集 / 长度~~** → **已实测并已修** | 2026-10-11：设备端**自己就拒绝** FAT32 那一组（`:` `*` `?` `"` `<` `>` `\|` `\` 与制表符，`EPERM`），`touch`/`mv` 与 `adb push` 两条通道被拒集合一致 ⇒ 不挡它**不会损坏数据**，但校验前移能把 errno 换成人话。**长度**：设备端限 **255 UTF-8 字节**，旧代码数的是 Swift 字素簇 ⇒ 100 个汉字 / 200 个 emoji 通过校验却在设备上 `File name too long`。两条都已修（`Support/DeviceNameRules.swift`） |
+| **~~上传方向的「同名」判定会静默覆盖~~** → **已修** | 2026-10-11 实测：设备端 `/sdcard` **不区分大小写**，且折叠规则与 macOS 默认卷**完全是同一张表**（**Unicode 完整大小写折叠**：`ß`↔`ss`、连字 `ﬁ`↔`fi`、`K`(KELVIN)↔`k`、`σ`↔`ς` 都折叠；全角 `Ａ`↔`A`、`é`↔`e`、尾随空格**都不**折叠）。而旧代码是**精确字符串比较**、默认策略又是 **`.keepBoth`（保留两者）** ⇒ 上传 `photo.jpg` 时设备上已有的 `Photo.JPG` 被判为不冲突，`adb push` **静默替换**它的内容（**文件名不变**，事后很难察觉）。**同族还有三处**：重命名、移动的冲突预检（也是精确比较）、新建文件夹（完全没有检查）。现已全部走 `NameComparison` / `NameConflict`（纯函数），回归见 `scripts/check-transfer-semantics.swift` + 设备端集成证明 `docs/device-acceptance/2026-10-11/09-conflict-e2e.txt` |
+| **名称校验与设备端实际语义不一致** → **已修** | 长度按 **255 UTF-8 字节**（旧代码数 Swift 字素簇 ⇒ 100 个汉字 / 200 个 emoji 通过校验却在设备上 `File name too long`）；`: * ? " < > \| \` 制表符前移（设备端自己就拒，`EPERM`），把 errno 换成人话并在提交前禁用「确定」。规则在 `Support/DeviceNameRules.swift`。**反向也要注意**：实测设备端**接受** `'` `` ` `` `$` `;` `&` 空格、中文、emoji、点前缀、前导 `-`，挡多了同样是错 |
 | 无障碍 | **VoiceOver 未做**（用户 2026-10-10 要求跳过，每行仍无 accessibility label）；Reduce Motion 已实现但未验证；**对比度未用工具测量**，动态字体只做到「不给文字定宽」，都没在放大字号下逐屏核对 |
 | 预览窗格的运行时行为 | 布局（右缘栏 + 窗口最小宽切换）、缩略图、多选合计、按来源的传输按钮都没跑过；缩略图同样带着「截断数据能否解码」的边界 |
 | 「点选即聚焦」 | 新确立的交互规则（在哪个窗格改选择，焦点就落在哪个窗格）。它同时修掉了「点完设备栏再按 ⌘⌫ 什么都不发生」的静默错，但**行为变化本身未在运行时确认** |

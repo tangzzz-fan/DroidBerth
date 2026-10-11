@@ -1021,6 +1021,15 @@ final class AppModel {
     func makeRemoteDirectory(named name: String) async {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+
+        // 重名预检（PRD §16「重名时提示，不静默改名」）。`mkdir -p` 对已存在的目录
+        // **静默成功**，而在不区分大小写的设备卷上 `Photos` 与 `photos` 就是同一个目录
+        // （实测见 `NameComparison`）—— 不检查的话，「新建」会退化成一次看不出问题的空动作。
+        if !NameConflict.conflicting([trimmed], existing: remoteEntries.map(\.name)).isEmpty {
+            banner = Banner(level: .error, title: "已有同名项目", detail: "「\(trimmed)」已存在，换一个名称再试")
+            return
+        }
+
         guard let device = monitor.activeDevice, let shell = monitor.shell(for: device) else {
             banner = Banner(level: .error, title: "未找到 adb", detail: nil)
             return
@@ -1062,13 +1071,11 @@ final class AppModel {
 
     /// 设备端名称校验。抽成纯函数：校验规则要能被单测钉住，而且 UI 侧想在提交前
     /// 实时禁用「确定」也要用它。
+    ///
+    /// **规则本身在 `DeviceNameRules` 里**（连同实测证据）—— 判据是「设备端到底接受什么」，
+    /// 不是「FAT32 规范说什么」。这里只做转发，避免规则出现第二份。
     static func validateRemoteName(_ raw: String) -> String? {
-        let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if name.isEmpty { return "名称不能为空" }
-        if name == "." || name == ".." { return "「\(name)」不是合法的名称" }
-        if name.contains("/") { return "名称不能包含「/」" }
-        if name.count > 255 { return "名称过长（最多 255 个字符）" }
-        return nil
+        DeviceNameRules.validationMessage(for: raw)
     }
 
     func renameRemoteEntry(_ entry: RemoteEntry, to rawName: String) async {
@@ -1084,7 +1091,12 @@ final class AppModel {
 
         // 冲突预检：同目录已有同名就拒绝。`mv` 默认会静默覆盖，而覆盖一个手机上的
         // 文件是不可逆的 —— 宁可让用户换个名字。列表本来就在手上，不额外开销。
-        if remoteEntries.contains(where: { $0.path == destination }) {
+        //
+        // **必须按折叠判据比**：设备端卷不区分大小写（实测见 `NameComparison`），
+        // 所以 `b.txt` → `A.TXT` 在设备上就是改到已有的 `a.txt` 上 —— 精确比较会漏判，
+        // 然后 `mv` 把 `a.txt` 的内容覆盖掉。把被改的条目本身排除掉，
+        // 是为了不挡住「只改大小写」这种合法操作。
+        if !NameConflict.conflicting([destination], existing: remoteEntries.map(\.path), excluding: entry.path).isEmpty {
             banner = Banner(level: .error, title: "已有同名项目", detail: "「\(name)」已存在，换一个名称再试")
             return
         }
@@ -1145,11 +1157,11 @@ final class AppModel {
 
         // 冲突预检：目标目录里已有同名 → **整批拒绝**。与重命名同一条理由：
         // `mv` 的默认行为是静默覆盖，而这里覆盖的是用户手机上的数据。
+        // 同样**按折叠判据比** —— 设备端卷不区分大小写（实测见 `NameComparison`）。
         let names = pending.map { ($0 as NSString).lastPathComponent }
         let conflicts = await Task.detached(priority: .userInitiated) { () -> [String] in
             guard case .success(let listed) = shell.list(target) else { return [] }
-            let existing = Set(listed.map(\.name))
-            return names.filter { existing.contains($0) }
+            return NameConflict.conflicting(names, existing: listed.map(\.name))
         }.value
 
         guard conflicts.isEmpty else {

@@ -1,0 +1,103 @@
+
+==============================================================================
+1. 尾随空格 / 尾随点
+==============================================================================
+尾随空格：`a.txt ` 会不会落到 `a.txt`
+  建 'space.txt' rc=0  建 'space.txt ' rc=0  ⇒ 目录里 2 个条目：两个不同文件（2 个）
+    od 原始字节：
+      0000000   /   s   d   c   a   r   d   /   D   o   w   n   l   o   a   d
+      0000020   /   D   r   o   i   d   B   e   r   t   h   N   a   m   e   F
+      0000040   o   l   d   /   s   p   a   c   e   .   t   x   t  \n   /   s
+      0000060   d   c   a   r   d   /   D   o   w   n   l   o   a   d   /   D
+尾随点：  `a.txt.` 会不会落到 `a.txt`
+  建 'dot.txt' rc=0  建 'dot.txt.' rc=0  ⇒ 目录里 2 个条目：两个不同文件（2 个）
+    od 原始字节：
+      0000000   /   s   d   c   a   r   d   /   D   o   w   n   l   o   a   d
+      0000020   /   D   r   o   i   d   B   e   r   t   h   N   a   m   e   F
+      0000040   o   l   d   /   d   o   t   .   t   x   t  \n   /   s   d   c
+      0000060   a   r   d   /   D   o   w   n   l   o   a   d   /   D   r   o
+两者都带：`plain.  ` 与 `plain`
+  建 'plain' rc=0  建 'plain.  ' rc=0  ⇒ 目录里 2 个条目：两个不同文件（2 个）
+    od 原始字节：
+      0000000   /   s   d   c   a   r   d   /   D   o   w   n   l   o   a   d
+      0000020   /   D   r   o   i   d   B   e   r   t   h   N   a   m   e   F
+      0000040   o   l   d   /   p   l   a   i   n  \n   /   s   d   c   a   r
+      0000060   d   /   D   o   w   n   l   o   a   d   /   D   r   o   i   d
+
+==============================================================================
+2. 全角 ↔ 半角
+==============================================================================
+全角 A ↔ 半角 A
+  建 'A.txt' rc=0  建 'Ａ.txt' rc=0  ⇒ 目录里 2 个条目：两个不同文件（2 个）
+    od 原始字节：
+      0000000   /   s   d   c   a   r   d   /   D   o   w   n   l   o   a   d
+      0000020   /   D   r   o   i   d   B   e   r   t   h   N   a   m   e   F
+      0000040   o   l   d   /   A   .   t   x   t  \n   /   s   d   c   a   r
+      0000060   d   /   D   o   w   n   l   o   a   d   /   D   r   o   i   d
+全角 1 ↔ 半角 1
+  建 '1.txt' rc=0  建 '１.txt' rc=0  ⇒ 目录里 2 个条目：两个不同文件（2 个）
+    od 原始字节：
+      0000000   /   s   d   c   a   r   d   /   D   o   w   n   l   o   a   d
+      0000020   /   D   r   o   i   d   B   e   r   t   h   N   a   m   e   F
+      0000040   o   l   d   /   1   .   t   x   t  \n   /   s   d   c   a   r
+      0000060   d   /   D   o   w   n   l   o   a   d   /   D   r   o   i   d
+全角 ab ↔ 半角 ab
+  建 'ab.txt' rc=0  建 'ａｂ.txt' rc=0  ⇒ 目录里 2 个条目：两个不同文件（2 个）
+    od 原始字节：
+      0000000   /   s   d   c   a   r   d   /   D   o   w   n   l   o   a   d
+      0000020   /   D   r   o   i   d   B   e   r   t   h   N   a   m   e   F
+      0000040   o   l   d   /   a   b   .   t   x   t  \n   /   s   d   c   a
+      0000060   r   d   /   D   o   w   n   l   o   a   d   /   D   r   o   i
+
+==============================================================================
+3. 兼容字符
+==============================================================================
+连字 ﬁ ↔ fi
+  建 'fi.txt' rc=0  建 'ﬁ.txt' rc=0  ⇒ 目录里 1 个条目：**折叠成同一个**（第二个命中了第一个）
+    od 原始字节：
+      0000000   /   s   d   c   a   r   d   /   D   o   w   n   l   o   a   d
+      0000020   /   D   r   o   i   d   B   e   r   t   h   N   a   m   e   F
+      0000040   o   l   d   /   f   i   .   t   x   t  \n
+      0000053
+ß ↔ ss
+  建 'ss.txt' rc=0  建 'ß.txt' rc=0  ⇒ 目录里 1 个条目：**折叠成同一个**（第二个命中了第一个）
+    od 原始字节：
+      0000000   /   s   d   c   a   r   d   /   D   o   w   n   l   o   a   d
+      0000020   /   D   r   o   i   d   B   e   r   t   h   N   a   m   e   F
+      0000040   o   l   d   /   s   s   .   t   x   t  \n
+      0000053
+带圈 o ↔ o
+  建 'o.txt' rc=0  建 'ⓞ.txt' rc=0  ⇒ 目录里 2 个条目：两个不同文件（2 个）
+    od 原始字节：
+      0000000   /   s   d   c   a   r   d   /   D   o   w   n   l   o   a   d
+      0000020   /   D   r   o   i   d   B   e   r   t   h   N   a   m   e   F
+      0000040   o   l   d   /   o   .   t   x   t  \n   /   s   d   c   a   r
+      0000060   d   /   D   o   w   n   l   o   a   d   /   D   r   o   i   d
+
+==============================================================================
+4. 空格的差别（阴性对照）
+==============================================================================
+单空格 ↔ 双空格（阴性对照，**应当**是两个文件）
+  建 'a b.txt' rc=0  建 'a  b.txt' rc=0  ⇒ 目录里 2 个条目：两个不同文件（2 个）
+    od 原始字节：
+      0000000   /   s   d   c   a   r   d   /   D   o   w   n   l   o   a   d
+      0000020   /   D   r   o   i   d   B   e   r   t   h   N   a   m   e   F
+      0000040   o   l   d   /   a       b   .   t   x   t  \n   /   s   d   c
+      0000060   a   r   d   /   D   o   w   n   l   o   a   d   /   D   r   o
+前导空格（阴性对照）
+  建 'x.txt' rc=0  建 ' x.txt' rc=0  ⇒ 目录里 2 个条目：两个不同文件（2 个）
+    od 原始字节：
+      0000000   /   s   d   c   a   r   d   /   D   o   w   n   l   o   a   d
+      0000020   /   D   r   o   i   d   B   e   r   t   h   N   a   m   e   F
+      0000040   o   l   d   /   x   .   t   x   t  \n   /   s   d   c   a   r
+      0000060   d   /   D   o   w   n   l   o   a   d   /   D   r   o   i   d
+
+==============================================================================
+5. 用 adb push 复核（上传真正走的通道）—— 尾随空格与全角
+==============================================================================
+尾随空格：push 'pushspace.txt' rc=0 / push 'pushspace.txt ' rc=0 ⇒ 2 个条目
+  实际名字：['/sdcard/Download/DroidBerthNameFold/pushspace.txt', '/sdcard/Download/DroidBerthNameFold/pushspace.txt']
+全角 A：push 'pushA.txt' rc=0 / push 'pushＡ.txt' rc=0 ⇒ 2 个条目
+  实际名字：['/sdcard/Download/DroidBerthNameFold/pushA.txt', '/sdcard/Download/DroidBerthNameFold/pushＡ.txt']
+
+(已清理)

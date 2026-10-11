@@ -1,0 +1,42 @@
+配方                                  ß ~ ss（完  ﬁ ~ fi（完  KELVIN ~  ANGSTROM  σ ~ ς（完整  İ ~ i+do  A vs 全角Ａ  o vs ⓞ（不  é vs e（不  NFD é ~   
+
+A lowercased+NFC                    ✗         ✗         ✓         ✓         ✗         ✓         ✓         ✓         ✓         ✓           错 3 项
+B folding(caseInsensitive)+NFC      ✓         ✓         ✓         ✓         ✓         ✓         ✓         ✓         ✓         ✓           错 0 项  ← 与设备端实测一致
+C folding(+diacritic)+NFC           ✓         ✓         ✓         ✓         ✓         ✓         ✓         ✓         ✗         ✓           错 1 项
+D folding(+width)+NFC               ✓         ✓         ✓         ✓         ✓         ✓         ✗         ✓         ✓         ✓           错 1 项
+
+================================================================================================
+各配方对关键字符的实际输出
+================================================================================================
+A lowercased+NFC
+   "ß.txt" → "ß.txt"
+   "ﬁle.txt" → "ﬁle.txt"
+   "K.txt" → "k.txt"
+   "A.txt" → "a.txt"
+   "Ａ.txt" → "ａ.txt"
+   "café.txt" → "café.txt"
+   "café.txt" → "café.txt"
+B folding(caseInsensitive)+NFC
+   "ß.txt" → "ss.txt"
+   "ﬁle.txt" → "file.txt"
+   "K.txt" → "k.txt"
+   "A.txt" → "a.txt"
+   "Ａ.txt" → "ａ.txt"
+   "café.txt" → "café.txt"
+   "café.txt" → "café.txt"
+C folding(+diacritic)+NFC
+   "ß.txt" → "ss.txt"
+   "ﬁle.txt" → "file.txt"
+   "K.txt" → "k.txt"
+   "A.txt" → "a.txt"
+   "Ａ.txt" → "ａ.txt"
+   "café.txt" → "cafe.txt"
+   "café.txt" → "cafe.txt"
+D folding(+width)+NFC
+   "ß.txt" → "ss.txt"
+   "ﬁle.txt" → "file.txt"
+   "K.txt" → "k.txt"
+   "A.txt" → "a.txt"
+   "Ａ.txt" → "a.txt"
+   "café.txt" → "café.txt"
+   "café.txt" → "café.txt"

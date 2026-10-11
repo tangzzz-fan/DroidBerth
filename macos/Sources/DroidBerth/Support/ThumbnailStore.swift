@@ -29,6 +29,9 @@ private enum ThumbnailConstants {
 ///   `QLThumbnailGenerator`。**刻意不下载完整文件** —— 一个 4 GB 的视频只为看一眼
 ///   缩略图而全量拉取，是整个功能里最不能接受的开销。
 ///
+/// **哪些类型走这条路由 `ThumbnailPolicy` 决定**，两侧的判据不同（远端只做图片，
+/// 因为 64 KB 这条通道对视频实测必失败 —— 理由与数据在那个类型上）。
+///
 /// 生成失败一律落到 `.unavailable`，由视图回退类型图标（PRD §13.3 明文要求
 /// 「生成失败时显示类型图标，不留空白」）。缩略图拿不到不是错误，不该往界面抛。
 @MainActor
@@ -62,14 +65,20 @@ final class ThumbnailStore {
         states[Self.cacheKey(entry)] ?? .idle
     }
 
-    /// 会生成缩略图的类型。只做图片与视频 —— PRD §13.3 的范围就是素材浏览，
-    /// 给 .txt / .zip 也去拉一次远端头是纯粹的流量浪费。
+    /// 会生成缩略图的类型。**判据在 `ThumbnailPolicy` 里** —— 两侧的能力不同，
+    /// 远端只做图片（理由与实测数据在那个类型上）。这里只负责把条目的来源分派过去。
     static func isThumbnailable(_ entry: BrowserEntry) -> Bool {
         guard !entry.isDirectory else { return false }
-        // 照片图库条目的 path 是 localIdentifier，不是文件路径；其缩略图要走
-        // PhotoKit（PHImageManager），不在本轮范围内，见改造方案 §4.1 的执行状态。
-        guard entry.origin != .photo else { return false }
-        return entry.name.isImageFile || entry.name.isVideoFile
+        switch entry.origin {
+        case .local:
+            return ThumbnailPolicy.allowsLocalFile(named: entry.name)
+        case .remote:
+            return ThumbnailPolicy.allowsRemoteFile(named: entry.name)
+        case .photo:
+            // 照片图库条目的 path 是 localIdentifier，不是文件路径；其缩略图要走
+            // PhotoKit（PHImageManager），不在本轮范围内，见改造方案 §4.1 的执行状态。
+            return false
+        }
     }
 
     /// 缓存键带上修改时间与大小：覆盖上传 / 同名替换后自动失效，不需要手动清缓存。

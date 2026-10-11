@@ -36,8 +36,8 @@ ADB 二进制内嵌在 app 内 —— 用户不需要装 Android SDK、不需要
 | 产品定义 | 完成（`docs/0926_01_PRD.md`，**v2.1**） |
 | 技术路线验证 | **完成，判 Go**（`docs/0926_02_swift-native-spike-plan.md`） |
 | Swift 原生外壳 MVP | **已实现，核心链路真机验证通过**（`docs/0926_03_swift-native-mvp-implementation.md`） |
-| 视觉与交互 | **已补齐（2026-10-11）**：交互层早于 2026-10-10 全绿；随后一轮视觉与图标审计补上三条 P0 —— **应用图标**（原来完全缺失，`scripts/make-icon.py` 是个从未被调用的孤儿脚本）、**文件类型图标单一来源**（原来两栏各写一遍 switch 且已分叉）、**PRD §17.1 的连接引导卡片**（原来只是一行字符串）。另补品牌色定义、空态结构（四类各有图标与动作）与 WCAG AA 的数据列文字。**运行时行为与图标观感待人工验收**；VoiceOver 按要求跳过；动态字体与对比度只做到部分。审计与设计稿见 `docs/1010_01_ui-icon-design-report.md`，**设计令牌唯一来源**是 `docs/design/DESIGN.md`。2026-10-11 还把 P1 的 **Finder 服务菜单**从一条 09-26 的老分支移植进来（**按当前代码重写**，不是 merge） |
-| 公证与分发 | **链已跑通（2026-10-11）**：`build.sh` → `notarize.sh`（app zip 与 DMG 双双 `Accepted`、staple 通过）→ `checklist.sh`；GitHub Actions 的 `ci.yml` / `release.yml` 已就绪，CI **实跑全绿**。**尚未正式发版** —— 打 `v*` tag 前要先补 6 个 Repository secret。架构范围已决策 **arm64-only**（放弃 Intel，PRD §5.1） |
+| 视觉与交互 | **已补齐（2026-10-11）**：交互层早于 2026-10-10 全绿；随后一轮视觉与图标审计补上三条 P0 —— **应用图标**（原来完全缺失，`scripts/make-icon.py` 是个从未被调用的孤儿脚本）、**文件类型图标单一来源**（原来两栏各写一遍 switch 且已分叉）、**PRD §17.1 的连接引导卡片**（原来只是一行字符串）。另补品牌色定义、空态结构（四类各有图标与动作）与 WCAG AA 的数据列文字。**运行时行为与图标观感待人工验收**；VoiceOver 按要求跳过；动态字体与对比度只做到部分。审计与设计稿见 `docs/1010_01_ui-icon-design-report.md`，**设计令牌唯一来源**是 `docs/design/DESIGN.md`。2026-10-11 还把 P1 的 **Finder 服务菜单**从一条 09-26 的老分支移植进来（**按当前代码重写**，不是 merge），并补上交互层最后两处脱节 —— **网格视图的键盘导航**（方向键 / ⇧ 扩展 / 字母跳转）与 **`⏎` 重命名**，判据见 `Support/GridNavigation.swift` 与 `scripts/check-grid-navigation.swift` |
+| 公证与分发 | **链已跑通，发版方式已定型（2026-10-11）**：`build.sh` → `notarize.sh`（app zip 与 DMG 双双 `Accepted`、staple 通过）→ `checklist.sh`；发版收成**本机一条命令**（`./scripts/release-local.sh <版本> --publish`，实测干跑 2 分 11 秒），GitHub Actions 的 `ci.yml` 只负责验证（**实跑全绿**），签名凭据**不离开本机**（见「发行与发布」）。**尚未正式发版** —— 只差一个版本号。架构范围已决策 **arm64-only**（放弃 Intel，PRD §5.1） |
 
 ---
 
@@ -74,7 +74,7 @@ shasum -a 256 -c SHA256SUMS.txt
 ```
 macos/                    Swift 原生外壳（唯一应用工程）
   project.yml               xcodegen 工程定义
-  Sources/DroidBerth/       49 个 Swift 文件
+  Sources/DroidBerth/       59 个 Swift 文件
   Resources/                Info.plist + entitlements + icon.{icns,png}（**图标入库**，见「图标不生效」）
                             + NOTICE.txt（**构建期从 vendor/ 暂存**，不入库；PRD §28 要求随包分发）
   Scripts/build-sidecar.sh  编译 Rust sidecar 并暂存到 macos/Sidecar/
@@ -87,7 +87,8 @@ scripts/                  构建、签名、公证、发布脚本（Swift 路线
   release-local.sh          **本机发版**：构建 → 守卫 → 公证 → 验证 → 打包 → 建 Release
   package-release.sh        打 dist/（本机与 CI 共用；含 Release 说明）
   setup-release-secrets.sh  把 6 个 Repository secret 一次写进 GitHub（只在你要走 CI 签名时用）
-  check-all.sh              三个回归守卫的统一入口
+  wizard-developer-id.sh    向导：Developer ID 证书 → notarytool 凭据 → 锁 .env → 手机 USB 调试；**人机步骤，不是自动化脚本**
+  check-all.sh              四个回归守卫的统一入口
   fetch-adb.sh              新克隆后取 platform-tools（钉版本 + 双 sha256）
 vendor/                   adb 源码与 platform-tools（见「依赖与许可」）
 docs/                     产品文档、验证方案、实现文档、UI/UX 改造方案、视觉审计报告
@@ -258,6 +259,10 @@ XcodeGen 会报 `Couldn't find current username` 且**静默不生成工程**。
 | `⌘1` / `⌘2` / `⌘3` | 聚焦窗格切到列表 / 分栏 / 网格视图 |
 | `⌘+` / `⌘-` | 放大 / 缩小网格图标（72–240 pt） |
 | `⇧⌘.` | 显示 / 隐藏隐藏文件 |
+| `←` `→` `↑` `↓` | **网格视图**移动选择（左右是线性的：列首再按 `←` 回到上一行的最后一项） |
+| `⇧` + 方向键 | 网格视图扩展选择（从锚点开始） |
+| 字母 / 数字键 | 网格视图跳转到以它开头的项目。连敲同一字母在命中项之间轮转；停手 0.8 秒后重新开始 |
+| `⏎` | **重命名**设备端选中项（恰好单选；列表 / 网格视图） |
 | `Tab` / `⇧Tab` | 在左右窗格之间循环聚焦 |
 | `⌘⌥←` / `⌘⌥→` | 聚焦**屏幕上的**左 / 右窗格（⇄ 交换后仍按视觉位置走） |
 | `⌘[` / `⌘]` | 后退 / 前进 |
@@ -267,8 +272,10 @@ XcodeGen 会报 `Couldn't find current username` 且**静默不生成工程**。
 | `⌘,` | 打开设置 |
 
 > `Space` 与 `Tab` 由本地事件监听（`Support/PaneKeyMonitor.swift`）接管，并带「正在编辑文本」守卫，
-> 因此输入框里的空格与 Tab 保持系统默认语义。**菜单里刻意不给它们挂快捷键**——无修饰键的菜单
-> 快捷键会先于文本框拿到事件。
+> 因此输入框里的空格与 Tab 保持系统默认语义。`⏎` 与网格视图的方向键 / 字母键同在这一个监听里，
+> **只在聚焦窗格确实是网格、或确实有可重命名的单选时才拦**，否则原样交还系统 —— 列表与分栏的
+> 原生方向键与 type-select 因此一行都没改，也不会被抢走。**菜单里刻意不给它们挂快捷键**——
+> 无修饰键的菜单快捷键会先于文本框拿到事件（「显示 → 重命名…」只负责可发现性与启用态）。
 >
 > 全部计划内的快捷键都已接通。开着预览窗格时，**窗口最小宽从 900 提到 1180**（预览栏 260pt，没有弹性）。
 
@@ -340,6 +347,27 @@ swiftc -O -o /tmp/iconcheck/run -target arm64-apple-macos14.0 \
 它守的是一类**静默**缺陷：同一份事实写两遍之后分叉。它挡的是
 `.apk` 在 Mac 栏显示成通用文稿、`.app` 在设备栏显示成通用文稿这类问题 ——
 这些都不会被编译器或任何既有测试发现。
+
+**网格导航的回归核对**（约 5 秒；顺序 / 列数 / 方向键落点 / 字母跳转）：
+
+```bash
+mkdir -p /tmp/gridcheck && cp scripts/check-grid-navigation.swift /tmp/gridcheck/main.swift
+swiftc -O -o /tmp/gridcheck/run -target arm64-apple-macos14.0 \
+  -sdk "$(xcrun --show-sdk-path --sdk macosx)" \
+  -swift-version 6 -strict-concurrency=complete -Xfrontend -disable-sandbox \
+  macos/Sources/DroidBerth/Support/GridNavigation.swift \
+  macos/Sources/DroidBerth/Support/NameComparison.swift \
+  macos/Sources/DroidBerth/Support/BrowserEntry.swift \
+  macos/Sources/DroidBerth/ADB/RemoteEntry.swift \
+  macos/Sources/DroidBerth/Local/LocalFileSystem.swift \
+  macos/Sources/DroidBerth/Support/FileTypeIcon.swift \
+  macos/Sources/DroidBerth/Support/ByteFormat.swift /tmp/gridcheck/main.swift
+/tmp/gridcheck/run
+```
+
+它守的是**第三种**形态的静默错 —— 前两种是「同一份事实写两遍分叉」与「同一概念两端语义不同」，
+这一种是「**同一个列表在视图里排一次、在键盘逻辑里再排一次**」。方向键按屏幕上的次序走，
+两处排序（或两处列数）有偏差不会报错也不会崩，只会让 `↓` 跳到肉眼看不见的地方。
 
 **传输语义的回归核对**（约 5 秒；折叠规则 / 冲突与改名 / 名称校验 / 缩略图范围）：
 
@@ -485,7 +513,7 @@ Release 说明取自 `dist/RELEASE-NOTES.md`（「下载 / 安装 / 校验」那
 | `.github/workflows/ci.yml` | push 到 `main`、每个 PR、手动 | 装工具链 → **取 adb** → 构建（ad-hoc 签名）→ `scripts/check-all.sh` → 断言自检 V1/V3 |
 | `.github/workflows/release.yml` | **仅手动**（`workflow_dispatch`） | 装证书 → 构建 → 守卫 → 公证 → 校验 → 建 Release。只在你有意走 CI 签名时才用，见下面「如果你确实想用 CI 签名」 |
 
-CI 的判据是「能不能编出可运行的产物 + 三个回归守卫过不过」。**它已经抓到过 4 处「本地编译过、
+CI 的判据是「能不能编出可运行的产物 + 四个回归守卫过不过」。**它已经抓到过 4 处「本地编译过、
 CI 编译器（Xcode 16.4）编译不过」的问题** —— 那是它最值钱的地方，与签名无关。
 
 ### CI 构建为什么也要走签名流程
@@ -508,7 +536,7 @@ XCODEBUILD_ARGS="CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual" ./scripts/build.sh
 
 ### 闸门是什么
 
-- `scripts/check-all.sh` —— 三个回归守卫（图标映射 / 传输语义 / 诊断包）。本项目**没有测试 target**，
+- `scripts/check-all.sh` —— 四个回归守卫（图标映射 / 网格导航 / 传输语义 / 诊断包）。本项目**没有测试 target**，
   这是那类「静默错」唯一的自动化防线，所以 CI 必须跑。
 - 自检只断言 **V1**（sidecar 定位）与 **V3**（进程封装）。**V2 在 CI 里必然 fail**（它含
   「签名身份可用于公证」，ad-hoc 下不成立）、**V4 需要真机**恒为 manual —— 这两项是预期，不是缺陷。
@@ -658,6 +686,8 @@ MotionEvent` —— 这不是某个 app 的 bug，是**系统整体跑不动**�
 | 分栏视图的运行时行为 | `NSBrowser` 的铺列、异步补行、单选、双击预览、底部路径栏均未运行过；**行内类型图标**还多一层不确定 —— `willDisplayCell` 在 item-based 浏览器里是否被调用，Apple 文档没有明确承诺（不调用则退化为纯文本行，功能不受影响） |
 | Quick Look 面板本身 | 改用 `QLPreviewPanel` 后，**面板能否真的被带出（响应者链那一步）在本机无法实测**；面板内方向键切换、跟随选择同样未验。见 PRD §23 |
 | 网格「点空白处取消选择」与「单击选中」的延迟手感 | 单击与双击手势共存时 SwiftUI 会让单击等一个双击间隔；是否能接受需运行时确认 |
+| **网格键盘导航的运行时行为** | 方向键跳跃（尤其 `↑` / `↓` 是否与屏幕上的一整行对齐）、字母跳转的轮转与 0.8 秒超时、`⇧` 扩展、滚进视野都没跑过。**列数由视图经 `GeometryReader` 回报，量到的宽度与 `.adaptive` 的实际铺列是否一致只能在运行时看** —— 不一致的表现是上下键跳错一行，不报任何错 |
+| **回车重命名的运行时行为** | 键位与菜单项是否都进来、预填与 Esc 取消、以及冲突被拒时的提示文案，都没跑过 |
 | 照片图库作为素材来源 | 需要人工在授权弹窗点「允许」 |
 | **Finder 服务在 App 未运行时的拉起路径** | **未定论**：三次尝试里只有一次真的把 App 拉起来了（日志有「会话开始」），另两次 `NSPerformService` 返回 `true` 但 App 根本没启动。**App 已在运行时的送达与解析已实测通过**。详见上面「Finder 集成（服务菜单）」一节 |
 | Finder 服务完成一次真实上传 | 测试时没有设备连着，只走到「没有可用的设备」；设备端落点规则与窗格内上传共用，风险低但未端到端跑过 |
@@ -679,17 +709,18 @@ MotionEvent` —— 这不是某个 app 的 bug，是**系统整体跑不动**�
 | **媒体扫描命令的真机生效性** | 改成「探测 `cmd -l` 的名单」之后，`cmd media_scanner scan-file` / `cmd media.scan` 哪个真的存在、真的生效，仍要在 Android 10 / 13 / 15 上逐版本实测（PRD 附录 B #1）。结构上保证的只是：命令不对时不会静默假装成功 |
 | 隐藏文件对称性 | 修法已落地，但「设备窗格里的 `.nomedia` 是否真按开关显隐」未在运行时确认 |
 
-### 交互层面的已知偏离（2026-10-10 审查）
+### 交互层面的已知偏离（2026-10-10 审查，2026-10-11 补两项）
 
 刻意保留或**尚未做**的非原生交互，逐条列出以便日后取舍：
 
 | 项 | 现状 | 取舍 |
 |---|---|---|
-| **网格视图没有键盘导航** | `Table` / `NSBrowser` 都有原生方向键与 type-select（敲字母跳转），**只有 `LazyVGrid` 没有** | **当前最明显的一处脱节**。Finder 图标视图方向键是基本操作，值得补 |
-| **回车重命名** | Finder 里选中按 Enter 进重命名；本产品只能从右键菜单进 | 重命名本身已实现，只差一个键位，成本低 |
+| ~~网格视图没有键盘导航~~ → **已补（2026-10-11）** | `Table` / `NSBrowser` 都有原生方向键与 type-select（敲字母跳转），**只有 `LazyVGrid` 没有** | 已补：方向键 / ⇧+方向键 / 字母跳转 / 滚进视野。判据是 `Support/GridNavigation.swift`（**顺序**与**列数**各一个纯函数，视图与键盘逻辑共用），回归见 `scripts/check-grid-navigation.swift`。**运行时手感未验证** |
+| ~~回车重命名~~ → **已补（2026-10-11）** | Finder 里选中按 Enter 进重命名；此前只能从右键菜单进 | `⏎` 已接（列表 / 网格）。**分栏刻意不给** —— 它的冲突预检比的是**当前目录**，而分栏选中的条目可能在子目录，预检会漏判成 `mv` 静默覆盖。菜单项「重命名…」不挂快捷键 |
 | **Tab 循环窗格** | 全局吃掉 Tab 用于切换窗格（PRD §22 明文要求） | macOS 上 Tab 的原生语义是**在控件间移动焦点**，因此键盘用户走不到工具栏。这是**产品决策**，改法是换 `⌥Tab` 或加设置项 |
 | Quick Look 缩放动画 | 未实现 `previewPanel:sourceFrameOnScreenForPreviewItem:` | 面板是淡入而不是从图标放大。要各视图给出源矩形，成本较高 |
 | 空格接管 | 全局空格 = Quick Look，聚焦在按钮上时空格不再触发按钮 | 本产品窗格内可聚焦按钮极少，且 §23 明确要求空格 = Quick Look，接受 |
+| 网格视图的选中延迟 | 单击与双击手势共存时 SwiftUI 会让单击等一个双击间隔 | 键盘移动因此比鼠标更快「跟手」；是否可接受需运行时确认 |
 
 ### 已修缺陷（2026-10-10 同类 app 坑点核对）
 
@@ -720,7 +751,9 @@ MotionEvent` —— 这不是某个 app 的 bug，是**系统整体跑不动**�
 | `docs/0926_03_swift-native-mvp-implementation.md` | **MVP 实现文档**：架构、三个已修缺陷、验证边界、未验证项 |
 | `docs/1009_01_uiux-revamp-plan.md` | **UI/UX 分阶段改造方案**：交互层差距矩阵、Phase 0–4 任务分解与验收点 |
 | `docs/1010_01_ui-icon-design-report.md` | **视觉层与图标层**：三条 P0 缺口、设计方案、S1–S5 实施计划与执行记录 |
+| `docs/design/1011_01-design-compliance.md` | **设计稿符合性审计（78 条：一致 53 / 偏离 16 / 未实现 9）**：逐条比对 `DESIGN.md` 与实现，给出偏离与未实现清单 |
 | `docs/1011_01_device-acceptance-report.md` | **设备端验收报告（API 37 模拟器）**：远端缩略图成品率 3/8、设备卷大小写 / NFC 语义、文件名合法字符集与长度判据、媒体入库、测不到的项 |
+| `docs/1011_02_observability-report.md` | **可观测性方案**：日志 / 崩溃取证 / 一键诊断包的取舍，四类故障如何分开收，脱敏判据 |
 | `docs/device-acceptance/2026-10-11/` | 上述报告的**原始日志与可重跑脚本**（5 份日志 + 5 个脚本） |
 | `docs/design/DESIGN.md` | 设计常量唯一来源（色 / 尺寸 / 图标判据 / 图标几何契约 / 投影参数 / 已否决清单） |
 | `.scratch/ui-simplification-tickets.md` | UI 精简（方案 A）+ P0 第一批 ticket 队列 |

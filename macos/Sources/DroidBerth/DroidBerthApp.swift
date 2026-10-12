@@ -260,6 +260,15 @@ struct DroidBerthApp: App {
                 Divider()
                 Button("刷新") { model.refreshFocusedPane() }
                     .keyboardShortcut("r", modifiers: .command)
+
+                Divider()
+                // ⌘O 是「打开文件夹」在 macOS 上的惯例位置。
+                //
+                // 它也补上一个真实缺口：授权过一次之后想**再加一个**文件夹时，界面上没有
+                // 明确的入口（只能想到去点工具栏那个 sidebar 图标，而它的含义是「位置」）。
+                // 三个入口都汇到 `presentFolderPicker()` —— 各写一遍必然分叉。
+                Button("打开文件夹…") { model.presentFolderPicker() }
+                    .keyboardShortcut("o", modifiers: .command)
             }
 
             CommandGroup(after: .sidebar) {

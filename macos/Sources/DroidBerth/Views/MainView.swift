@@ -317,7 +317,7 @@ struct MainView: View {
                 showPlaces = false
             }, onChooseOther: {
                 showPlaces = false
-                chooseLocalFolder()
+                model.presentFolderPicker()
             })
         }
         .help("位置")
@@ -364,11 +364,11 @@ struct MainView: View {
         switch model.localAccess {
         case .missing:
             return .needsFolderAccess(
-                onChoose: chooseLocalFolder,
+                onChoose: { model.presentFolderPicker() },
                 onUseDownloads: { model.useDownloadsAsStartFolder() }
             )
         case .expired:
-            return .folderAccessExpired(onChoose: chooseLocalFolder)
+            return .folderAccessExpired(onChoose: { model.presentFolderPicker() })
         case .notRequired, .granted:
             break
         }
@@ -1062,30 +1062,9 @@ struct MainView: View {
         showRename = true
     }
 
-    /// 「选择文件夹…」—— 沙盒版的**授权入口**。
-    ///
-    /// 关键在 `rememberFolder`：`NSOpenPanel` 给的访问权只活到本次运行，
-    /// **只有**落成 security-scoped bookmark 才能跨启动继续访问。
-    /// 少了这一步，用户每次打开 app 都得重选一遍。
-    private func chooseLocalFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.directoryURL = model.localDirectory
-        if panel.runModal() == .OK, let url = panel.url {
-            // 顺序要紧 —— **先授权、再导航**。反过来的话 `navigateLocal` 里的
-            // `updateSecurityScope` 还看不到这一项，于是第一次打开是空的。
-            let remembered = model.rememberFolder(url)
-            model.navigateLocal(to: url, resetHistory: true)
-            if !remembered {
-                model.banner = AppModel.Banner(
-                    level: .warning,
-                    title: "这个位置没能记住",
-                    detail: "它现在能用，但下次打开 app 需要重新选择。")
-            }
-        }
-    }
+    // 「选择文件夹…」的面板搬到了 `AppModel.presentFolderPicker()` ——
+    // 因为入口有三个（引导页 / 「位置」弹窗 / 「前往」菜单），
+    // 三处各写一遍 NSOpenPanel 必然分叉。
 }
 
 /// 「位置」弹窗。
@@ -1118,8 +1097,13 @@ private struct PlacesPopover: View {
             }
 
             Divider().padding(.vertical, 4)
+            // 措辞与未授权引导页的主按钮**保持一致**（都是「选择文件夹…」）——
+            // 用户已经在引导页见过那个词，这里再看到同一个词就知道是同一件事。
+            //
+            // 原来的「其它…」配 `ellipsis.circle` 读起来像「更多选项」而不是「再加一个」，
+            // 于是「我已经选过一个了，想再加一个」的人找不到入口（真实反馈）。
             Button { onChooseOther() } label: {
-                rowLabel("其它…", "ellipsis.circle", nil)
+                rowLabel("选择文件夹…", "folder.badge.plus", nil)
             }
             .buttonStyle(.plain)
         }

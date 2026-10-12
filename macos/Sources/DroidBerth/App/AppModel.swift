@@ -326,6 +326,36 @@ final class AppModel {
         navigateLocal(to: url, resetHistory: true)
     }
 
+    /// 弹出选择面板挑一个文件夹。
+    ///
+    /// 放在模型层而不是 `MainView` 的私有方法里：入口有**三个** ——
+    /// 未授权引导页的主按钮、「位置」弹窗的末行、以及「前往 → 打开文件夹…」菜单。
+    /// 三个入口各写一遍 `NSOpenPanel` 必然分叉，而分叉的表现是「某个入口选不了」，
+    /// 那种事只有用户会先发现。
+    func presentFolderPicker(startingAt directory: URL? = nil) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = directory ?? localDirectory
+        panel.prompt = "选择"
+        if AppPaths.containerDirectory != nil {
+            // 只在沙盒版说这句：侧载版不存在「授权」这件事，说了反而像在要权限。
+            panel.message = "选一个要传输的文件夹。选过之后 DroidBerth 会记住它。"
+        }
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        // 顺序要紧 —— **先授权、再导航**。反过来的话 `navigateLocal` 里的
+        // `updateSecurityScope` 还看不到这一项，于是第一次打开是空的。
+        let remembered = rememberFolder(url)
+        navigateLocal(to: url, resetHistory: true)
+        if !remembered {
+            banner = Banner(
+                level: .warning,
+                title: "这个位置没能记住",
+                detail: "它现在能用，但下次打开 app 需要重新选择。")
+        }
+    }
+
     /// 保证「当前正在访问的授权目录」正好是包含 `url` 的那一个。
     ///
     /// 只维持**一个**：目标没变就不动，变了先把旧的 `stop` 掉。

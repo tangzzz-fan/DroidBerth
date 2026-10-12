@@ -193,23 +193,59 @@ case "$KIND" in
     fail "签名身份无法识别：${IDENTITY}" ;;
 esac
 
+# ── provisioning profile ───────────────────────────────────────────────
+# ⚠️ 判据分两级，因为「profile 在哪」**取决于构建路径**：
+#   · 命令行带 `PROVISIONING_PROFILE_SPECIFIER` 构建 ⇒ 直接嵌进 app；
+#   · Xcode GUI（自动签名）+ Organizer ⇒ **archive 里没有**，是「导出 / 上传」那一步才嵌的。
+#
+# 2026-10-13 实测：用户的 archive 里**没有** `embedded.provisionprofile`，但两个 helper
+# 各 2 条 entitlements、本机也有匹配的 Mac Team Store profile ⇒ 那个包照样能导出上传。
+# 所以「本包内嵌没有」直接判 FAIL 会是一条**永远存在的假警报**（也就等于没有判据）。
+# 真正的阻塞判据是：**本机有没有 bundle id 匹配的 Mac App Store profile**。
 PROFILE="$APP/Contents/embedded.provisionprofile"
-if [ -f "$PROFILE" ]; then
-  pass "有 embedded.provisionprofile"
-  # 顺手把它的名字与团队打出来 —— 提交时对不上会很难查。
-  NAME="$(security cms -D -i "$PROFILE" 2>/dev/null \
-    | "$PYTHON" -c '
+BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \
+  "$APP/Contents/Info.plist" 2>/dev/null || true)"
+
+# 两处都要找：老路径 `MobileDevice` 现在常常**根本不存在**，Xcode 写的是 `UserData` 那处。
+# （本项目就因为只看老路径，把「有 profile」误报成「一个都没有」。）
+LOCAL_PROFILE=""
+if [ -n "$BUNDLE_ID" ]; then
+  for profile_dir in "$HOME/Library/MobileDevice/Provisioning Profiles" \
+                     "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"; do
+    [ -d "$profile_dir" ] || continue
+    for candidate in "$profile_dir"/*.provisionprofile "$profile_dir"/*.mobileprovision; do
+      [ -f "$candidate" ] || continue
+      security cms -D -i "$candidate" 2>/dev/null | grep -q "$BUNDLE_ID" || continue
+      LOCAL_PROFILE="$candidate"
+      break
+    done
+    [ -n "$LOCAL_PROFILE" ] && break
+  done
+fi
+
+profile_name() {
+  security cms -D -i "$1" 2>/dev/null | "$PYTHON" -c '
 import plistlib, sys
 try:
     d = plistlib.loads(sys.stdin.buffer.read())
 except Exception:
     raise SystemExit(0)
-print(d.get("Name", ""), d.get("TeamIdentifier", [""])[0] if d.get("TeamIdentifier") else "")
-' || true)"
-  [ -n "${NAME// /}" ] && printf '      profile：%s\n' "$NAME"
+print(d.get("Name", ""))
+' 2>/dev/null || true
+}
+
+if [ -f "$PROFILE" ]; then
+  pass "包内嵌了 embedded.provisionprofile"
+  NAME="$(profile_name "$PROFILE")"
+  [ -n "$NAME" ] && printf '      profile：%s\n' "$NAME"
+elif [ -n "$LOCAL_PROFILE" ]; then
+  pass "本机有匹配 ${BUNDLE_ID} 的 profile：$(profile_name "$LOCAL_PROFILE")"
+  echo "      （本包内嵌没有 —— 这是**预期**：Xcode GUI 走自动签名时，profile 是 Organizer 的"
+  echo "        「导出 / 上传」那一步才嵌进去的；命令行构建想嵌它得注入"
+  echo "        PROVISIONING_PROFILE_SPECIFIER。判「能不能提交」看的是上面这条。）"
 else
   if [ "$KIND" = "apple-distribution" ]; then
-    fail "缺 embedded.provisionprofile —— MAS 包必须内嵌 provisioning profile"
+    fail "本机找不到 bundle id 为 ${BUNDLE_ID} 的 Mac App Store profile —— 导出那一步会失败"
   else
     human "没有 embedded.provisionprofile（当前身份下预期如此；用 Apple Distribution 出包时会带上）"
   fi

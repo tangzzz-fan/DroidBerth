@@ -9,13 +9,13 @@
 
 | #      | 事项                                  | 状态                                                                                                              | 怎么做                                                                                                                                      |
 | ------ | ----------------------------------- | --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| **B1** | **`Mac Installer Distribution` 证书** | ❌ **本机没有**（已用 `security find-identity` 核过：只有 Apple Development / Developer ID Application / Apple Distribution） | <https://developer.apple.com/account/resources/certificates> → ＋ → **Mac Installer Distribution** → 按提示在钥匙串里生成 CSR 上传 → 下载 `.cer` 双击入钥匙串 |
-| **B2** | **Provisioning profile**            | ❌ **一个都没有**（`~/Library/MobileDevice/Provisioning Profiles/` 目录不存在）                                              | 先在 <https://appstoreconnect.apple.com> 建 App 记录（bundle id `dev.tango.droidberth`），再到 developer 后台建 **Mac App Store** 类型的 profile，下载双击安装  |
-| **B3** | **隐私政策 URL**                        | ✅ **已就绪**（2026-10-13）                                                                                           | 仓库根目录新增了 `PRIVACY.md`（中英双语）。填 `https://github.com/tangzzz-fan/DroidBerth/blob/main/PRIVACY.md`                                           |
-| **B4** | **App 记录**                          | ❌ 未创建                                                                                                           | App Store Connect → 我的 App → ＋ → 新建 App：平台 macOS、名称 `DroidBerth`、主要语言中文、bundle id 选 `dev.tango.droidberth`、SKU 自定（如 `DROIDBERTH001`）     |
+| **B1** | `Mac Installer Distribution` 证书 | 🔶 **只在「自己打 `.pkg`」时才需要**（本机没有）。**走 Xcode Organizer 上传不需要它** —— 那条路只要 `Apple Distribution` ✅。⇒ **不是阻塞项** | 若要自打 pkg：<https://developer.apple.com/account/resources/certificates> → ＋ → **Mac Installer Distribution** |
+| **B2** | Provisioning profile | ✅ **已就绪（2026-10-13）** —— `Mac Team Store Provisioning Profile: dev.tango.droidberth`（到期 2027-10-08）。⚠️ 它在 `~/Library/Developer/Xcode/UserData/Provisioning Profiles/`，**不是**老的 `~/Library/MobileDevice/…`（那个目录在本机**根本不存在** —— 本项目一度拿它当判据，把「有」误报成「一个都没有」） | — |
+| **B3** | 隐私政策 URL | ✅ **已就绪（2026-10-13）** | 仓库根 `PRIVACY.md`（中英双语）。填 `https://github.com/tangzzz-fan/DroidBerth/blob/main/PRIVACY.md` |
+| **B4** | App 记录 | ✅ **已建立（2026-10-13）** | — |
 
-> ⚠️ B1/B2 完成后，`project.yml` 里**不用改任何东西** —— profile 是**部署期数据**，  
-> 从命令行注入（见 §6）。**别把 profile 名字写进 `project.yml`**。
+> ⚠️ **`project.yml` 里不用改任何东西** —— profile 是**部署期数据**，从命令行注入（见 §6）。
+> **别把 profile 名字写进 `project.yml`。**
 
 ---
 

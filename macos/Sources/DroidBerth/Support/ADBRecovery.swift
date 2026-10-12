@@ -42,7 +42,28 @@ enum ADBRecovery {
         // `kill-server` 在没有 server 时会返回非 0，属正常，所以它的结果不作为判据。
         _ = ProcessRunner.run(binary, ["kill-server"], timeout: 15)
         let started = ProcessRunner.run(binary, ["start-server"], timeout: 30)
+        // 我们刚 kill 过又起过 ⇒ 这个 server 从此归我们管、**退出时要收**（E8）。
+        // 放在这里而不是「探测到没有监听就标记」，是因为这一步是**无条件**的：
+        // 不管之前 5037 上有没有别人的 server，我们的 `kill-server` 都已经把它带走了。
+        if started.ok { ADBServerOwnership.shared.markRestarted() }
         AppLog.notice("adb server 重启\(started.ok ? "完成" : "失败")", .adb)
         return started.ok
+    }
+
+    /// 应用退出时收掉**我们自己**起的那个 adb server（E8 / Guideline 2.4.5(iii)：退出后不留进程）。
+    ///
+    /// 判据与执行分家的原因有两个：
+    ///   ① 判据（`ADBServerOwnership`）要能被守卫单独测，不能牵进 `ProcessRunner` / `ADBBinary`；
+    ///   ② **只收自己的**这件事本身是承重的 —— 5037 上那个很可能是用户 Android Studio 的。
+    ///      无脑 `kill-server` 会让他的设备突然掉线，而用户只会觉得「这个 app 有毒」。
+    @discardableResult
+    static func shutdownServerIfOurs() -> Bool {
+        guard ADBServerOwnership.shouldShutdown(ADBServerOwnership.shared.owner) else { return false }
+        guard let adb = ADBBinary.shared.path else { return false }
+        AppLog.notice("退出：收掉本次启动的 adb server", .adb)
+        // 超时要短 —— 本函数跑在 `applicationWillTerminate` 里，系统只给几秒。
+        _ = ProcessRunner.run(adb, ["kill-server"], timeout: 3)
+        ADBServerOwnership.shared.markReleased()
+        return true
     }
 }

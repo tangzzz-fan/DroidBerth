@@ -1,32 +1,32 @@
 # App Store 提审清单（照着填）
 
-> 2026-10-12 整理。**先看 §0 的阻塞项** —— 有两件不做完，提交按钮点不动。
+> 2026-10-12 整理。**先看 §0 的阻塞项** —— 有两件不做完，提交按钮点不动。  
 > 文案分「中文」与「英文」两套；只上中国区填中文即可，上全球区两套都要。（**中文 4 段可直接粘贴**）
 
 ---
 
 ## §0 阻塞项（不做完提交会被拦住）
 
-| # | 事项 | 状态 | 怎么做 |
-|---|---|---|---|
+| #      | 事项                                  | 状态                                                                                                              | 怎么做                                                                                                                                      |
+| ------ | ----------------------------------- | --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | **B1** | **`Mac Installer Distribution` 证书** | ❌ **本机没有**（已用 `security find-identity` 核过：只有 Apple Development / Developer ID Application / Apple Distribution） | <https://developer.apple.com/account/resources/certificates> → ＋ → **Mac Installer Distribution** → 按提示在钥匙串里生成 CSR 上传 → 下载 `.cer` 双击入钥匙串 |
-| **B2** | **Provisioning profile** | ❌ **一个都没有**（`~/Library/MobileDevice/Provisioning Profiles/` 目录不存在） | 先在 <https://appstoreconnect.apple.com> 建 App 记录（bundle id `dev.tango.droidberth`），再到 developer 后台建 **Mac App Store** 类型的 profile，下载双击安装 |
-| **B3** | **隐私政策 URL** | ✅ **已就绪**（2026-10-13） | 仓库根目录新增了 `PRIVACY.md`（中英双语）。填 `https://github.com/tangzzz-fan/DroidBerth/blob/main/PRIVACY.md` |
-| **B4** | **App 记录** | ❌ 未创建 | App Store Connect → 我的 App → ＋ → 新建 App：平台 macOS、名称 `DroidBerth`、主要语言中文、bundle id 选 `dev.tango.droidberth`、SKU 自定（如 `DROIDBERTH001`） |
+| **B2** | **Provisioning profile**            | ❌ **一个都没有**（`~/Library/MobileDevice/Provisioning Profiles/` 目录不存在）                                              | 先在 <https://appstoreconnect.apple.com> 建 App 记录（bundle id `dev.tango.droidberth`），再到 developer 后台建 **Mac App Store** 类型的 profile，下载双击安装  |
+| **B3** | **隐私政策 URL**                        | ✅ **已就绪**（2026-10-13）                                                                                           | 仓库根目录新增了 `PRIVACY.md`（中英双语）。填 `https://github.com/tangzzz-fan/DroidBerth/blob/main/PRIVACY.md`                                           |
+| **B4** | **App 记录**                          | ❌ 未创建                                                                                                           | App Store Connect → 我的 App → ＋ → 新建 App：平台 macOS、名称 `DroidBerth`、主要语言中文、bundle id 选 `dev.tango.droidberth`、SKU 自定（如 `DROIDBERTH001`）     |
 
-> ⚠️ B1/B2 完成后，`project.yml` 里**不用改任何东西** —— profile 是**部署期数据**，
+> ⚠️ B1/B2 完成后，`project.yml` 里**不用改任何东西** —— profile 是**部署期数据**，  
 > 从命令行注入（见 §6）。**别把 profile 名字写进 `project.yml`**。
 
 ---
 
 ## §1 名称与副标题
 
-| 字段 | 限制 | 中文（可直接粘贴） | 英文 |
-|---|---|---|---|
-| **App 名称** | 30 | `DroidBerth` | `DroidBerth` |
-| **副标题** | 30 | `Mac 传视频照片到安卓手机`（12 字） | `Mac ⇄ Android file transfer`（26） |
+| 字段         | 限制 | 中文（可直接粘贴）              | 英文                                |
+| ---------- | -- | ---------------------- | --------------------------------- |
+| **App 名称** | 30 | `DroidBerth`           | `DroidBerth`                      |
+| **副标题**    | 30 | `Mac 传视频照片到安卓手机`（12 字） | `Mac ⇄ Android file transfer`（26） |
 
-> 名称别加「- 文件传输」这类后缀：App Store 的搜索靠**关键词**而不是名称堆词，
+> 名称别加「- 文件传输」这类后缀：App Store 的搜索靠**关键词**而不是名称堆词，  
 > 而名称里塞词会被审核以「关键词堆砌」为由打回。
 
 ---
@@ -94,20 +94,20 @@ Your Android phone needs USB debugging enabled. The phone asks once — tick "al
 
 ## §3 其余字段
 
-| 字段 | 限制 | 建议值 |
-|---|---|---|
-| **关键词** | 100 | `Android文件传输,Mac传文件,adb,手机传视频,照片传输,安卓传输,USB传输,素材备份,file transfer` |
-| **宣传文本** | 170 | `双栏 Finder 式界面，把 Mac 的素材拖到安卓手机。内嵌 ADB，不用装 SDK、不用终端。` |
-| **支持 URL** | 必填 | `https://github.com/tangzzz-fan/DroidBerth/issues` |
-| **营销 URL** | 选填 | `https://github.com/tangzzz-fan/DroidBerth` |
-| **隐私政策 URL** | **必填** | §0 B3 |
-| **主要类别** | — | **实用工具**（与 `Info.plist` 的 `public.app-category.utilities` 一致） |
-| **次要类别** | 选填 | 摄影与录像 |
-| **版权** | — | `© 2026 zhenzhi Tang`（与 `Info.plist` 的 `NSHumanReadableCopyright` 一致） |
-| **价格** | — | 免费 |
-| **年龄分级** | — | 4+（全部问题答「无」） |
-| **出口合规** | — | 「不使用加密」或「使用 Apple 提供的标准加密」—— 本项目只用了 `URLSession`/TLS 之外无自研加密，选**豁免**即可 |
-| **版本号** | — | **`1.0.0`**（`project.yml` 里默认 `0.1.0`，发版时从命令行注入） |
+| 字段           | 限制     | 建议值                                                                    |
+| ------------ | ------ | ---------------------------------------------------------------------- |
+| **关键词**      | 100    | `Android文件传输,Mac传文件,adb,手机传视频,照片传输,安卓传输,USB传输,素材备份,file transfer`      |
+| **宣传文本**     | 170    | `双栏 Finder 式界面，把 Mac 的素材拖到安卓手机。内嵌 ADB，不用装 SDK、不用终端。`                   |
+| **支持 URL**   | 必填     | `https://github.com/tangzzz-fan/DroidBerth/issues`                     |
+| **营销 URL**   | 选填     | `https://github.com/tangzzz-fan/DroidBerth`                            |
+| **隐私政策 URL** | **必填** | §0 B3                                                                  |
+| **主要类别**     | —      | **实用工具**（与 `Info.plist` 的 `public.app-category.utilities` 一致）          |
+| **次要类别**     | 选填     | 摄影与录像                                                                  |
+| **版权**       | —      | `© 2026 zhenzhi Tang`（与 `Info.plist` 的 `NSHumanReadableCopyright` 一致）  |
+| **价格**       | —      | 免费                                                                     |
+| **年龄分级**     | —      | 4+（全部问题答「无」）                                                           |
+| **出口合规**     | —      | 「不使用加密」或「使用 Apple 提供的标准加密」—— 本项目只用了 `URLSession`/TLS 之外无自研加密，选**豁免**即可 |
+| **版本号**      | —      | **`1.0.0`**（`project.yml` 里默认 `0.1.0`，发版时从命令行注入）                       |
 
 ---
 
@@ -144,36 +144,35 @@ DroidBerth 不收集、不上传、不分享任何个人信息。
 
 ## §5 截图（5 张，已由 `scripts/appstore-shots.sh` 生成）
 
-规格（Apple 官方要求，已核）：**16:10、精确像素、PNG、不允许 alpha、sRGB、单张 ≤10 MB、1–10 张**。
-允许的尺寸只有四种：**1280×800 / 1440×900 / 2560×1600 / 2880×1800**。
+规格（Apple 官方要求，已核）：**16:10、精确像素、PNG、不允许 alpha、sRGB、单张 ≤10 MB、1–10 张**。  
+允许的尺寸只有四种：**1280×800 / 1440×900 / 2560×1600 / 2880×1800**。  
 本机屏幕 2560×1440（16:9）放不下 2880×1800，所以统一用 **1440×900**。
 
-| # | 文件 | 展示什么 | 为什么放在这个位置 |
-|---|---|---|---|
-| 1 | `01-two-panes.png` | 双栏主界面：左 Mac「下载」、右手机 `内部存储 ▸ Pictures` | Mac 浏览者在前 2 张里决定要不要下载，这张必须一眼说清「是什么」 |
-| 2 | `02-grid-mac.png` | 网格视图 + **真实缩略图**（左栏 6 项，其中 4 张 JPG 有缩略图） | 摄影/视频用户的核心痛点：一堆素材里认出要传的那个 |
-| 3 | `03-column-mac.png` | 分栏视图（⌘2）+ 窗格底部路径栏 | 给 macOS 老用户看「它就是 Finder 的手感」 |
-| 4 | `04-column-root.png` | 分栏浏览整机（Applications / Library / System / Users 四列） | 分栏的**层级感**要有多列才看得出来，单列目录展示不了 |
-| 5 | `05-swapped.png` | 交换两侧后的布局：手机在左、Mac 在右 | 说明窗格顺序可换（素材在右、手机在左也是常见摆法） |
+| # | 文件                   | 展示什么                                               | 为什么放在这个位置                           |
+| - | -------------------- | -------------------------------------------------- | ----------------------------------- |
+| 1 | `01-two-panes.png`   | 双栏主界面：左 Mac「下载」、右手机 `内部存储 ▸ Pictures`              | Mac 浏览者在前 2 张里决定要不要下载，这张必须一眼说清「是什么」 |
+| 2 | `02-grid-mac.png`    | 网格视图 + **真实缩略图**（左栏 6 项，其中 4 张 JPG 有缩略图）           | 摄影/视频用户的核心痛点：一堆素材里认出要传的那个           |
+| 3 | `03-column-mac.png`  | 分栏视图（⌘2）+ 窗格底部路径栏                                  | 给 macOS 老用户看「它就是 Finder 的手感」        |
+| 4 | `04-column-root.png` | 分栏浏览整机（Applications / Library / System / Users 四列） | 分栏的**层级感**要有多列才看得出来，单列目录展示不了        |
+| 5 | `05-swapped.png`     | 交换两侧后的布局：手机在左、Mac 在右                               | 说明窗格顺序可换（素材在右、手机在左也是常见摆法）           |
 
 ⚠️ **两张原本想做但做不到的**（如实记下，别以为漏了）：
 
-- **「照片图库」**（宣传里「不用先导出到文件夹」的那条）：沙盒版首次进入该模式会显示
-  「需要照片图库权限」的请求页 —— 而**批准那个系统弹窗必须人工点一次**（自动化点不了跨进程的 TCC 弹窗）。
+- **「照片图库」**（宣传里「不用先导出到文件夹」的那条）：沙盒版首次进入该模式会显示  
+  「需要照片图库权限」的请求页 —— 而**批准那个系统弹窗必须人工点一次**（自动化点不了跨进程的 TCC 弹窗）。  
   你点一次「授权访问」并允许之后，它就能作为**第 6 张**补上（ASC 最多 10 张）。
-- **「预览窗格」**（⇧⌘P）：它是「显示」菜单项，而工具栏里没有等价按钮 ⇒
+- **「预览窗格」**（⇧⌘P）：它是「显示」菜单项，而工具栏里没有等价按钮 ⇒  
   当前的自动化手段（AX 按工具栏控件）够不到它。要这张得手工按一次快捷键再截。
 
-
-> ⚠️ 三条硬约束（**违反会被打回**）：① 必须是**真实运行的界面**，不是设计稿；
-> ② **不要出现价格**（地区定价不同，Apple 明确列为打回原因）；
+> ⚠️ 三条硬约束（**违反会被打回**）：① 必须是**真实运行的界面**，不是设计稿；  
+> ② **不要出现价格**（地区定价不同，Apple 明确列为打回原因）；  
 > ③ 不要出现其他 App Store 的 logo 或贬低竞争对手的文案。
 
 ---
 
 ## §6 审核备注（**这一段最关键，别空着**）
 
-被拒的最大风险不是功能，而是**审核员手上没有 Android 手机**。所以备注要把「为什么需要
+被拒的最大风险不是功能，而是**审核员手上没有 Android 手机**。所以备注要把「为什么需要  
 USB、为什么内嵌 adb、没设备时能看到什么」一次讲清。
 
 ```
@@ -227,7 +226,7 @@ CONFIGURATION=Release-MAS ./scripts/package-mas.sh 1.0.0
 ./scripts/appstore-shots.sh verify docs/appstore/screenshots/1.0.0
 ```
 
-**归档之后、点「分发」之前**再确认一次内嵌工具 —— 这是 ASC 拒收的**头号原因**
+**归档之后、点「分发」之前**再确认一次内嵌工具 —— 这是 ASC 拒收的**头号原因**  
 （2026-10-13 就是这样被拒的：`App sandbox not enabled … adb, droidberth-adb`）：
 
 ```bash
@@ -237,10 +236,10 @@ for f in adb droidberth-adb; do
 done        # 两个都应当是 2（app-sandbox + inherit）；0 就说明构建阶段没跑
 ```
 
-> `Upload Symbols Failed … adb / droidberth-adb` 那两条是 **warning**，不阻断上传、不影响审核。
+> `Upload Symbols Failed … adb / droidberth-adb` 那两条是 **warning**，不阻断上传、不影响审核。  
 > 成因见 `1011_04` §4.7 —— 其中 `adb` 那条**无法**消除（Google 的预编译二进制没有 DWARF）。
 
-> `check-mas-readiness.sh` 有三档结论：**PASS / FAIL（退出码 1，不可绕过）/ 人工项**。
+> `check-mas-readiness.sh` 有三档结论：**PASS / FAIL（退出码 1，不可绕过）/ 人工项**。  
 > 人工项里有两条是**法务**（NOTICE 的豁免适用性、中国大陆上架资质），工程改不了。
 
 ---
@@ -249,46 +248,46 @@ done        # 两个都应当是 2（app-sandbox + inherit）；0 就说明构�
 
 ### Q1 bundle id 到底是不是 `dev.tango.droidberth`？
 
-**是。** 核过 `project.yml` 的完整历史（`git log -S`）：**从 2026-09-26 首次提交至今
-一直是 `dev.tango.droidberth`，从未变过**。而且**三个配置（Debug / Release / Release-MAS）
-共用同一个** —— `PRODUCT_BUNDLE_IDENTIFIER` 写在 `settings.base`，按配置覆盖的只有
+**是。** 核过 `project.yml` 的完整历史（`git log -S`）：**从 2026-09-26 首次提交至今  
+一直是 `dev.tango.droidberth`，从未变过**。而且**三个配置（Debug / Release / Release-MAS）  
+共用同一个** —— `PRODUCT_BUNDLE_IDENTIFIER` 写在 `settings.base`，按配置覆盖的只有  
 entitlements 与签名身份。
 
-> 若你在 Xcode 的 Signing & Capabilities 里见过 **`XC dev.tango.droidberth`** ——
+> 若你在 Xcode 的 Signing & Capabilities 里见过 **`XC dev.tango.droidberth`** ——  
 > 那是 **Xcode 自动签名创建的「托管 App ID」**，不是另一个 bundle id（见 Q3）。
 
 ### Q2 中文名字要不要换？
 
 **建议保持 `DroidBerth`。** 三条理由：
 
-1. **品牌一致** —— GitHub 仓库、侧载版 DMG、关于窗口里都是这个名字；商店里换一个中文名，
+1. **品牌一致** —— GitHub 仓库、侧载版 DMG、关于窗口里都是这个名字；商店里换一个中文名，  
    两边看起来会像两个不同的东西；
-2. **搜索靠关键词、不靠名称** —— App Store 搜索权重主要在**关键词字段**（§3 已给），
+2. **搜索靠关键词、不靠名称** —— App Store 搜索权重主要在**关键词字段**（§3 已给），  
    名称里堆词的边际收益很低；
 3. **堆词有被拒风险** —— Apple 会把「名称里塞功能词」按关键词堆砌处理。
 
-想让中文用户一眼看懂用途，**用副标题**（已建议「Mac 传视频照片到安卓手机」）——
+想让中文用户一眼看懂用途，**用副标题**（已建议「Mac 传视频照片到安卓手机」）——  
 那才是它该待的地方。
 
 ### Q3 「以前自动签名时 App ID 会自动创建，现在要手工建吗？」
 
 要把**两件不同的东西**分开看：
 
-| | 谁创建 | 本项目的状态 |
-| --- | --- | --- |
+|                                        | 谁创建                                                            | 本项目的状态                                                                      |
+| -------------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------- |
 | **App ID**（developer 后台 → Identifiers） | Xcode 自动签名可代建，会建成 **`XC dev.tango.droidberth`** 这种「Xcode 托管」形式 | **建议手工建**。本项目用 `CODE_SIGN_STYLE: Manual`（写在 `project.yml` 里），Xcode **不会**代建 |
-| **App 记录**（App Store Connect 里的那个 App） | **只有人能建** | **必须手工建**（§0 的 B4）。Apple 官方原话：上传到 ASC 需要「以 **explicit App ID** 注册的 app 记录」 |
+| **App 记录**（App Store Connect 里的那个 App） | **只有人能建**                                                      | **必须手工建**（§0 的 B4）。Apple 官方原话：上传到 ASC 需要「以 **explicit App ID** 注册的 app 记录」  |
 
-**手工建比让 Xcode 托管更好**：托管 ID 的名字由 Xcode 决定（后台列表里会是
-`XC dev.tango.droidberth`，看着莫名其妙），手工建的可以自己命名（如 `DroidBerth Mac`）。
-两者**都能用于分发** —— Apple 官方文档明确列出建分发 profile 时可以选
+**手工建比让 Xcode 托管更好**：托管 ID 的名字由 Xcode 决定（后台列表里会是  
+`XC dev.tango.droidberth`，看着莫名其妙），手工建的可以自己命名（如 `DroidBerth Mac`）。  
+两者**都能用于分发** —— Apple 官方文档明确列出建分发 profile 时可以选  
 「The Xcode-managed explicit App ID that begins with XC」。
 
 ### Q4 创建 App ID 时，要不要为沙盒勾上 App Sandbox？
 
 **不需要。勾了也无害。**
 
-判据是**我们自己的 entitlements 长什么样**。`macos/Resources/DroidBerth-MAS.entitlements`
+判据是**我们自己的 entitlements 长什么样**。`macos/Resources/DroidBerth-MAS.entitlements`  
 里那 7 条**全部是 `com.apple.security.*`**：
 
 ```
@@ -300,14 +299,15 @@ com.apple.security.files.downloads.read-write
 com.apple.security.personal-information.photos-library
 ```
 
-**没有一条是 `com.apple.developer.*`（受限 entitlement）**。而只有**受限** entitlement 才要求
-provisioning profile 里有对应 capability —— 否则进程会在启动时被内核直接 `SIGKILL`。
-沙盒、网络、USB、文件选择这些**都是标准 entitlement**，由 app 自己的 entitlements 文件
+**没有一条是 `com.apple.developer.*`（受限 entitlement）**。而只有**受限** entitlement 才要求  
+provisioning profile 里有对应 capability —— 否则进程会在启动时被内核直接 `SIGKILL`。  
+沙盒、网络、USB、文件选择这些**都是标准 entitlement**，由 app 自己的 entitlements 文件  
 启用，**与 App ID 的 capability 无关**。
 
-> 这条我们已经实测过一轮：**ad-hoc 签名、完全没有 profile** 的包，启动后
-> `lsof -p <pid>` 的 `cwd` 就落在容器里 —— 沙盒是真生效的。
+> 这条我们已经实测过一轮：**ad-hoc 签名、完全没有 profile** 的包，启动后  
+> `lsof -p <pid>` 的 `cwd` 就落在容器里 —— 沙盒是真生效的。  
 > 所以「不发 profile 就没有沙盒」这个担心不成立。
+
 
 ⇒ 创建 App ID 时 **Capabilities 一个都不用勾**，保持默认。
 
@@ -319,5 +319,5 @@ provisioning profile 里有对应 capability —— 否则进程会在启动时�
 https://github.com/tangzzz-fan/DroidBerth/blob/main/PRIVACY.md
 ```
 
-⚠️ 若想让 URL 更短更正式，也可以开 GitHub Pages 指到同一个文件；但上面这个
+⚠️ 若想让 URL 更短更正式，也可以开 GitHub Pages 指到同一个文件；但上面这个  
 是 Apple 接受的类型（可公开访问、无需登录）。

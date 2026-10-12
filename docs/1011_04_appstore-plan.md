@@ -42,7 +42,7 @@
 | 条款 | 原文要点 | 对本项目意味着什么 |
 |---|---|---|
 | **2.5.2** | 不得读写 designated container **之外**的数据 | **这是最大的一条。**「浏览 Mac 上任意文件夹」是这个产品的核心体验，而沙盒里默认只能碰容器。要访问用户其它目录，只能靠 `NSOpenPanel` 让用户**亲自选**（`com.apple.security.files.user-selected.read-write`），并且**记住**要落 security-scoped bookmark。⇒ 首次使用会多一步「授权素材目录」，且**不允许默认就在 home 目录起**（现在 `AppModel.localDirectory` 默认是 `homeDirectoryForCurrentUser`） |
-| **2.4.5(iii)** | 不得在用户退出 app 后留下**继续运行的进程** | **adb 的 server 是常驻的** —— 它 fork 自己监听 5037，退出 app 后还在。这直接撞条款。⇒ MAS 版必须在退出时 `adb kill-server`，并且**不能**让它在后台偷偷活着。**待实测**：沙盒下 kill 是否总能成功、残留如何自愈 |
+| **2.4.5(iii)** | 不得在用户退出 app 后留下**继续运行的进程** | **adb 的 server 是常驻的** —— 它 fork 自己监听 5037，退出 app 后还在。这直接撞条款。⇒ 退出时收掉它。✅ **已实现（E8，2026-10-13）**：难点不是「怎么收」而是「**能不能收**」—— 5037 上那个很可能是**用户自己的** adb（Android Studio），见 §4.8 |
 | **2.4.5(vii)** | 更新必须走 Mac App Store | 见 §1 —— Sparkle 不能在 MAS 版用 |
 
 ### 2.2 沙盒本身（官方文档）
@@ -81,7 +81,7 @@
 |---|---|---|---|
 | **R1** | **沙盒下 adb 的 USB 通道能否工作** | `com.apple.security.device.usb` 的官方描述是「通过 USB device access APIs 与 USB 设备交互」。adb 用的是自己的 IOKit 路径，**它是否落在那套 API 的范围内没有官方承诺**。若不行，MAS 版就只能走**无线 ADB**——产品可用性大幅下降（首次连接必须先用别的方式打开 tcpip） | 写一个最小沙盒 app（`app-sandbox` + `device.usb`），在里面跑我们内嵌的 `adb devices -l`，插一台真机看能否列出 |
 | **R2** | **「浏览任意目录」这个核心体验与沙盒的冲突** | 沙盒要求用户逐个授权目录（user-selected + bookmark）。摄影师场景是「一个几百 GB 的项目文件夹」——**一次授权是可以接受的**；但「像 Finder 一样上下乱逛」不行。这会改变 PRD §3 的产品定位 | 不需要实验，**需要你拍板**：接受「首次授权素材目录」这个前提吗？ |
-| **R3** | **adb server 常驻违背 2.4.5(iii)** | 条款原文明确禁止「用户退出后仍继续运行的进程」。adb server 天然如此 | 实测：退出时 `adb kill-server` 是否可靠；以及**连接期间** adb server 属于「我们起的、我们负责收」——把生命周期写进代码即可。这条**可以工程解决**，不是死结 |
+| **R3** | **adb server 常驻违背 2.4.5(iii)** | 条款原文明确禁止「用户退出后仍继续运行的进程」。adb server 天然如此 | ✅ **已解决（E8，2026-10-13）** —— 判据是**归属**：我们跑 adb 之前 5037 上没监听 ⇒ 是我们拉起的 ⇒ 退出时收；已有监听 ⇒ 复用别人的 ⇒ **不许动**。两条路都实测过（§4.8）。**风险从「不确定」降为「已工程解决」** |
 | **R4** | **内嵌第三方二进制（adb）的许可与审核表述** | `adb` 是 Apache-2.0（`NOTICE.txt` 已随包），沙盒下自包含在 bundle 内，形式上符合 2.4.5(ii)「self-contained、不往共享位置装东西」。但**审核备注里必须解释清楚**「为什么一个文件传输 app 内嵌了一个命令行 adb」——否则容易被判 2.5.2/2.4.5(iv) | 我起草审核备注（§5.5），你提交时粘贴 |
 | **R5** | **`disable-library-validation` 等例外被质疑** | 审核对 Hardened Runtime 例外会问用途。若确实不需要，留着只会增加沟通成本 | 逐条试去掉，编译 + 运行验证（半天内能做完） |
 
@@ -98,7 +98,7 @@
 | E5 | `scripts/package-mas.sh` | ⬜ 待做。会用到 `Mac Installer Distribution` 证书（还没有） |
 | E6 | `scripts/check-mas-readiness.sh` | ✅ **已完成并实测通过**。三档结论（PASS / FAIL / 人工项），实测 **PASS 23 · FAIL 1 · 人工项 6**，退出码 1 —— **唯一那条 FAIL 正是缺 `embedded.provisionprofile`**，也就是必须有 App Store Connect 记录才能生成的东西。它自己也在第一次跑就抓出一个缺陷（见 §4.2） |
 | E7 | 启动时的**授权引导流程**（代码改动） | ⬜ 待做。**先看 §4.1 的实测数据** —— `places()` 不只是「要授权」，现在这个形态会**骗人** |
-| E8 | 退出时 `adb kill-server`（代码改动） | ⬜ 待做 |
+| E8 | 退出时收掉 adb server（代码改动） | ✅ **已完成并实测（2026-10-13）** —— `Support/ADBServerOwnership.swift`（归属判据）+ `ADBRecovery.shutdownServerIfOurs()`（执行）+ 4 个调用点（GUI 的 `applicationWillTerminate`、两个 CLI 入口、`restartServer` 后夺回归属）。第 8 道守卫 `check-adb-server-ownership`。**关键是「只收自己起的」** —— 见下方 §4.8 |
 
 ### 4.1 实测：容器里的固定位置长什么样（2026-10-12，`places()` 的直接依据）
 
@@ -378,6 +378,60 @@ MAS 上架（侧载版走 `release-local.sh` 的 build + dmg，根本不经过 a
 （`adb` 是 Google 的预编译产物、我们无法重新编译 Android 的 adb；`droidberth-adb` 是 Rust
 release，Cargo 默认不带 debug info）。⇒ **`adb` 那条无法从工程侧消除**；`droidberth-adb`
 想消除就得给 Cargo 开 debug info —— **拿体积换**，属产品取舍，未做。
+
+### 4.8 退出时收掉 adb server（E8 / Guideline 2.4.5(iii)）
+
+**难点不是「怎么收」，是「能不能收」。** 5037 上的 server 不一定是我们拉起来的 ——
+用户自己的 Android Studio、命令行里的 `adb` 用的是同一个端口，而 adb 的行为是
+「**有就复用、没有才自己起**」⇒ 退出时无脑 `kill-server` 会把**别人的** server 一起杀掉，
+用户看到的是「设备突然掉了」，他会去怀疑手机或数据线。
+
+这在实测里立刻撞上了：**本机 5037 上那个 server，可执行文件是
+`~/Library/Android/sdk/platform-tools/adb`** —— 是用户自己的，不是我们内嵌的那份。
+
+判据因此只有一条：**这个 server 是不是我们拉起来的**。
+
+| 我们第一次跑 adb 之前，5037 上 | 归属 | 退出时 |
+| --- | --- | --- |
+| 没有监听 ⇒ 第一条 adb 命令把它拉起来 | `.ours` | **收掉** |
+| 已有监听 ⇒ 复用，我们什么都没启动 | `.foreign` | **不许动** |
+| （运行中途）`ADBRecovery.restartServer()` 成功 | `.ours`（我们 kill 过又起过） | **收掉** |
+
+实现分三层，**刻意拆开**：
+
+| 层 | 位置 | 为什么单独放 |
+| --- | --- | --- |
+| 归属判据 + 端口探测 | `macos/Sources/DroidBerth/Support/ADBServerOwnership.swift` | **零项目依赖** —— 它要被守卫单独编译，而 `check-all.sh` 的依赖清单是**手写的**（今天已经因此断过） |
+| 执行（真的跑 `kill-server`） | `ADBRecovery.shutdownServerIfOurs()` | 需要 `ADBBinary` / `ProcessRunner` |
+| 调用点 | `applicationWillTerminate` + 两个 CLI 入口 | GUI 与命令行两条路都要收 |
+
+三个设计点：
+
+- **探测必须同步**：`adb` 的第一条命令就会拉起 server，异步探测必然测到「已经有了」，
+  于是永远判 `.foreign` ⇒ **永远不收**。那条错法看起来完全正常。
+- **端口跟着 `ANDROID_ADB_SERVER_PORT` 走**：adb 客户端认这个环境变量，我们若写死 5037，
+  一旦用户设了它就会**判据与事实不符**（探 5037、实际走别的端口）。顺带的好处见下。
+- **`.unknown` 不许动手**：把「不知道」当成「是我们的」正是这里要避免的错。
+
+**实测（两条路都做了，且互不干扰）**：
+
+| 场景 | 前置 | 运行中 | 退出后 | 用户的 5037 |
+| --- | --- | --- | --- | --- |
+| **A 该收时收** | 15037 = 无监听 | **15037 = yes**（确实是我们拉起的） | **15037 = no** ✅ | **全程 yes，没碰** |
+| **B 不误杀** | 5037 = 有（用户的 Android SDK adb） | — | **5037 = yes** ✅ | — |
+
+场景 A **没有去动用户的 5037** —— 办法是把 app 指到另一个端口
+（`ANDROID_ADB_SERVER_PORT=15037`），这正是「端口跟着环境变量走」换来的**可测性**。
+日志里的判据：`[NOTE] [adb] 退出：收掉本次启动的 adb server`。
+
+⚠️ **一条已知边界**（代码注释里也写了，免得以后被当成 bug）：若在**我们运行期间**用户自己把
+server 换掉（他跑一次 `adb kill-server` 再让 Android Studio 起一个），我们退出时仍会按
+「这个端口曾归我们」收一次。对用户是可恢复的（他的工具会自己重启 server），
+而要做到完全精确就得记 PID 再比对 —— 收益不抵复杂度。
+
+守卫：**第 8 道** `check-adb-server-ownership`。它把状态迁移与判据直接喂进去，并且
+**端口探测的两个方向都验**（自己起一个监听 socket）—— `isListening` 若恒为 true 就永远不收、
+恒为 false 就永远乱收，**两种都静默**。
 
 ## 5. App Store Connect 侧要准备的材料
 

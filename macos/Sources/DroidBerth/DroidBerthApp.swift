@@ -19,10 +19,13 @@ enum EntryPoint {
         CrashSentinel.begin()
 
         if arguments.contains("--diagnose") {
+            // 命令行路径同样会跑 adb（`printSummary` 要问版本），所以同样要「认领 + 收尾」——
+            // 少了它，每跑一次 `--diagnose` 都会①给下一次留下「上次异常结束」的假警报、
+            // ②把自己拉起来的 adb server 留在机器上。
+            ADBServerOwnership.shared.probeBeforeAdbCommands()
             DiagnosticsCLI.printSummary()
-            // 命令行路径也要收尾 —— 否则每跑一次 `--diagnose` 都会给下一次留下
-            // 「上次异常结束」的假警报。
             CrashSentinel.markCleanExit()
+            ADBRecovery.shutdownServerIfOurs()
             exit(0)
         }
         // ⚠️ 匹配必须用**前缀**，不能写 `$0 == "--export-diagnostics"`。
@@ -40,8 +43,12 @@ enum EntryPoint {
             } else if index + 1 < arguments.count, !arguments[index + 1].hasPrefix("--") {
                 parent = URL(fileURLWithPath: arguments[index + 1])
             }
+            // 这个入口跑的 adb 命令比 `--diagnose` 更多（`adb devices` / 卷枚举都会连 server）
+            // ⇒ 它比另一个更需要「认领 + 收尾」。
+            ADBServerOwnership.shared.probeBeforeAdbCommands()
             DiagnosticsCLI.export(to: parent)
             CrashSentinel.markCleanExit()
+            ADBRecovery.shutdownServerIfOurs()
             exit(0)
         }
 
@@ -156,6 +163,11 @@ final class DroidBerthAppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         // 会话哨兵的收尾。**强退与崩溃走不到这里** —— 那正是它能当判据的原因。
         CrashSentinel.markCleanExit()
+        // E8 / Guideline **2.4.5(iii)**：退出后不留进程。`adb server` 是被我们拉起来的
+        // 子进程，它会比 app 活得久。
+        // ⚠️ **只收我们自己起的那个** —— 5037 上那个可能是用户 Android Studio 的 server，
+        // 杀了它用户的设备会突然掉线。判据见 `ADBServerOwnership`。
+        ADBRecovery.shutdownServerIfOurs()
     }
 
     // 这三个是 `NSObject (QLPreviewPanelController)` 里的**非隔离**方法，覆写后本方法

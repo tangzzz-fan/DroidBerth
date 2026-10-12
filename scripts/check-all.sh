@@ -13,6 +13,7 @@
 # | `check-diagnostics-bundle` | 诊断包条目数 / 中文名编码 / 无真实用户名泄露 | 缺陷表现是「**产物打开来才发现**」——曾经产出过一个只有根目录的空包，不报任何错 |
 # | `check-local-place-policy` | 沙盒版「固定位置」该不该显示、容器内部该不该列出 | 这条分支**只在沙盒下才有区别** ⇒ 侧载版跑一百遍都走「都放行」那一路，编译、肉眼、手跑全都没有反馈；错了的后果是用户点开「文稿」看到**空文件夹**，以为文件丢了 |
 # | `check-bookmarked-folders` | 「最近使用」目录列表的合并规则（去重键 / 置顶 / 截断顺序） | 错法全都很安静：按名字去重会顶掉同名目录、先截断会丢掉刚选的那项 —— 不报错，只让用户觉得「它老是记不住」 |
+# | `check-adb-server-ownership` | 退出时该不该收 adb server（E8 / Guideline 2.4.5(iii)） | 只在**退出那一刻**生效，两个方向都静默：不收 ⇒ 审核说「退出后仍有进程」；收错 ⇒ 杀掉用户 Android Studio 的 server，他只看到「设备掉了」 |
 # | `check-build-matrix` | `project.yml` 的三个配置是否都还活着、指向对不对 | 守的是**只在其中一条构建路径上出现的回归** —— 侧载版构建一百次也不会发现 `Release-MAS` 被改坏；而 MAS 的发布周期长，**过了审核才发现更糟**。默认静态（在 11 秒门禁内），加 `--full` 才真构建 |
 #
 # ⚠️ 本项目**没有测试 target**（`project.yml` 里没有 unit-test target）。这几道检查目前
@@ -132,6 +133,10 @@ run_swift_check check-local-place-policy \
 run_swift_check check-bookmarked-folders \
   "$SWIFT_SRC/Support/BookmarkedFolders.swift" \
   "$SWIFT_SRC/Support/AppPaths.swift"
+
+# E8：只在「退出那一刻」生效的判据。错了**没有任何本地反馈** —— 见该文件头。
+run_swift_check check-adb-server-ownership \
+  "$SWIFT_SRC/Support/ADBServerOwnership.swift"
 
 # 构建矩阵：静态（不构建）⇒ 放在门禁里代价近乎零。要真跑两侧构建用 `--full`。
 "$ROOT/scripts/check-build-matrix.sh"

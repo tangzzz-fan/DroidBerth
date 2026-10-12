@@ -190,6 +190,11 @@ final class AppModel {
     // MARK: - 生命周期
 
     func start() {
+        // ⚠️ 必须在**任何**可能触发 adb 的调用之前。`adb` 的第一条命令就会把 server
+        // 拉起来，晚一步探测得到的已经是「有人在监听」，于是永远判成「不是我们的」
+        // ⇒ 退出时永远不收。那条错法**看起来完全正常**（除了 App Review 没有任何反馈）。
+        // 判据见 `ADBServerOwnership`。
+        ADBServerOwnership.shared.probeBeforeAdbCommands()
         AppPaths.clearStaging()
         AppPaths.clearPreviews()
         AppPaths.clearThumbnails()

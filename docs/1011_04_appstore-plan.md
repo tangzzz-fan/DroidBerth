@@ -349,6 +349,30 @@ CodeSign 任务（helper ×2 → app）   ← 不再回头重签 helper，我们
 `Trace/BPT trap: 5`，构建报 `PhaseScriptExecution failed`（看着像脚本坏了）。2026-10-13 实测。
 ⇒ **判据：任何「让 Sidecar 带上 entitlements」的方案，都必须同时回答「它还能不能自己跑」。**
 
+**第二个口子：scheme 的 `archive.config` 必须是 `Release-MAS`。**
+
+`postBuildScripts` 只解决「补签」，而它**按 `CONFIGURATION` 判断跑不跑** —— 若归档用的不是
+`Release-MAS`，那一段会直接 `exit 0`，而 app 自己也缺沙盒（比 helper 缺更严重）。
+`project.yml` 原先写的是 `config: Release`（侧载）⇒ **从 Xcode GUI 点 Archive 会得到一个侧载版**。
+
+这不是理论风险 —— 在用户当天的归档记录里**真的发生了**：
+
+| 归档 | adb | droidberth-adb | app | 签名身份 |
+| --- | --- | --- | --- | --- |
+| `DroidBerth 2026-10-13, 06.37` | 0 条 | 0 条 | **3 条** | **Developer ID Application** ← 侧载版 |
+| `DroidBerth 2026-10-13, 06.55` | 0 条 | 0 条 | 7 条 | Apple Distribution ← MAS 版 |
+
+（06.37 那个 app 只有 3 条 = `DroidBerth.entitlements` 的 Hardened Runtime 例外，
+身份也是 Developer ID —— 一眼可辨。06.55 是用户手动切了 scheme 配置才拿到 MAS 版的。）
+
+⇒ 已把 `archive.config` 固化为 `Release-MAS`：本工程**唯一**会用到 archive 的场景就是
+MAS 上架（侧载版走 `release-local.sh` 的 build + dmg，根本不经过 archive）。
+命令行仍可覆盖：`xcodebuild archive -configuration Release`。
+
+⚠️ 这一改同时消掉另一个隐患：**手工在 Edit Scheme 里改的配置存在 `xcuserdata`**（不入库），
+而 `build.sh`/`xcodegen` 会重建 `.xcodeproj` ⇒ 那种改动不可靠。固化成 `project.yml` 之后，
+**在 Xcode 里点 Archive 就是 MAS 版**，不需要每次手动切。
+
 **同一批日志里的两条 dSYM 警告**（`Upload Symbols Failed … adb` / `… droidberth-adb`）：
 是 **warning，不阻断上传、不影响审核**。`dsymutil` 对两个二进制都报 `no debug symbols`
 （`adb` 是 Google 的预编译产物、我们无法重新编译 Android 的 adb；`droidberth-adb` 是 Rust

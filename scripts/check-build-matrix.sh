@@ -106,7 +106,32 @@ else
   bad "helper 的 entitlements 缺 app-sandbox 或 inherit（漏 inherit 只在审核时暴露）"
 fi
 
-# ── 6. --full：真的把两侧都构建一遍 ────────────────────────────────────
+# ── 6. 内嵌工具的 entitlements **必须由构建阶段补**（不能是手工步骤）──────
+# 2026-10-13 实测：Xcode Organizer 归档上传时 App Store Connect 报
+#     App sandbox not enabled … [( …/MacOS/adb, …/MacOS/droidberth-adb )]
+# 根因是 Xcode 自己的签名链里**没有任何一处**会给这两个文件加 entitlements：
+# `CodeSignOnCopy` 用 app 的 identity 签它们，但 `--preserve-metadata=…entitlements…`
+# 保留的是**源文件本来就有**的 entitlements，而 `build-sidecar.sh` 刻意留 unsigned。
+# 修法是 target 的 `postBuildScripts` 调 `sign-embedded-tools-mas.sh --helpers-only`
+# （时机：所有 build phase 之后、Xcode 的 CodeSign 任务之前）。
+#
+# 这条**必须由守卫钉住**：那段脚本一旦被误删或改名，MAS 包会**静默**退回
+# 「两个 helper 各 0 条」——而它**只在 App Review 被打回时**暴露，与本守卫守的
+# 「只在其中一条构建路径上出现的回归」是同一形态。
+if grep -q 'postBuildScripts:' "$PROJ" \
+   && grep -q 'sign-embedded-tools-mas.sh" --helpers-only' "$PROJ"; then
+  ok "postBuildScripts 仍在补内嵌工具的 entitlements"
+else
+  bad "缺 postBuildScripts ⇒ MAS 包的两个 helper 会静默没有 entitlements（只在审核时暴露）"
+fi
+if grep -q -- '--helpers-only' "$ROOT/scripts/sign-embedded-tools-mas.sh" \
+   && grep -q 'HELPER_ENTITLEMENTS' "$ROOT/scripts/sign-embedded-tools-mas.sh"; then
+  ok "sign-embedded-tools-mas.sh 仍支持 --helpers-only 且带 helper entitlements"
+else
+  bad "sign-embedded-tools-mas.sh 少了 --helpers-only 分支或被误改"
+fi
+
+# ── 7. --full：真的把两侧都构建一遍 ────────────────────────────────────
 if [ "${1:-}" = "--full" ]; then
   echo
   echo "── 全量：真的构建两侧（约 1 分半）"

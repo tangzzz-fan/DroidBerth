@@ -153,4 +153,39 @@ targets:
             echo "error: 或者直接跑 ./scripts/build.sh —— 它会自己暂存" >&2
             exit 1
           fi
+          # ⚠️ 这一行**必须**在源文件还「未签名」时跑。
+          #    若哪天想聪明地把 `Helper-MAS.entitlements` 预签到 `Sidecar/*` 上
+          #    （看着很合理：`CodeSignOnCopy` 会保留 entitlements），这一行会以
+          #    `Trace/BPT trap: 5` 收场 —— 带 `app-sandbox` 的二进制被**独立执行**时
+          #    （没有父沙盒、没有 profile）启动即死。2026-10-13 实测踩过这个坑，
+          #    当时的构建报 `PhaseScriptExecution failed`，看着像脚本坏了。
+          #    正确位置见本 target 末尾的 postBuildScripts。
           "$SRCROOT/Sidecar/droidberth-adb" version
+
+    # 内嵌可执行文件的 **entitlements** 只能在这里补 —— 详见
+    # `scripts/sign-embedded-tools-mas.sh` 的文件头（那里有完整的证据链）。
+    #
+    # 为什么不能只靠「构建完再手工跑一次那个脚本」：Xcode Organizer 与
+    # `xcodebuild archive` 走的是 **Xcode 自己的**签名链，中间没有任何一处会给
+    # `Contents/MacOS/` 下的两个 helper 加 entitlements。2026-10-13 实测，
+    # 归档上传时 App Store Connect 直接报：
+    #
+    #     App sandbox not enabled … [( …/MacOS/adb, …/MacOS/droidberth-adb )]
+    #
+    # 而本阶段恰好是**唯一**能覆盖它的钩子：它在所有 build phase 之后、Xcode 的
+    # CodeSign 任务之前，而 Xcode 给 `CodeSignOnCopy` 文件签名时带着
+    # `--preserve-metadata=identifier,entitlements,flags` ⇒ 此刻写进去的
+    # entitlements **会被保留**（命令行是从构建日志里原样读出来的，不是推测）。
+    postBuildScripts:
+      - name: Sign embedded tools with MAS entitlements
+        basedOnDependencyAnalysis: false
+        script: |
+          set -euo pipefail
+          # 只有 MAS 配置需要：侧载版的内嵌工具**不该**带沙盒
+          # （它压根不在沙盒进程树里，带上只会变成一个跑不起来的 helper）。
+          if [ "${CONFIGURATION:-}" != "Release-MAS" ]; then
+            exit 0
+          fi
+          # 脚本非零退出 ⇒ 本阶段失败 ⇒ 构建失败。这是**有意**的：
+          # entitlements 没落上却构建成功，代价要到 App Review 才显现。
+          exec "$SRCROOT/../scripts/sign-embedded-tools-mas.sh" --helpers-only

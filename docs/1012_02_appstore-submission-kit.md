@@ -215,9 +215,9 @@ app 可以正常启动并完整浏览左侧 Mac 文件窗格（三种视图、�
 ```bash
 cd ~/Developments/DroidBerth
 
-# 1) 构建 + 重签内嵌工具 + 上架前自检（唯一 FAIL 应当只剩缺 profile）
+# 1) 构建 + 上架前自检（唯一 FAIL 应当只剩缺 profile）
+#    内嵌工具的 entitlements 由构建阶段自动补（2026-10-13 起），不必手工重签。
 CONFIGURATION=Release-MAS ./scripts/build.sh
-CONFIGURATION=Release-MAS ./scripts/sign-embedded-tools-mas.sh
 CONFIGURATION=Release-MAS ./scripts/check-mas-readiness.sh
 
 # 2) 出 .pkg（B1 证书到位后才能跑）
@@ -226,6 +226,19 @@ CONFIGURATION=Release-MAS ./scripts/package-mas.sh 1.0.0
 # 3) 校验截图（尺寸 / alpha / 色彩空间 / 大小 / 张数一次全查）
 ./scripts/appstore-shots.sh verify docs/appstore/screenshots/1.0.0
 ```
+
+**归档之后、点「分发」之前**再确认一次内嵌工具 —— 这是 ASC 拒收的**头号原因**
+（2026-10-13 就是这样被拒的：`App sandbox not enabled … adb, droidberth-adb`）：
+
+```bash
+A=~/Library/Developer/Xcode/Archives/<日期>/DroidBerth.xcarchive/Products/Applications/DroidBerth.app
+for f in adb droidberth-adb; do
+  codesign -d --entitlements - "$A/Contents/MacOS/$f" 2>/dev/null | grep -c 'com.apple.security'
+done        # 两个都应当是 2（app-sandbox + inherit）；0 就说明构建阶段没跑
+```
+
+> `Upload Symbols Failed … adb / droidberth-adb` 那两条是 **warning**，不阻断上传、不影响审核。
+> 成因见 `1011_04` §4.7 —— 其中 `adb` 那条**无法**消除（Google 的预编译二进制没有 DWARF）。
 
 > `check-mas-readiness.sh` 有三档结论：**PASS / FAIL（退出码 1，不可绕过）/ 人工项**。
 > 人工项里有两条是**法务**（NOTICE 的豁免适用性、中国大陆上架资质），工程改不了。

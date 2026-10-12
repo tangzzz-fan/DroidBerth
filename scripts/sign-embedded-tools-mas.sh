@@ -13,6 +13,26 @@
 #   ./scripts/sign-embedded-tools-mas.sh                    # 签 $APP_PATH（看 CONFIGURATION）
 #   CONFIGURATION=Release-MAS ./scripts/sign-embedded-tools-mas.sh
 #   ./scripts/sign-embedded-tools-mas.sh <path/to/DroidBerth.app>
+#   ./scripts/sign-embedded-tools-mas.sh --helpers-only     # 只签内嵌工具，不碰 app
+#
+# `--helpers-only` 供 **Xcode 构建阶段**调用（`project.yml` 的 `postBuildScripts`）。
+# 时机就是这件事的全部：该阶段在所有 build phase 之后、Xcode 的 CodeSign 任务**之前**，
+# 而 Xcode 给 `CodeSignOnCopy` 的文件签名时用的是 ——
+#
+#     codesign --force --sign <id> --timestamp -o runtime \
+#       --preserve-metadata=identifier,entitlements,flags …   …/Contents/MacOS/adb
+#
+# ⇒ **这里写进去的 entitlements 会被 Xcode 保留。**（依据是构建日志里的实际命令行，
+#   不是推测：`--preserve-metadata` 那一段是原样读出来的。）
+#
+# 没有这一步，就只剩「构建完再手工跑一次本脚本」——而那正是 Xcode Organizer 的缺口：
+# 2026-10-13 实测，从 Xcode 归档上传时 App Store Connect 报
+#
+#     App sandbox not enabled … [( …/MacOS/adb, …/MacOS/droidberth-adb )]
+#
+# 因为 Xcode 自己的签名链里**没有任何一处**会给这两个文件加 entitlements
+# （`CodeSignOnCopy` 用 app 的 identity 签，但 `--preserve-metadata` 保留的是**源文件本来
+# 就有**的 entitlements —— 而 `build-sidecar.sh` 刻意留的是「unsigned」）。
 #
 # ⚠️ 本脚本**不检查**签名身份是不是 Apple Distribution（那是 `check-mas-readiness.sh` 的事）。
 #    身份缺失时它会退到 ad-hoc 并**大声说明** —— 这样在没有证书的机器上也能把
@@ -20,7 +40,30 @@
 set -euo pipefail
 source "$(cd "$(dirname "$0")" && pwd)/env.sh"
 
-APP="${1:-$APP_PATH}"
+# 参数：可选的一个 app 路径，外加 `--helpers-only`（见文件头）。
+HELPERS_ONLY=0
+APP_ARG=""
+for arg in "$@"; do
+  case "$arg" in
+    --helpers-only) HELPERS_ONLY=1 ;;
+    -*) echo "未知选项：${arg}（本脚本只支持 --helpers-only）" >&2; exit 2 ;;
+    *) APP_ARG="$arg" ;;
+  esac
+done
+
+# app 路径的**权威来源**分两种，别弄混：
+#   · 手工跑（`build.sh` 之后）—— 用 env.sh 按 `CONFIGURATION` 算出的 `$APP_PATH`；
+#   · Xcode 构建阶段（postBuildScripts）—— 必须用 Xcode 注入的
+#     `$TARGET_BUILD_DIR/$WRAPPER_NAME`。env.sh 假定 derivedDataPath 是 `macos/build/dd`，
+#     而 **Xcode GUI 用的是 `~/Library/Developer/Xcode/DerivedData/…`** ⇒ 照 env.sh 走会去
+#     签一个**不存在的旧包**，而且**不报错**（那是最难发现的一种：脚本说 OK，上传照旧失败）。
+if [ -n "${TARGET_BUILD_DIR:-}" ] && [ -n "${WRAPPER_NAME:-}" ]; then
+  DEFAULT_APP="$TARGET_BUILD_DIR/$WRAPPER_NAME"
+else
+  DEFAULT_APP="$APP_PATH"
+fi
+APP="${APP_ARG:-$DEFAULT_APP}"
+
 APP_ENTITLEMENTS="$ROOT/macos/Resources/DroidBerth-MAS.entitlements"
 HELPER_ENTITLEMENTS="$ROOT/macos/Resources/Helper-MAS.entitlements"
 # 内嵌的两个 helper。**成对地与 `project.yml` 的 `Sidecar/*` 保持一致** ——
@@ -37,8 +80,24 @@ for plist_file in "$APP_ENTITLEMENTS" "$HELPER_ENTITLEMENTS"; do
   plutil -lint "$plist_file" >/dev/null || { echo "${plist_file} 不是合法 plist" >&2; exit 1; }
 done
 
-IDENTITY="$(detect_mas_identity)"
-IDENTITY_KIND="$(identity_kind "$IDENTITY")"
+# 身份的解析顺序：**显式覆盖 → Xcode 注入 → 钥匙串探测**。
+#
+# 中间那一档是构建阶段必需的：Xcode 的 `CODE_SIGN_IDENTITY` 可能被命令行覆盖过
+# （如 `CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual` 的自测构建），而
+# `detect_mas_identity()` 只会去钥匙串找 Apple Distribution ⇒ 结果是 **helper 用真证书、
+# app 用 ad-hoc**。身份不一致的包比不签还糟：`codesign --verify` 会直接失败，
+# 而且报错指向「签名坏了」而不是「你用了两种身份」。
+# `EXPANDED_CODE_SIGN_IDENTITY` 是 Xcode 解析后的值，只在构建环境里存在。
+if [ -n "${APPLE_MAS_SIGNING_IDENTITY:-}" ]; then
+  IDENTITY="$APPLE_MAS_SIGNING_IDENTITY"
+elif [ -n "${EXPANDED_CODE_SIGN_IDENTITY:-}" ]; then
+  IDENTITY="$EXPANDED_CODE_SIGN_IDENTITY"
+else
+  IDENTITY="$(detect_mas_identity)"
+fi
+# 显示用的人类可读名（`EXPANDED_CODE_SIGN_IDENTITY` 在真证书下是 SHA-1，`identity_kind`
+# 认不出来）。ad-hoc 的判断不依赖它 —— 那一步直接比 `$IDENTITY` 等于 `-`。
+IDENTITY_KIND="$(identity_kind "${EXPANDED_CODE_SIGN_IDENTITY_NAME:-$IDENTITY}")"
 export APPLE_SIGNING_IDENTITY="$IDENTITY"
 
 echo "══ MAS 版内嵌工具重签"
@@ -108,6 +167,16 @@ for helper in "${HELPERS[@]}"; do
   sign "$path" "$HELPER_ENTITLEMENTS"
   printf '  %s\n' "$helper"
 done
+
+# `--helpers-only` 到此为止。外层 app **交给 Xcode 自己签** —— 它带着
+# `CODE_SIGN_ENTITLEMENTS: Resources/DroidBerth-MAS.entitlements`，签得和我们一样。
+# 在这里再签一次只会和 Xcode 抢同一个文件，而且时机不对：此刻 app 的
+# `_CodeSignature` 还没生成，之后 Xcode 的 CodeSign 任务照样会覆盖掉。
+if [ "$HELPERS_ONLY" = "1" ]; then
+  echo
+  echo "（--helpers-only：外层 app 由 Xcode 自己签，本脚本到此结束）"
+  exit 0
+fi
 
 echo
 echo "==> 2) 外层 app（带沙盒权限集）"

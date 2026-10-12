@@ -252,7 +252,11 @@ SUMMARY: V1=pass V2=fail V3=pass V4=pass      # 接上 Android 模拟器时的�
   实测那样拷出来的副本 `spctl` 会判 `rejected / Insufficient Context`），并往 DMG 里放一条  
   `/Applications` 符号链接。**禁止手写 `hdiutil create`**。
 - **`resign.sh` 只给 app 签 entitlements，sidecar 不带** —— Xcode 不会把 app 的 entitlements  
-  转发给 Copy Files 进来的文件（`0926_02` §10 实测）。
+  转发给 Copy Files 进来的文件。**机制比原先以为的更具体**（2026-10-13 从构建日志读出实际  
+  命令行）：Xcode 对 `CodeSignOnCopy` 的文件执行的是  
+  `codesign --force --sign <id> --timestamp -o runtime --preserve-metadata=identifier,entitlements,flags`  
+  —— 它「保留」的是**源文件本来就有**的 entitlements，而 `build-sidecar.sh` 刻意留 unsigned  
+  ⇒ 结果必然是 **0 条**。**正解**：在它之后、Xcode 签 app 之前补签（`postBuildScripts`），见 §13。
 
 ---
 
@@ -624,3 +628,41 @@ MAS 的发布入口**单独写**（E5 的 `package-mas.sh`），**不要塞进 `
 它做过变异测试：把顶层 `Release-MAS` 的类型写成 `debug`、让它指向侧载那份 entitlements、
 让 helper 漏掉 `inherit` —— **三种都被抓到并返回 1**。第三条尤其重要，因为
 **helper 漏 `inherit` 在本地根本测不出来**（子进程功能上本来就继承父的沙盒），只在审核被打回。
+
+2026-10-13 又给它加了一条：**`postBuildScripts` 那段补签脚本必须还在**。同属这个形态 ——
+被误删后 MAS 包会**静默**退回「两个 helper 各 0 条」，**只在 App Review 被打回时暴露**。
+
+---
+
+## 13. Xcode 的签名链：只有两个钩子，别在别处使劲
+
+`xcodebuild build` 与 `xcodebuild archive` 走的是**同一条**签名链，顺序固定：
+
+```
+build phases（Sources / Resources / Copy Files(CodeSignOnCopy) / 各种 Run Script）
+   ↓
+postBuildScripts（XcodeGen 把它排在 build phases 的最后）
+   ↓
+CodeSign 任务：① CodeSignOnCopy 的嵌套文件  ② target 的 product
+```
+
+从这条链上能直接推出四条判据：
+
+1. **`CodeSignOnCopy` 一定在 `postBuildScripts` 之前** ⇒ 「先让它拷进来、再补签」可行。
+2. **Xcode 给 `CodeSignOnCopy` 文件签名时带 `--preserve-metadata=identifier,entitlements,flags`**
+   （命令行从构建日志里读出来的）。它保留的是**源文件本来就有**的东西 ⇒ 源文件 unsigned，
+   产物就是 0 条。**这才是本项目两个 helper 最初 0 条的真正原因**，不是「Xcode 丢掉了」。
+3. **`CodeSign` 任务不会回头重签 `Contents/MacOS/` 下非 `CodeSignOnCopy` 的文件** ——
+   实测第二次 `CodeSign` 只出现在 `…DroidBerth.app` 上。⇒ **在 `postBuildScripts` 里补的签名
+   会被保留**，这是它可行的前提，也是为什么不需要（也不该）再手工跑一次重签脚本。
+4. **`env.sh` 算出的 `APP_PATH` 只在 `build.sh` 的口径下成立**（它假定 derivedDataPath 是
+   `macos/build/dd`），而 **Xcode GUI 用 `~/Library/Developer/Xcode/DerivedData/…`**。
+   ⇒ 构建阶段里必须用 Xcode 注入的 `$TARGET_BUILD_DIR/$WRAPPER_NAME`，否则会去签一个
+   **不存在的旧包**，而且**不报错**（脚本说 OK、上传照旧失败）。同理身份要用
+   `$EXPANDED_CODE_SIGN_IDENTITY` —— 自己从钥匙串探测会**绕过** `CODE_SIGN_IDENTITY=-`
+   这个命令行覆盖，产出「helper 用真证书、app 用 ad-hoc」的不一致包（`codesign --verify` 直接失败）。
+
+⚠️ **在源文件上预签名是死路**（本可以最省事）：带 `app-sandbox` 的二进制**被独立执行**时
+启动即死，而 `preBuildScripts` 里恰好有一句 `"$SRCROOT/Sidecar/droidberth-adb" version`。
+2026-10-13 实测报 `Trace/BPT trap: 5` + `PhaseScriptExecution failed` —— 症状看着像脚本坏了。
+⇒ **判据：任何「让 Sidecar 带上 entitlements」的方案，都必须同时回答「它还能不能自己跑」。**

@@ -94,7 +94,7 @@
 | E1 | `macos/Resources/DroidBerth-MAS.entitlements` | ✅ **已落盘**。七条，逐条在文件里注明对应哪段代码；**刻意不放**的三类也写明了理由（`files.all` 已废弃 / `assets.*` 不需要因为照片走 PhotoKit / 三条 Hardened Runtime 例外不需要） |
 | E2 | `macos/Resources/Helper-MAS.entitlements` | ✅ **已落盘**。`app-sandbox` + `inherit`，并写明两者作用不同：前者是**审核要求**，后者才是继承机制，而**功能上子进程本来就继承** ⇒ 漏了 `inherit` 本地测不出来 |
 | E3 | `macos/project.yml` 加一个 **`Release-MAS`** 配置 | ✅ **已完成并实测构建通过**。配置类型显式写成 `release`（XcodeGen 按名字推断类型，不然会掉进 Debug 预设拿到 `-Onone`），生成结果核对过：`-O` + `wholemodule` ✅。目标级换 `Apple Distribution` + E1，`PROVISIONING_PROFILE_SPECIFIER` **刻意不写**（部署期数据，从命令行注入） |
-| E4 | `scripts/sign-embedded-tools-mas.sh` | ✅ **已完成并实测通过**。由内向外签（helper 带 E2 → app 带 E1），并**数清 `Contents/MacOS` 下恰好 3 个可执行文件**（多一个就会被静默按「无 entitlements」留在包里）。没有 Apple Distribution 证书时会退到 ad-hoc 并**大声说明**。实测：两个 helper 各 2 条、app 7 条 |
+| E4 | `scripts/sign-embedded-tools-mas.sh` | ✅ **已完成并实测通过**。由内向外签（helper 带 E2 → app 带 E1），并**数清 `Contents/MacOS` 下恰好 3 个可执行文件**（多一个就会被静默按「无 entitlements」留在包里）。没有 Apple Distribution 证书时会退到 ad-hoc 并**大声说明**。实测：两个 helper 各 2 条、app 7 条。**2026-10-13 起由 `project.yml` 的 `postBuildScripts` 自动调用**（`--helpers-only`）—— 原因见 §4.7：不挂进构建链，Xcode 归档上传就收不到这两个 entitlements |
 | E5 | `scripts/package-mas.sh` | ⬜ 待做。会用到 `Mac Installer Distribution` 证书（还没有） |
 | E6 | `scripts/check-mas-readiness.sh` | ✅ **已完成并实测通过**。三档结论（PASS / FAIL / 人工项），实测 **PASS 23 · FAIL 1 · 人工项 6**，退出码 1 —— **唯一那条 FAIL 正是缺 `embedded.provisionprofile`**，也就是必须有 App Store Connect 记录才能生成的东西。它自己也在第一次跑就抓出一个缺陷（见 §4.2） |
 | E7 | 启动时的**授权引导流程**（代码改动） | ⬜ 待做。**先看 §4.1 的实测数据** —— `places()` 不只是「要授权」，现在这个形态会**骗人** |
@@ -154,15 +154,16 @@
 实测一遍完整流程（每步都验过）：
 
 ```bash
-CONFIGURATION=Release-MAS ./scripts/build.sh                    # 用 Apple Distribution 签，BUILD SUCCEEDED
-CONFIGURATION=Release-MAS ./scripts/sign-embedded-tools-mas.sh  # 给两个 helper 补 app-sandbox + inherit
-CONFIGURATION=Release-MAS ./scripts/check-mas-readiness.sh      # PASS 23 · FAIL 1 · 人工项 6
+CONFIGURATION=Release-MAS ./scripts/build.sh                 # 用 Apple Distribution 签，BUILD SUCCEEDED
+CONFIGURATION=Release-MAS ./scripts/check-mas-readiness.sh   # PASS 23 · FAIL 1 · 人工项 6
 ```
 
 - `xcodebuild` 的 **`build` 动作不强求 provisioning profile**（只有 archive / 上传才要）
   ⇒ 没有 profile 也能构建、也能本机运行。**唯一那条 FAIL 就是缺 profile**，而那是必须
   先有 App Store Connect 记录才能生成的。
-- 内嵌 helper 的 entitlements 得靠 E4 补（Xcode 的 `CodeSignOnCopy` 不带）。
+- 内嵌 helper 的 entitlements **由构建阶段自动补**（2026-10-13 起，机制见 §4.7）——
+  **不再需要手工跑一次 `sign-embedded-tools-mas.sh`**。那个脚本现在只在「包已经构建好、
+  要单独重签一个」时用（如修别人给过来的包）。
 
 **两条硬规矩（都踩过）：**
 
@@ -295,6 +296,64 @@ CONFIGURATION=Release-MAS ./scripts/check-mas-readiness.sh      # PASS 23 · FAI
    返回的却是链接名 ⇒「过了判据却打不开」（就是 F3 那条）。已改为返回 `resolvingSymlinksInPath()`。
 
 ---
+
+### 4.7 内嵌工具 entitlements 的**正确落点**（2026-10-13，从「归档上传被拒」反推）
+
+**症状**：Xcode Organizer 归档上传时，App Store Connect 直接拒收：
+
+```
+App sandbox not enabled. The following executables must include the
+"com.apple.security.app-sandbox" entitlement with a Boolean value of true in the
+entitlements property list: [( "…/DroidBerth.app/Contents/MacOS/adb",
+                               "…/DroidBerth.app/Contents/MacOS/droidberth-adb" )]
+```
+
+**根因不是「配置写错」，而是「没有任何一处在做这件事」**：
+
+| 环节 | 它做了什么 | 结果 |
+| --- | --- | --- |
+| `build-sidecar.sh` | 把两个二进制暂存进 `macos/Sidecar/` | 刻意 **unsigned** |
+| `CodeSignOnCopy` | Xcode 用 app 的 identity 签它们 | `--preserve-metadata=…entitlements…` 保留的是**源文件本来就有**的 ⇒ **0 条** |
+| `sign-embedded-tools-mas.sh` | 由内向外补签 | ✅ 但**只在手工流程里**才被调用 |
+
+⇒ `build.sh` 出来的包是对的（因为第 3 步会被手工执行），而 **`xcodebuild archive` /
+Xcode Organizer 完全不知道第 3 步的存在** —— 归档上传被拒的正是它产出的包。
+
+**修法**：把补签挂到 **`project.yml` 的 `postBuildScripts`**（target 级，`--helpers-only`）。
+**时机就是这件事的全部**：
+
+```
+Copy Files（CodeSignOnCopy，此刻仍是 0 条）
+   ↓
+postBuildScripts        ← 这里补 app-sandbox + inherit
+   ↓
+CodeSign 任务（helper ×2 → app）   ← 不再回头重签 helper，我们的签名保留
+```
+
+实测顺序（构建日志的行号即顺序）：`CodeSign …/droidberth-adb (723)` → `CodeSign …/adb (731)`
+→ `PhaseScriptExecution Sign embedded tools… (739)` → `CodeSign …/DroidBerth.app (1376)`。
+
+**判据**（必须读 **archive 里**的包，不是 `build/` 下那个）：
+
+| 检查对象 | 期望 |
+| --- | --- |
+| `…xcarchive/Products/Applications/DroidBerth.app/Contents/MacOS/adb` | **2 条**（app-sandbox + inherit） |
+| `…/MacOS/droidberth-adb` | **2 条** |
+| `…/Contents/MacOS/DroidBerth`（app 自己） | 7 条 |
+| 侧载版 `Release` 的同两个 helper | **0 条**（构建阶段按配置跳过，侧载不受影响） |
+| `codesign --verify --deep --strict` | 通过 |
+
+⚠️ **一条被证伪的「更聪明做法」**：把 entitlements **预签到** `Sidecar/*` 源文件上
+（看着能利用 `--preserve-metadata`，改动最小）。**不行** —— 带 `app-sandbox` 的二进制
+被**独立执行**时启动即死：`preBuildScripts` 里那句 `droidberth-adb version` 自检会直接
+`Trace/BPT trap: 5`，构建报 `PhaseScriptExecution failed`（看着像脚本坏了）。2026-10-13 实测。
+⇒ **判据：任何「让 Sidecar 带上 entitlements」的方案，都必须同时回答「它还能不能自己跑」。**
+
+**同一批日志里的两条 dSYM 警告**（`Upload Symbols Failed … adb` / `… droidberth-adb`）：
+是 **warning，不阻断上传、不影响审核**。`dsymutil` 对两个二进制都报 `no debug symbols`
+（`adb` 是 Google 的预编译产物、我们无法重新编译 Android 的 adb；`droidberth-adb` 是 Rust
+release，Cargo 默认不带 debug info）。⇒ **`adb` 那条无法从工程侧消除**；`droidberth-adb`
+想消除就得给 Cargo 开 debug info —— **拿体积换**，属产品取舍，未做。
 
 ## 5. App Store Connect 侧要准备的材料
 

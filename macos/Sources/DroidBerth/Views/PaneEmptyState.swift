@@ -68,6 +68,38 @@ struct PaneEmptyState {
             primary: Action(title: "重试", handler: onRetry)
         )
     }
+
+    /// 沙盒版首次运行、**还没授权过任何目录**（E7 状态 ①）。
+    ///
+    /// 刻意**不是错误态**：用户没做错任何事，只是 App Store 的沙盒要求文件访问
+    /// 必须由用户亲手授予。所以用中性图标、说清「为什么」、给出明确下一步，
+    /// 并留一条「先用下载」的退路 —— 还没想好素材放哪的人也能先把文件传出去。
+    static func needsFolderAccess(
+        onChoose: @escaping () -> Void,
+        onUseDownloads: @escaping () -> Void
+    ) -> PaneEmptyState {
+        PaneEmptyState(
+            systemImage: "folder.badge.plus",
+            title: "先选一个要传的文件夹",
+            message: "App Store 版运行在沙盒里，需要你亲手指定一次。视频、照片放在哪都行，"
+                + "不限于「文稿」—— 选过之后 DroidBerth 就记住了。",
+            primary: Action(title: "选择文件夹…", handler: onChoose),
+            secondary: Action(title: "或先用「下载」", handler: onUseDownloads)
+        )
+    }
+
+    /// 授权过的目录**全都打不开了**（E7 状态 ③）。
+    ///
+    /// 与上一个分开：用户此刻真正的问题是「上次那个呢」。所以主按钮是**重新选择**，
+    /// 文案也先回答那个问题，而不是让他从零再理解一遍沙盒是什么。
+    static func folderAccessExpired(onChoose: @escaping () -> Void) -> PaneEmptyState {
+        PaneEmptyState(
+            systemImage: "folder.badge.questionmark",
+            title: "上次的文件夹打不开了",
+            message: "可能是它被移动或删除，也可能所在的外置磁盘没有插上。重新选一次就好。",
+            primary: Action(title: "重新选择…", handler: onChoose)
+        )
+    }
 }
 
 /// 设备连接引导卡片的内容（PRD §17.1 / §17.2）。

@@ -245,7 +245,8 @@ struct MainView: View {
                     .id(model.showHiddenFiles)
                 }
                 // PRD §13.2：分栏视图的路径栏在窗格**底部**。列表 / 网格沿用顶栏面包屑。
-                if model.viewMode(for: .mac) == .column {
+                // 未授权时同样不显示 —— 理由见 fileNavigationBar。
+                if !model.needsFolderAccess, model.viewMode(for: .mac) == .column {
                     columnPathBar
                 }
                 localStatusBar
@@ -264,19 +265,29 @@ struct MainView: View {
 
     private var fileNavigationBar: some View {
         HStack(spacing: 8) {
-            Button { model.localGoBack() } label: { Image(systemName: "chevron.left") }
-                .disabled(!model.canGoLocalBack)
-                .buttonStyle(.borderless)
-            Button { model.localGoForward() } label: { Image(systemName: "chevron.right") }
-                .disabled(!model.canGoLocalForward)
-                .buttonStyle(.borderless)
-            Button { model.localGoUp() } label: { Image(systemName: "arrow.up") }
-                .buttonStyle(.borderless)
+            if model.needsFolderAccess {
+                // 还没授权时导航控件**没有意义** —— 没有可回退的历史，向上也去不了哪。
+                // 而留着面包屑更糟：路径栏会写着「下载」，内容区却说「先选一个文件夹」，
+                // 那看起来就是个 bug，而它恰好出现在用户第一次打开 app 的那一屏。
+                // 所以这一屏只留「位置」入口，等授权恢复再长出导航。
+                Text("未选择文件夹")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Button { model.localGoBack() } label: { Image(systemName: "chevron.left") }
+                    .disabled(!model.canGoLocalBack)
+                    .buttonStyle(.borderless)
+                Button { model.localGoForward() } label: { Image(systemName: "chevron.right") }
+                    .disabled(!model.canGoLocalForward)
+                    .buttonStyle(.borderless)
+                Button { model.localGoUp() } label: { Image(systemName: "arrow.up") }
+                    .buttonStyle(.borderless)
+            }
 
             placesButton
 
             // 分栏模式的路径栏在窗格底部（PRD §13.2），顶栏就不再重复一条面包屑。
-            if model.viewMode(for: .mac) != .column {
+            if !model.needsFolderAccess, model.viewMode(for: .mac) != .column {
                 PathBreadcrumb(items: model.localBreadcrumbs.map { item in (item.0, { model.navigateLocal(to: item.1) }) })
             }
 
@@ -348,6 +359,19 @@ struct MainView: View {
     }
 
     private var macEmptyState: PaneEmptyState {
+        // 授权的两种「没有内容」**优先于**其他空态：那时列表本来就空着，
+        // 而「这个文件夹是空的」会是一句彻底的误导 —— 用户会以为自己的文件丢了。
+        switch model.localAccess {
+        case .missing:
+            return .needsFolderAccess(
+                onChoose: chooseLocalFolder,
+                onUseDownloads: { model.useDownloadsAsStartFolder() }
+            )
+        case .expired:
+            return .folderAccessExpired(onChoose: chooseLocalFolder)
+        case .notRequired, .granted:
+            break
+        }
         if let error = model.localError {
             return .failed(error) { model.reloadLocal() }
         }
@@ -1038,6 +1062,11 @@ struct MainView: View {
         showRename = true
     }
 
+    /// 「选择文件夹…」—— 沙盒版的**授权入口**。
+    ///
+    /// 关键在 `rememberFolder`：`NSOpenPanel` 给的访问权只活到本次运行，
+    /// **只有**落成 security-scoped bookmark 才能跨启动继续访问。
+    /// 少了这一步，用户每次打开 app 都得重选一遍。
     private func chooseLocalFolder() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
@@ -1045,7 +1074,16 @@ struct MainView: View {
         panel.allowsMultipleSelection = false
         panel.directoryURL = model.localDirectory
         if panel.runModal() == .OK, let url = panel.url {
+            // 顺序要紧 —— **先授权、再导航**。反过来的话 `navigateLocal` 里的
+            // `updateSecurityScope` 还看不到这一项，于是第一次打开是空的。
+            let remembered = model.rememberFolder(url)
             model.navigateLocal(to: url, resetHistory: true)
+            if !remembered {
+                model.banner = AppModel.Banner(
+                    level: .warning,
+                    title: "这个位置没能记住",
+                    detail: "它现在能用，但下次打开 app 需要重新选择。")
+            }
         }
     }
 }
@@ -1061,15 +1099,15 @@ private struct PlacesPopover: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            if !model.recentLocalFolders.isEmpty {
-                sectionHeader("最近使用") {
-                    Button("清除") { model.settings.forgetRecentLocalFolders() }
+            if !model.bookmarkedFolders.isEmpty {
+                sectionHeader(model.bookmarkedFolderSectionTitle) {
+                    Button("清除") { model.forgetBookmarkedFolders() }
                         .buttonStyle(.borderless)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                ForEach(model.recentLocalFolders, id: \.path) { url in
-                    row(url.lastPathComponent, "clock", url.path)
+                ForEach(model.bookmarkedFolders, id: \.path) { item in
+                    row(item.name, "clock", item.path)
                 }
                 Divider().padding(.vertical, 4)
             }

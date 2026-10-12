@@ -107,10 +107,45 @@ try? FileManager.default.removeItem(at: tmp.deletingLastPathComponent())
 let missing = BookmarkedFolders.load(from: tmp)
 checkEqual("读不到 ⇒ 空列表（不崩）", missing.count, 0)
 
+// ── ⑧ 解析分类：可用的与失效的**必须分开**（E7 的启动恢复靠它）───────────────
+// 书签会失效（目录被删、外置卷没插、权限被回收）。分类错了有两种坏结果：
+// 把坏的当好的 ⇒ 启动落在不存在的路径上；把好的丢掉 ⇒ 用户每次开机都要重选。
+let a1 = folder("A", path: "/x/A", used: later)
+let bad = folder("坏", path: "/x/gone", used: base)
+let a2 = folder("B", path: "/x/B", used: base)
+// 用 path 模拟系统的解析成败 —— 真造一个坏 bookmark 很难稳定复现。
+let canResolve: (BookmarkedFolder) -> URL? = { item in
+    item.path.contains("gone") ? nil : URL(fileURLWithPath: item.path)
+}
+
+let allGood = BookmarkedFolders.resolveAll([a1, a2], using: canResolve)
+checkEqual("全可解析 ⇒ resolved 全收", allGood.resolved.count, 2)
+checkEqual("全可解析 ⇒ stale 为空", allGood.stale.count, 0)
+checkEqual("first 是列表第一项（最近使用在前）", allGood.first?.folder.path, "/x/A")
+
+let mixed = BookmarkedFolders.resolveAll([a1, bad, a2], using: canResolve)
+checkEqual("中间坏一个 ⇒ resolved 仍是两项", mixed.resolved.count, 2)
+checkEqual("坏的那个进 stale（调用方据此清掉）", mixed.stale.map(\.path), ["/x/gone"])
+checkEqual("resolved 保持原顺序", mixed.resolved.map(\.folder.path), ["/x/A", "/x/B"])
+
+// 这条是重点：**第一个坏了不能就此放弃** —— 那正是「上次的目录打不开了，
+// 于是整个列表都不恢复」这种体验的来源。
+let firstBad = BookmarkedFolders.resolveAll([bad, a2], using: canResolve)
+checkEqual("第一项就坏 ⇒ first 顺延到第二项", firstBad.first?.folder.path, "/x/B")
+
+let allBad = BookmarkedFolders.resolveAll(
+    [bad, folder("坏2", path: "/y/gone", used: base)], using: canResolve)
+checkEqual("全坏 ⇒ resolved 空", allBad.resolved.count, 0)
+checkEqual("全坏 ⇒ stale 收全", allBad.stale.count, 2)
+check("全坏 ⇒ first 为 nil（调用方据此进「失效」状态）", allBad.first == nil, true)
+
+check("空列表 ⇒ first 为 nil", BookmarkedFolders.resolveAll([], using: canResolve).first == nil, true)
+
 // ─────────────────────────────────────────────────────────────
 
 print("覆盖：合并（空 / 重复置顶 / 刷新时间戳）· 去重键（路径而非名字）· 解析路径为权威值 · "
-      + "截断上限与「先合并再截断」· 存取往返（含日期策略）· 读不到时不崩")
+      + "截断上限与「先合并再截断」· 存取往返（含日期策略）· 读不到时不崩 · "
+      + "解析分类（全好 / 中间坏 / 第一项坏 / 全坏 / 空）")
 if failures.isEmpty {
     print("ALL OK")
 } else {

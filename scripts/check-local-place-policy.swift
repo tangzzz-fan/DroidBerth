@@ -95,11 +95,30 @@ check("可浏览：空串按非沙盒处理", LocalPlacePolicy.isBrowsable(resol
 // 两者的关系：`isUsable` = `isBrowsable` + 「真的能列」。
 check("关系：能列但不可浏览 ⇒ 仍不可用", usable(container + "/Documents", container: container, canList: true), false)
 
+// ── 授权状态（E7）────────────────────────────────────────────────────────
+// 守的是「**界面该说哪句话**」。说错了不会崩，而是让用户不知道该干什么：
+// 把「从没选过」说成「这个文件夹是空的」⇒ 用户以为自己的文件丢了；
+// 把「上次那个坏了」说成「先选一个」⇒ 用户以为自己的选择根本没被保存。
+check("非沙盒 ⇒ notRequired（侧载版永不显示引导）",
+      FolderAccess.state(isSandboxed: false, storedCount: 0, resolvedCount: 0) == .notRequired, true)
+check("非沙盒 + 有记录 ⇒ 仍 notRequired（侧载版会把「最近使用」记在这里）",
+      FolderAccess.state(isSandboxed: false, storedCount: 5, resolvedCount: 5) == .notRequired, true)
+check("沙盒 + 从没记过 ⇒ missing（首次运行，给引导）",
+      FolderAccess.state(isSandboxed: true, storedCount: 0, resolvedCount: 0) == .missing, true)
+check("沙盒 + 有可用的 ⇒ granted",
+      FolderAccess.state(isSandboxed: true, storedCount: 3, resolvedCount: 1) == .granted, true)
+// 这条是重点：**「记过但全坏」必须与「从没记过」分开** —— 前者说「上次那个打不开了」，
+// 后者说「先选一个」。混成一句，用户就分不清是「我该去选」还是「我明明选过」。
+check("沙盒 + 记过但全坏 ⇒ expired（而不是 missing）",
+      FolderAccess.state(isSandboxed: true, storedCount: 2, resolvedCount: 0) == .expired, true)
+check("沙盒 + resolved 多于 stored ⇒ 仍按「有可用的」算（不因计数异常改口）",
+      FolderAccess.state(isSandboxed: true, storedCount: 0, resolvedCount: 1) == .granted, true)
+
 // ─────────────────────────────────────────────────────────────
 
 print("覆盖：非沙盒放行 · 容器外能列 / 列不了 · 容器内（含容器根、深层、`..`）· "
       + "路径分量边界 · `isInside` 的三个方向 · 别的 app 的容器不算数 · "
-      + "**列目录/导航层的不可浏览判据**")
+      + "**列目录/导航层的不可浏览判据** · **授权状态的四个分支与计数边界**")
 if failures.isEmpty {
     print("ALL OK")
 } else {

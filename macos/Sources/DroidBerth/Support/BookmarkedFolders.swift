@@ -53,6 +53,40 @@ enum BookmarkedFolders {
         Array(list.prefix(limit))
     }
 
+    // ── 解析结果的分类 ────────────────────────────────────────────────────
+
+    /// 一次解析的产物。**成功与失败必须分开**：成功的用于显示与恢复，
+    /// 失败的必须**清掉** —— 留着只会每次启动都尝试、每次都失败。
+    struct Resolution {
+        /// 能解析出来的项，**保持传入顺序**（= 最近使用在前）。
+        var resolved: [(folder: BookmarkedFolder, url: URL)] = []
+        /// 解析不出来的项。调用方通常直接丢弃。
+        var stale: [BookmarkedFolder] = []
+
+        /// 第一个能解析的 —— 「启动时恢复到哪个目录」用的就是它。
+        var first: (folder: BookmarkedFolder, url: URL)? { resolved.first }
+    }
+
+    /// 逐个解析，把结果分成「可用 / 已失效」两组。
+    ///
+    /// 解析本身**要问系统**（`URL(resolvingBookmarkData:)`），所以做成注入的闭包 ——
+    /// 这样分类逻辑能被守卫用构造数据直接喂，不必真的去造一个坏 bookmark
+    /// （坏 bookmark 很难稳定造出来：它得指向一个真的消失过的目录）。
+    static func resolveAll(
+        _ list: [BookmarkedFolder],
+        using resolve: (BookmarkedFolder) -> URL?
+    ) -> Resolution {
+        var result = Resolution()
+        for item in list {
+            if let url = resolve(item) {
+                result.resolved.append((item, url))
+            } else {
+                result.stale.append(item)
+            }
+        }
+        return result
+    }
+
     // ── 持久化 ────────────────────────────────────────────────────────────
     //
     // 落在 `AppPaths.supportDirectory`（沙盒里就是容器的 Application Support ⇒ 一定可写）。
@@ -81,5 +115,64 @@ enum BookmarkedFolders {
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? data.write(to: url, options: .atomic)
+    }
+
+    // ── 与系统打交道的那一半 ───────────────────────────────────────────────
+    //
+    // 刻意与上面的纯逻辑分开放，也刻意**只有这一处**：创建与解析必须配对
+    // （带 `.withSecurityScope` 建出来的必须带 scope 解析，否则直接报错），
+    // 两处各写一遍必然分叉，而分叉的表现是「有时能记住、有时记不住」这种最难查的形态。
+
+    /// 为一个目录建书签。
+    ///
+    /// 优先带 `.withSecurityScope`：那是**沙盒里重启后仍能访问的载体**，
+    /// 非沙盒下同样有效 ⇒ 两边都带上，不产生两种数据形态。
+    /// 少数位置（网络卷、某些外置盘）建不出带 scope 的，退回普通书签。
+    static func makeBookmark(for url: URL) -> Data? {
+        let scoped = try? url.bookmarkData(
+            options: [.withSecurityScope],
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        )
+        if let scoped { return scoped }
+        return try? url.bookmarkData(
+            options: [],
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        )
+    }
+
+    /// 解析一项；失败返回 `nil` —— 调用方据此判定「已失效」。
+    ///
+    /// 解析选项必须与创建时**配对**，所以这里与 `makeBookmark` 一一对应地写两遍。
+    static func resolveURL(of item: BookmarkedFolder) -> URL? {
+        var isStale = false
+        if let url = try? URL(
+            resolvingBookmarkData: item.bookmark,
+            options: [.withSecurityScope, .withoutUI],
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+        ) {
+            return url
+        }
+        return try? URL(
+            resolvingBookmarkData: item.bookmark,
+            options: [.withoutUI],
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+        )
+    }
+
+    /// 为一次「选目录」建一项。建不出书签时返回 `nil` ——
+    /// 调用方**不该静默继续**：那样用户以为选好了，下次启动却发现没记住。
+    static func item(for url: URL, now: Date = Date()) -> BookmarkedFolder? {
+        guard let data = makeBookmark(for: url) else { return nil }
+        let name = url.lastPathComponent
+        return BookmarkedFolder(
+            name: name.isEmpty ? url.path : name,
+            path: url.path,
+            bookmark: data,
+            lastUsed: now
+        )
     }
 }

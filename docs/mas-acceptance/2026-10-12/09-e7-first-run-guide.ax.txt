@@ -1,0 +1,42 @@
+进程   : DroidBerth pid=87674
+窗口数 : 1
+── UI 树（深度上限 20，只打有文字的节点）
+  [窗口 0]
+    AXWindow title=「DroidBerth」
+            AXImage desc=「笔记本电脑」
+            AXStaticText value=「这台 Mac」
+            AXPopUpButton value=「Finder 位置」
+            AXStaticText value=「未选择文件夹」
+            AXButton desc=「水平左侧拆分视图」 enabled=1
+            AXCheckBox desc=「隐藏文件」 value=「0」
+            AXStaticText value=「先选一个要传的文件夹」
+            AXStaticText value=「App Store 版运行在沙盒里，需要你亲手指定一次。视频、照片放在哪都行，不限于「文稿」—— 选过之后 DroidB」
+            AXButton desc=「选择文件夹…」 enabled=1
+            AXLink desc=「或先用「下载」」
+            AXStaticText value=「0 个项目」
+          AXSplitter value=「698」
+            AXImage desc=「Iphone，第三代」
+            AXStaticText value=「Android 设备」
+            AXMenuButton title=「位置」
+            AXButton desc=「返回」 enabled=0
+            AXButton desc=「前进」 enabled=0
+            AXButton desc=「向上」 enabled=1
+              AXButton desc=「/」 enabled=1
+              AXImage desc=「紧凑向右V形」
+              AXButton desc=「内部存储」 enabled=1
+            AXStaticText value=「还没有连接 Android 设备」
+            AXStaticText value=「用 USB 线把手机接到这台 Mac，手机上把 USB 用途选为「传输文件」。」
+            AXButton desc=「重新检测」 enabled=1
+            AXLink desc=「连接不上？」
+            AXStaticText value=「0 个项目」
+        AXButton desc=「交换两侧」 enabled=1
+          AXMenuButton title=「未连接设备」
+          AXRadioGroup desc=「浏览形态」
+            AXRadioButton desc=「列表」 value=「1」
+            AXRadioButton desc=「分栏」 value=「0」
+            AXRadioButton desc=「网格」 value=「0」
+        AXButton desc=「上传到设备」 enabled=0
+        AXButton desc=「下载到 Mac」 enabled=0
+          AXImage desc=「搜索」
+          AXMenuButton title=「更多」
+      AXStaticText value=「DroidBerth」

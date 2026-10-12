@@ -70,3 +70,45 @@ enum LocalPlacePolicy {
             .map(String.init)
     }
 }
+
+// MARK: - 授权状态（E7）
+
+/// 本地窗格的**授权状态**。
+///
+/// 与上面的「该不该显示某个位置」是**两件事**：`LocalPlacePolicy` 判一个位置能不能用，
+/// 这里判**整个窗格处于哪种处境** —— 它决定界面是显示内容、显示引导、还是显示
+/// 「重新选择」。搞混了就会出现「列表是空的」与「你没有权限」说成同一句话。
+///
+/// 侧载版永远取 `.notRequired`（没有沙盒就没有「容器外读不了」这件事），所以这一整套
+/// 在侧载版上是死分支。反过来，沙盒版**必须**有它：没授权时列表本来就是空的，
+/// 而「这个文件夹是空的」会是一句彻底的误导 —— 用户会以为自己的文件丢了。
+enum LocalAccess: Equatable, Sendable {
+    /// 非沙盒：不需要授权。侧载版的唯一取值。
+    case notRequired
+    /// 沙盒 + **从没授权过任何目录** ⇒ 首次运行，该给引导。
+    case missing
+    /// 沙盒 + 至少一个书签可用。
+    case granted
+    /// 沙盒 + 有记录但**全都解析不出来** ⇒ 目录被删 / 卷没插 / 权限被回收。
+    case expired
+}
+
+/// 由两个**计数**定授权状态。
+///
+/// 做成纯函数（而不是内联在 `AppModel` 里）是因为这几条分支在真机上很难全部走到：
+/// 要造出「有记录但全坏」的现场，得先授权一个目录、再把它删掉或拔掉它所在的卷。
+/// 而这几条分支的差别正是**界面说哪句话** —— 说错了用户就不知道下一步该做什么。
+enum FolderAccess {
+    /// - Parameters:
+    ///   - isSandboxed: 是否在沙盒里（`AppPaths.containerDirectory != nil`）
+    ///   - storedCount: 磁盘上原本记了几项
+    ///   - resolvedCount: 其中**解析成功、且目录确实还在**的项数
+    static func state(isSandboxed: Bool, storedCount: Int, resolvedCount: Int) -> LocalAccess {
+        guard isSandboxed else { return .notRequired }
+        if resolvedCount > 0 { return .granted }
+        // 从没记过 ⇒ 首次运行，该给引导；
+        // 记过但全坏了 ⇒ 「上次那个打不开了」，该让用户**重新选择**。
+        // 两者的下一步动作相同，但说法不同 —— 而说法正是用户此刻最需要的东西。
+        return storedCount == 0 ? .missing : .expired
+    }
+}

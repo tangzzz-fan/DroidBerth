@@ -269,11 +269,30 @@ CONFIGURATION=Release-MAS ./scripts/check-mas-readiness.sh      # PASS 23 · FAI
 - **记多个目录**（上限 10，按最近使用排序），而不是只记一个 ——
   对应真实场景「反复回同一个项目文件夹、偶尔换项目」。
 
-**底座已落**（本轮，未含 UI）：`Support/BookmarkedFolders.swift` —— security-scoped bookmark 的
-「最近使用」列表。纯逻辑（合并 / 按**路径**去重 / 置顶 / **先合并后截断**）与持久化分开，
-存储位置做成**可注入参数**，这样守卫能用临时文件**真跑一遍存取往返**（含日期策略），
-不必碰用户真实那份 `recent-folders.json`。守卫 `check-bookmarked-folders`。
-**UI 那三个状态待实现。**
+**已实现并实测（2026-10-12）**：底座 `Support/BookmarkedFolders.swift`（security-scoped bookmark
+列表；纯逻辑与持久化分开，存储位置**可注入** ⇒ 守卫能用临时文件真跑往返）+ 接入 `AppModel`
+（`LocalAccess` 四态 / `rememberFolder` / `forgetBookmarkedFolders` / `useDownloadsAsStartFolder` /
+`updateSecurityScope`）+ 两个空态 + 「位置」弹窗的书签段。
+
+实测见 `docs/1012_01_mas-visual-acceptance.md`（证据 `docs/mas-acceptance/2026-10-12/08–09`）：
+
+| 项 | 结果 |
+| --- | --- |
+| ① 未授权 | ✅ UI 树实测：标题 / 说明 / 两个按钮全在，列表为空 —— **不再显示容器内容** |
+| ② 选目录 | ✅ `NSOpenPanel` → `rememberFolder` 落 security-scoped bookmark（实测容器里已有记录） |
+| 跨启动恢复 | ✅ 重启后**直接落在授权目录**、列出用户真实文件 |
+| ④ 授权失效 | ⚠️ **逻辑由守卫覆盖**（`FolderAccess.state` 四条分支各一条用例），**UI 未实测** —— 容器对自动化不可写，造不出「有记录但全坏」的现场 |
+| 「位置」弹窗 | ✅ 沙盒版标题是「**已授权**」（侧载版是「最近使用」），列已授权项 |
+
+⚠️ 顺手删掉了**旧的 `settings.recentLocalFolders`**（存**路径**、上限 8、UserDefaults）：
+沙盒下路径根本读不了，留着就是同一概念的两种实现，而**只有一种在沙盒里有效**。
+
+**实测中修掉的两条缺陷**（详情见 `1012_01`）：
+
+1. **未授权时导航栏与内容区自相矛盾** —— 路径栏写着「下载」、内容区说「先选一个文件夹」，
+   而那正是用户**第一眼**看到的画面。已改为未授权时不显示面包屑与导航按钮（`needsFolderAccess`）。
+2. **「位置」里的「下载」指向容器内的符号链接**（未解析）—— `places()` 的判据用的是解析后路径、
+   返回的却是链接名 ⇒「过了判据却打不开」（就是 F3 那条）。已改为返回 `resolvingSymlinksInPath()`。
 
 ---
 

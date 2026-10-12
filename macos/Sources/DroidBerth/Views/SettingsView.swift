@@ -87,15 +87,15 @@ struct SettingsView: View {
 
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("最近使用的文件夹")
-                    Text("「位置」弹窗里显示 \(settings.recentLocalFolders.count) 项")
+                    Text(model.bookmarkedFolderSectionTitle)
+                    Text(model.bookmarkedFolderSummary)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("清除") { settings.forgetRecentLocalFolders() }
+                Button("清除") { model.forgetBookmarkedFolders() }
                     .controlSize(.small)
-                    .disabled(settings.recentLocalFolders.isEmpty)
+                    .disabled(model.bookmarkedFolders.isEmpty)
             }
         }
     }

@@ -132,26 +132,14 @@ final class AppSettings {
     var canEnlargeGridIcons: Bool { gridIconSize < Self.gridIconSizeRange.upperBound }
     var canShrinkGridIcons: Bool { gridIconSize > Self.gridIconSizeRange.lowerBound }
 
-    /// 最近打开过的 Mac 文件夹（新→旧），供「位置」弹窗用。
-    private(set) var recentLocalFolders: [String] {
-        didSet { defaults.set(recentLocalFolders, forKey: Key.recentLocalFolders) }
-    }
-
-    private static let recentLocalFoldersLimit = 8
-
-    func rememberLocalFolder(_ path: String) {
-        guard !path.isEmpty, path != "/" else { return }
-        var updated = recentLocalFolders.filter { $0 != path }
-        updated.insert(path, at: 0)
-        if updated.count > Self.recentLocalFoldersLimit {
-            updated.removeLast(updated.count - Self.recentLocalFoldersLimit)
-        }
-        recentLocalFolders = updated
-    }
-
-    func forgetRecentLocalFolders() {
-        recentLocalFolders = []
-    }
+    // 「最近使用的 Mac 文件夹」原本在这里（`recentLocalFolders`，存的是**路径**）。
+    //
+    // 2026-10-12 删掉，统一到 `BookmarkedFolders`（存 security-scoped bookmark）：
+    // 沙盒版**只有书签**能带用户到容器外的目录，而路径在沙盒里根本读不了 ——
+    // 两套并存就是同一个概念的两种实现，且只有一套在沙盒里有效。
+    //
+    // 旧的 UserDefaults 键 `list.recentLocalFolders` 不主动清理：残留数据无害，
+    // 而且删用户数据这种事不该由一个「整理代码」的改动顺手做掉。
 
     private var lastDestination: [String: String] {
         didSet { defaults.set(lastDestination, forKey: Key.lastDestination) }
@@ -178,7 +166,6 @@ final class AppSettings {
         let storedIconSize = defaults.double(forKey: Key.gridIconSize)
         gridIconSize = storedIconSize > 0 ? storedIconSize : 112
         showPreviewPane = defaults.object(forKey: Key.showPreviewPane) as? Bool ?? false
-        recentLocalFolders = defaults.stringArray(forKey: Key.recentLocalFolders) ?? []
         lastDestination = defaults.dictionary(forKey: Key.lastDestination) as? [String: String] ?? [:]
         wirelessAddress = defaults.dictionary(forKey: Key.wirelessAddress) as? [String: String] ?? [:]
     }
@@ -222,7 +209,7 @@ final class AppSettings {
         static let deviceViewMode = "view.device"
         static let gridIconSize = "view.gridIconSize"
         static let showPreviewPane = "view.showPreviewPane"
-        static let recentLocalFolders = "list.recentLocalFolders"
+        // `list.recentLocalFolders`（旧的「最近使用」）随该功能一起删除 —— 见上方注释。
         static let lastDestination = "device.lastDestination"
         static let wirelessAddress = "device.wirelessAddress"
     }

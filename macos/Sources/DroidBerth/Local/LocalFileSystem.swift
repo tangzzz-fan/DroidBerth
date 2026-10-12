@@ -89,7 +89,18 @@ enum LocalFileSystem {
             let url = home.appendingPathComponent(folder, isDirectory: true)
             guard fileManager.fileExists(atPath: url.path) else { continue }
             guard isUsablePlace(url, container: container) else { continue }
-            result.append(LocalPlace(id: folder, name: title, url: url, systemImage: symbol))
+            // 返回**解析后**的 URL，而不是容器里那个符号链接名。
+            //
+            // 2026-10-12 实测（F3）：URL 版 `contentsOfDirectory(at:includingPropertiesForKeys:)`
+            // 对 `<容器>/Downloads` 报 `NSFileReadNoPermissionError`，而**解析后的真实路径**能列。
+            // 判据（`isUsablePlace`）用的就是解析后的路径，那返回的就必须是同一个 ——
+            // 否则会出现「过了判据、点开却打不开」，而那种失败最容易被当成随机问题。
+            result.append(LocalPlace(
+                id: folder,
+                name: title,
+                url: url.resolvingSymlinksInPath(),
+                systemImage: symbol
+            ))
         }
 
         // 这两个也过同一套判据：沙盒下 `home` 就是容器本身（列出来的是容器里的东西，

@@ -10,6 +10,12 @@ final class AppModel {
         case device
     }
 
+    /// 本地窗格的**授权状态**（E7）。
+    ///
+    /// 类型定义在 `Support/LocalPlacePolicy.swift` —— 与「某个位置能不能用」放在一起，
+    /// 因为两者是同一件事的两个层次（个体 / 全局），而且那里能被守卫直接编译到。
+    /// 判定逻辑是同文件的 `FolderAccess.state(...)`。
+
     enum MacSource: String, Sendable, CaseIterable, Identifiable {
         case files
         case photos
@@ -83,6 +89,17 @@ final class AppModel {
     private(set) var localHistory: [URL] = []
     private(set) var localHistoryIndex = -1
     var localError: String?
+
+    /// 有书签的目录。**两侧共用同一条列表**是刻意的：
+    /// 沙盒下只有它能带用户到容器外的任意目录（它是授权的载体），而侧载版顺带得到
+    /// 「最近使用」。旧的那套 `settings.recentLocalFolders` 存的是**路径** ——
+    /// 在沙盒里根本读不了，留着就是同一概念的两套实现。已删。
+    private(set) var bookmarkedFolders: [BookmarkedFolder] = []
+    /// 本地窗格的授权状态。见 `LocalAccess`。
+    private(set) var localAccess: LocalAccess = .notRequired
+    /// 当前 `start` 着的授权目录。security-scoped 访问**必须成对**（`start` / `stop`），
+    /// 所以由模型独占持有 —— 每个导航点各 start 一次必然泄漏。
+    private var activeScope: URL?
 
     var remoteDirectory = "/sdcard"
     private(set) var remoteEntries: [RemoteEntry] = []
@@ -184,7 +201,9 @@ final class AppModel {
             self?.handleFinderService(urls)
         }
         monitor.start()
-        navigateLocal(to: localDirectory, resetHistory: true)
+        // 先读回书签、定授权状态 —— 它决定下面该落在哪，以及列表要不要真的去列。
+        let resolution = refreshBookmarkedFolders()
+        navigateLocal(to: restoredStartDirectory(from: resolution), resetHistory: true)
         Task { await bootstrapRemote() }
     }
 
@@ -227,6 +246,120 @@ final class AppModel {
         return !deviceVolumes.contains { path == $0.path || path.hasPrefix($0.path + "/") }
     }
 
+    // MARK: - 本地目录的授权（E7）
+
+    /// 读回书签列表 → 分类成「可用 / 已失效」→ 定授权状态。
+    ///
+    /// **失效的项直接丢掉**：留着只会每次启动都尝试、每次都失败，
+    /// 而且会把真正有效的那些挤到后面（列表有上限）。
+    @discardableResult
+    private func refreshBookmarkedFolders() -> BookmarkedFolders.Resolution {
+        let stored = BookmarkedFolders.load()
+        let resolution = BookmarkedFolders.resolveAll(stored) { item in
+            // 解析成功还不够 —— 目录可能已经被删、或所在的外置磁盘没插上。
+            // 那种情况下 bookmark 有时仍会解析出一个**不存在的路径**；用它只会得到
+            // 一个「打不开这个位置」的错误，而用户真正的处境是「上次那个文件夹没了」，
+            // 那正是 `expired` 要表达的意思。
+            guard let url = BookmarkedFolders.resolveURL(of: item) else { return nil }
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+                  isDirectory.boolValue
+            else { return nil }
+            return url
+        }
+        if !resolution.stale.isEmpty {
+            BookmarkedFolders.save(resolution.resolved.map(\.folder))
+            AppLog.info("清掉 \(resolution.stale.count) 个已失效的目录授权", .ui)
+        }
+        bookmarkedFolders = resolution.resolved.map(\.folder)
+        localAccess = FolderAccess.state(
+            isSandboxed: AppPaths.containerDirectory != nil,
+            storedCount: stored.count,
+            resolvedCount: bookmarkedFolders.count)
+        return resolution
+    }
+
+    /// 启动时该落在哪。
+    ///
+    /// 侧载版：行为不变（`defaultLocalStartDirectory`，即家目录）。
+    /// 沙盒版：**第一个能解析的书签**优先 —— 那才是「上次传素材的地方」。
+    /// 还没有任何授权时退回起始目录（真实「下载」），而界面会因为 `.missing`
+    /// 直接显示引导，所以不会真的去列容器内容。
+    private func restoredStartDirectory(from resolution: BookmarkedFolders.Resolution) -> URL {
+        guard localAccess == .granted else { return AppPaths.defaultLocalStartDirectory }
+        return resolution.first?.url ?? AppPaths.defaultLocalStartDirectory
+    }
+
+    /// 记下一个目录 —— 沙盒版的**授权入口**；侧载版走同一条路，于是顺带成了「最近使用」。
+    ///
+    /// 返回是否记住了：建不出书签时返回 `false`，界面据此提示，而不是让用户以为
+    /// 选好了、下次启动却发现没记住。
+    @discardableResult
+    func rememberFolder(_ url: URL) -> Bool {
+        guard let item = BookmarkedFolders.item(for: url) else { return false }
+        let merged = BookmarkedFolders.merging(
+            item, resolvedPath: url.path, into: bookmarkedFolders, now: Date())
+        bookmarkedFolders = merged
+        BookmarkedFolders.save(merged)
+        if AppPaths.containerDirectory != nil { localAccess = .granted }
+        return true
+    }
+
+    /// 「位置」弹窗里的「清除」。
+    func forgetBookmarkedFolders() {
+        bookmarkedFolders = []
+        BookmarkedFolders.save([])
+        guard AppPaths.containerDirectory != nil else { return }
+        localAccess = .missing
+        localEntries = []
+        localError = nil
+    }
+
+    /// 「或先用『下载』」—— 把「下载」**当作一次正式授权**记下来。
+    ///
+    /// 它确实是一次授权（用户明确表示要用这个位置），所以走同一套书签机制，
+    /// 而不是开一条「临时放行」的旁路 —— 旁路会多出一个半授权态，
+    /// 而那个态在下次启动时无法恢复。
+    func useDownloadsAsStartFolder() {
+        let url = AppPaths.defaultLocalStartDirectory
+        rememberFolder(url)
+        navigateLocal(to: url, resetHistory: true)
+    }
+
+    /// 保证「当前正在访问的授权目录」正好是包含 `url` 的那一个。
+    ///
+    /// 只维持**一个**：目标没变就不动，变了先把旧的 `stop` 掉。
+    /// 非沙盒下这两个调用都是空操作，所以侧载版整段跳过（省掉一轮 bookmarK 解析）。
+    private func updateSecurityScope(for url: URL) {
+        guard localAccess != .notRequired else { return }
+        if let active = activeScope,
+           url.path == active.path || url.path.hasPrefix(active.path + "/") {
+            return
+        }
+        // 取**最长**匹配：嵌套授权时里层那个更具体，用它才拿得到真正的权限。
+        let match = bookmarkedFolders
+            .compactMap { item -> URL? in
+                guard let resolved = BookmarkedFolders.resolveURL(of: item) else { return nil }
+                let path = resolved.path
+                guard url.path == path || url.path.hasPrefix(path + "/") else { return nil }
+                return resolved
+            }
+            .max { $0.path.count < $1.path.count }
+
+        activeScope?.stopAccessingSecurityScopedResource()
+        activeScope = nil
+        if let match, match.startAccessingSecurityScopedResource() {
+            activeScope = match
+        }
+    }
+
+    /// 释放当前持有的 security-scoped 访问。成对释放 —— 只影响进程寿命内的资源，
+    /// 但少了 `stop` 会让别的进程也拿不到该目录。
+    func releaseSecurityScopes() {
+        activeScope?.stopAccessingSecurityScopedResource()
+        activeScope = nil
+    }
+
     // MARK: - Mac 窗格
 
     func navigateLocal(to url: URL, resetHistory: Bool = false) {
@@ -246,11 +379,29 @@ final class AppModel {
         localSelection = []
         // 同 navigateRemote：换目录清筛选，刷新保留。
         clearSearch()
+        // 沙盒版：进入某个授权目录的**子树**之前要先把 scope 开起来，否则读不了。
+        updateSecurityScope(for: url)
         reloadLocal()
-        settings.rememberLocalFolder(url.path)
+        // 侧载版没有「授权」这件事，于是这条列表顺带承担了「最近使用」。
+        // 沙盒版**不能**这么做：那里它是授权的载体，塞一个没有权限的路径进去会顶掉
+        // 真正有效的授权，而下次启动就会在一个读不了的目录上醒来。
+        if localAccess == .notRequired {
+            rememberFolder(url)
+        }
     }
 
     func reloadLocal() {
+        // 沙盒版在**没授权 / 授权全失效**时不去列目录：那时 `localDirectory` 指向的是
+        // App 自己的容器，列出来只会把管道当用户文件（`list` 也会拒绝，于是变成一个
+        // 看不懂的错误）。界面据此显示引导或「重新选择」。
+        switch localAccess {
+        case .missing, .expired:
+            localEntries = []
+            localError = nil
+            return
+        case .notRequired, .granted:
+            break
+        }
         switch LocalFileSystem.list(localDirectory, showHidden: showHiddenFiles) {
         case .success(let entries):
             // 这里排的是「列表的基准顺序」——入队顺序、多选遍历都依赖它稳定。
@@ -1716,11 +1867,32 @@ final class AppModel {
     func focusLeftPane() { focus = leftPane }
     func focusRightPane() { focus = rightPane }
 
-    /// 最近打开过的 Mac 文件夹（已过滤掉已被删除 / 移走的）。
-    var recentLocalFolders: [URL] {
-        settings.recentLocalFolders
-            .map { URL(fileURLWithPath: $0, isDirectory: true) }
-            .filter { FileManager.default.fileExists(atPath: $0.path) }
+    /// 「位置」弹窗与设置界面里那条列表的**标题**。
+    ///
+    /// 同一条列表在两侧的**含义不同**：侧载版是「你最近去过哪」，沙盒版是
+    /// 「你授权过哪些目录」—— 后者是**权限**而不是历史，叫「最近使用」会让人
+    /// 以为它只是一份记录（于是不敢清除、也不知道清除了会失去访问权）。
+    /// 所以按运行环境取词，且只在这一处取 —— 两处各写一遍就会分叉。
+    var bookmarkedFolderSectionTitle: String {
+        AppPaths.containerDirectory == nil ? "最近使用" : "已授权"
+    }
+
+    /// 还没授权（或授权全失效）—— 此时**导航控件与面包屑都没有意义**。
+    ///
+    /// 留着它们会让界面自相矛盾：路径栏写着「下载」，内容区却说「先选一个要传的文件夹」。
+    /// 那看起来就是个 bug，而它恰恰出现在用户**第一次打开 app 的那一屏**。
+    var needsFolderAccess: Bool {
+        localAccess == .missing || localAccess == .expired
+    }
+
+    /// 设置界面里那条列表的说明文字。同样只在这一处取词 ——
+    /// 沙盒版「清除」清掉的是**权限**，不点明的话用户会以为只是清一份历史记录。
+    var bookmarkedFolderSummary: String {
+        let count = bookmarkedFolders.count
+        guard AppPaths.containerDirectory != nil else {
+            return "「位置」弹窗里显示 \(count) 项"
+        }
+        return "「位置」弹窗里显示 \(count) 项；清除后要重新选择才能访问这些目录"
     }
 
     // MARK: - 网格视图的键盘导航（PRD §13.3）

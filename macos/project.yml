@@ -34,8 +34,14 @@ schemes:
         DroidBerth: all
     run:
       config: Debug
+    # ⚠️ 指向 **Release-MAS** 而不是 `Release`。
+    # 本工程**唯一**会用到 `archive` 的场景就是 MAS 上架（侧载版走 `release-local.sh`
+    # 的 build + dmg，不经过 archive）。若留 `Release`，从 Xcode GUI 点
+    # Product → Archive 会得到一个**没有沙盒**的包 —— 上传 ASC 会被拒，而且这回连
+    # app 自己都缺 `app-sandbox`，比 helper 缺更难解释。
+    # 命令行仍可覆盖：`xcodebuild archive -configuration Release`。
     archive:
-      config: Release
+      config: Release-MAS
 
 targets:
   DroidBerth:

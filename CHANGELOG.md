@@ -3,7 +3,7 @@
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。**1.0.0 是第一个公开发布的版本** ——
 此前仓库里的 `0.1.0` 只是 `project.yml` 里的一个默认值，从未对外发布过。
 
-## [1.0.0] — 2026-10-11
+## [1.0.0] — 2026-10-13
 
 一个把 Mac 上的视频与照片推到 Android 手机的 macOS 应用，**像用 Finder 一样浏览两端**。
 ADB 内嵌在 app 里，用户不需要装 Android SDK、不需要碰终端。
@@ -61,7 +61,7 @@ ADB 内嵌在 app 里，用户不需要装 Android SDK、不需要碰终端。
 - 已签名（Developer ID）+ 已公证（app 与 DMG 双 `Accepted`）+ 已 staple
 - DMG 内含 `/Applications` 符号链接，拖拽安装；`NOTICE.txt`（adb 的 Apache-2.0 声明）随包
 - 发版一条命令（`./scripts/release-local.sh <版本> --publish`），**签名凭据不离开本机**
-- GitHub Actions 只负责验证（构建 + 四道回归守卫 + shell 静态检查）
+- GitHub Actions 只负责验证（构建 + 八道回归守卫 + shell 静态检查）
 
 ### 已知限制
 

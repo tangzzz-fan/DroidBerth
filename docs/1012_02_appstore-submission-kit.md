@@ -11,7 +11,7 @@
 |---|---|---|---|
 | **B1** | **`Mac Installer Distribution` 证书** | ❌ **本机没有**（已用 `security find-identity` 核过：只有 Apple Development / Developer ID Application / Apple Distribution） | <https://developer.apple.com/account/resources/certificates> → ＋ → **Mac Installer Distribution** → 按提示在钥匙串里生成 CSR 上传 → 下载 `.cer` 双击入钥匙串 |
 | **B2** | **Provisioning profile** | ❌ **一个都没有**（`~/Library/MobileDevice/Provisioning Profiles/` 目录不存在） | 先在 <https://appstoreconnect.apple.com> 建 App 记录（bundle id `dev.tango.droidberth`），再到 developer 后台建 **Mac App Store** 类型的 profile，下载双击安装 |
-| **B3** | **隐私政策 URL** | ❌ **没有这个页面** | App Store 强制要求。最省事：在本仓库加 `PRIVACY.md`，URL 用 `https://github.com/tangzzz-fan/DroidBerth/blob/main/PRIVACY.md`（§4 已给草稿） |
+| **B3** | **隐私政策 URL** | ✅ **已就绪**（2026-10-13） | 仓库根目录新增了 `PRIVACY.md`（中英双语）。填 `https://github.com/tangzzz-fan/DroidBerth/blob/main/PRIVACY.md` |
 | **B4** | **App 记录** | ❌ 未创建 | App Store Connect → 我的 App → ＋ → 新建 App：平台 macOS、名称 `DroidBerth`、主要语言中文、bundle id 选 `dev.tango.droidberth`、SKU 自定（如 `DROIDBERTH001`） |
 
 > ⚠️ B1/B2 完成后，`project.yml` 里**不用改任何东西** —— profile 是**部署期数据**，
@@ -59,7 +59,7 @@ DroidBerth 为「Mac → Android」这一个方向优化。插上数据线，左
 Android 手机需要打开「USB 调试」。第一次连接时手机上会弹一次授权询问，
 勾选「始终允许」之后就不用再管了。
 
-隐私政策：<填 §0 的 B3 链接>
+隐私政策：https://github.com/tangzzz-fan/DroidBerth/blob/main/PRIVACY.md
 ```
 
 ### 英文（若上全球区）
@@ -229,3 +229,82 @@ CONFIGURATION=Release-MAS ./scripts/package-mas.sh 1.0.0
 
 > `check-mas-readiness.sh` 有三档结论：**PASS / FAIL（退出码 1，不可绕过）/ 人工项**。
 > 人工项里有两条是**法务**（NOTICE 的豁免适用性、中国大陆上架资质），工程改不了。
+
+---
+
+## §8 建 App ID / App 记录时的四个疑问（2026-10-13 核实）
+
+### Q1 bundle id 到底是不是 `dev.tango.droidberth`？
+
+**是。** 核过 `project.yml` 的完整历史（`git log -S`）：**从 2026-09-26 首次提交至今
+一直是 `dev.tango.droidberth`，从未变过**。而且**三个配置（Debug / Release / Release-MAS）
+共用同一个** —— `PRODUCT_BUNDLE_IDENTIFIER` 写在 `settings.base`，按配置覆盖的只有
+entitlements 与签名身份。
+
+> 若你在 Xcode 的 Signing & Capabilities 里见过 **`XC dev.tango.droidberth`** ——
+> 那是 **Xcode 自动签名创建的「托管 App ID」**，不是另一个 bundle id（见 Q3）。
+
+### Q2 中文名字要不要换？
+
+**建议保持 `DroidBerth`。** 三条理由：
+
+1. **品牌一致** —— GitHub 仓库、侧载版 DMG、关于窗口里都是这个名字；商店里换一个中文名，
+   两边看起来会像两个不同的东西；
+2. **搜索靠关键词、不靠名称** —— App Store 搜索权重主要在**关键词字段**（§3 已给），
+   名称里堆词的边际收益很低；
+3. **堆词有被拒风险** —— Apple 会把「名称里塞功能词」按关键词堆砌处理。
+
+想让中文用户一眼看懂用途，**用副标题**（已建议「Mac 传视频照片到安卓手机」）——
+那才是它该待的地方。
+
+### Q3 「以前自动签名时 App ID 会自动创建，现在要手工建吗？」
+
+要把**两件不同的东西**分开看：
+
+| | 谁创建 | 本项目的状态 |
+| --- | --- | --- |
+| **App ID**（developer 后台 → Identifiers） | Xcode 自动签名可代建，会建成 **`XC dev.tango.droidberth`** 这种「Xcode 托管」形式 | **建议手工建**。本项目用 `CODE_SIGN_STYLE: Manual`（写在 `project.yml` 里），Xcode **不会**代建 |
+| **App 记录**（App Store Connect 里的那个 App） | **只有人能建** | **必须手工建**（§0 的 B4）。Apple 官方原话：上传到 ASC 需要「以 **explicit App ID** 注册的 app 记录」 |
+
+**手工建比让 Xcode 托管更好**：托管 ID 的名字由 Xcode 决定（后台列表里会是
+`XC dev.tango.droidberth`，看着莫名其妙），手工建的可以自己命名（如 `DroidBerth Mac`）。
+两者**都能用于分发** —— Apple 官方文档明确列出建分发 profile 时可以选
+「The Xcode-managed explicit App ID that begins with XC」。
+
+### Q4 创建 App ID 时，要不要为沙盒勾上 App Sandbox？
+
+**不需要。勾了也无害。**
+
+判据是**我们自己的 entitlements 长什么样**。`macos/Resources/DroidBerth-MAS.entitlements`
+里那 7 条**全部是 `com.apple.security.*`**：
+
+```
+com.apple.security.app-sandbox
+com.apple.security.network.client / .server
+com.apple.security.device.usb
+com.apple.security.files.user-selected.read-write
+com.apple.security.files.downloads.read-write
+com.apple.security.personal-information.photos-library
+```
+
+**没有一条是 `com.apple.developer.*`（受限 entitlement）**。而只有**受限** entitlement 才要求
+provisioning profile 里有对应 capability —— 否则进程会在启动时被内核直接 `SIGKILL`。
+沙盒、网络、USB、文件选择这些**都是标准 entitlement**，由 app 自己的 entitlements 文件
+启用，**与 App ID 的 capability 无关**。
+
+> 这条我们已经实测过一轮：**ad-hoc 签名、完全没有 profile** 的包，启动后
+> `lsof -p <pid>` 的 `cwd` 就落在容器里 —— 沙盒是真生效的。
+> 所以「不发 profile 就没有沙盒」这个担心不成立。
+
+⇒ 创建 App ID 时 **Capabilities 一个都不用勾**，保持默认。
+
+### Q5 隐私政策 URL 填什么？
+
+仓库根目录已经有 **`PRIVACY.md`**（2026-10-13 新增，中英双语），直接填：
+
+```
+https://github.com/tangzzz-fan/DroidBerth/blob/main/PRIVACY.md
+```
+
+⚠️ 若想让 URL 更短更正式，也可以开 GitHub Pages 指到同一个文件；但上面这个
+是 Apple 接受的类型（可公开访问、无需登录）。

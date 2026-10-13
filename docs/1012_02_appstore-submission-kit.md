@@ -239,6 +239,17 @@ done        # 两个都应当是 2（app-sandbox + inherit）；0 就说明构�
 > `Upload Symbols Failed … adb / droidberth-adb` 那两条是 **warning**，不阻断上传、不影响审核。  
 > 成因见 `1011_04` §4.7 —— 其中 `adb` 那条**无法**消除（Google 的预编译二进制没有 DWARF）。
 
+### 两项合规件（2026-10-13 上传被拦后补上，都是 Apple 的硬要求）
+
+| 件 | 在哪 | 缺了的后果 |
+| --- | --- | --- |
+| **出口合规** | `Info.plist` 的 `ITSAppUsesNonExemptEncryption = false` | ASC 在每个构建版本上标「**缺少合规证明**」，要求人工回答 —— 而且**每次上传都要重答一遍** |
+| **隐私清单** | `macos/Resources/PrivacyInfo.xcprivacy` | 用到 required reason API 的包**不接受上传**（ITMS-91053 一类） |
+
+两项都由 `check-mas-readiness.sh` 第 4 组检查。隐私清单里申报的是
+`UserDefaults CA92.1` / `FileTimestamp DDA9.1 + C617.1 + 3B52.1` / `DiskSpace 85F4.1`
+（逐条对应哪段代码写在文件内的注释里）。
+
 > `check-mas-readiness.sh` 有三档结论：**PASS / FAIL（退出码 1，不可绕过）/ 人工项**。  
 > 人工项里有两条是**法务**（NOTICE 的豁免适用性、中国大陆上架资质），工程改不了。
 

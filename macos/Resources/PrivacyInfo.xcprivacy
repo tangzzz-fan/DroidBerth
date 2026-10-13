@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  隐私清单（Privacy Manifest）。
+
+  为什么必须有：Apple 从 **2024-05-01** 起，凡是用到「required reason API」的 app，
+  没有在隐私清单里申报理由就**不接受上传**（官方原文：apps that don't describe their use of
+  required reason API in their privacy manifest file aren't accepted by App Store Connect）。
+  2026-10-13 实测：本仓库的包上传时被拦，报「缺少合规证明」——
+  出口合规那一半见 `Info.plist` 的 `ITSAppUsesNonExemptEncryption`。
+
+  ⚠️ 申报必须**如实**：官方明确说「these declared reasons must be consistent with your app's
+  functionality as presented to users, and you may not use the APIs or derived data for tracking」。
+  所以下面每一条都在注释里写清**对应哪段代码**，改代码时顺带核对。
+
+  ⚠️ Apple 的检查是**对编译产物**做的（读 Mach-O 里的符号引用），不是读源码 ——
+  所以「本机能跑」不代表能过审。加类别时的判据是**扫二进制**，不是搜 .swift。
+-->
+<plist version="1.0">
+<dict>
+	<!-- 不追踪：本 app 没有任何广告/分析 SDK，也没有 HTTP 客户端（grep 过 URLSession/CFNetwork）。 -->
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+
+	<!-- 不收集：传输的是**用户自己**的手机与 Mac 之间的文件；诊断日志只在用户主动导出时
+	     落成 zip，且**不自动上传**（见 README 的分发说明）。 -->
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<!-- `App/AppSettings.swift` 用 UserDefaults 存两侧视图模式、隐藏文件开关、
+		     最近目的目录等。全部只有本 app 自己读得到 ⇒ `CA92.1`
+		     （不是 `1C8F.1` —— 那个是 app group 共享，本项目没有 app group）。 -->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+
+		<!-- 读文件时间戳的三处，各自对应一个理由，所以三个都列： -->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<!-- `Local/LocalFileSystem.swift`：把修改时间显示在列表的「修改日期」列里给用户看。 -->
+				<string>DDA9.1</string>
+				<!-- `Support/CrashSentinel.swift` / `Support/AppLog.swift`：读**自家容器内**
+				     崩溃报告与日志文件的修改时间，用于筛时间窗、做日志轮转。 -->
+				<string>C617.1</string>
+				<!-- 沙盒版里用户通过 `NSOpenPanel` 明确授权的素材目录（E7 的 security-scoped
+				     bookmark），其文件的元数据属于「用户明确授权访问的文件」。 -->
+				<string>3B52.1</string>
+			</array>
+		</dict>
+
+		<!-- `Support/DiagnosticsExporter.swift`：诊断报告里**展示**可用磁盘空间给用户。 -->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryDiskSpace</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>85F4.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

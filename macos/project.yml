@@ -64,6 +64,12 @@ targets:
       #    xcodegen 会直接报 `has a missing source directory`。
       - path: Resources/NOTICE.txt
         buildPhase: resources
+      # 隐私清单（Privacy Manifest）。Apple 从 **2024-05-01** 起强制：用到「required reason API」
+      # 却没在清单里申报理由的包**不接受上传**。内容与理由见文件内的逐条注释。
+      # ⚠️ 必须以 **resources** 进包 —— 少了它，本机能构建、能跑、`codesign --verify` 也过，
+      #    **本地没有任何反馈**，只在 App Store Connect 处理构建版本时被拒（ITMS-91053 一类）。
+      - path: Resources/PrivacyInfo.xcprivacy
+        buildPhase: resources
       # entitlements 列进工程只为**可见、可 review**（`buildPhase: none` ⇒ 不进任何构建阶段）。
       # 真正生效的是 `CODE_SIGN_ENTITLEMENTS` 那个 build setting，见下方 settings.configs。
       - path: Resources/DroidBerth.entitlements

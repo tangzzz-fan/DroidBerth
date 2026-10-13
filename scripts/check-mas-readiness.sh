@@ -288,8 +288,39 @@ if [ -f "$INFO" ]; then
 
   bundle_id="$(plist_get "$INFO" CFBundleIdentifier)"
   printf '  bundle id：%s\n' "$bundle_id"
+
+  # 出口合规。缺了它的后果不是「被拒」，而是**每个构建版本都要人工回答一遍**
+  # —— 2026-10-13 实测：上传后 App Store Connect 标「缺少合规证明」。
+  # `false` = 不使用非豁免加密；本 app 确实如此（只有 USB / 局域网上的明文 adb 协议，
+  # 连「标准 HTTPS」那类豁免加密都没用到）。
+  COMPLIANCE="$(plist_get "$INFO" ITSAppUsesNonExemptEncryption)"
+  case "$COMPLIANCE" in
+    false) pass "ITSAppUsesNonExemptEncryption = false（出口合规已申报）" ;;
+    "")    fail "Info.plist 缺 ITSAppUsesNonExemptEncryption —— 上传后会被标「缺少合规证明」" ;;
+    *)     human "ITSAppUsesNonExemptEncryption = ${COMPLIANCE} —— 提交时要能说明加密用途" ;;
+  esac
 else
   fail "找不到 Contents/Info.plist"
+fi
+
+# 隐私清单（Apple **2024-05-01** 起强制）。与出口合规是**两件事**，两条都会拦上传。
+PRIVACY="$APP/Contents/Resources/PrivacyInfo.xcprivacy"
+if [ -f "$PRIVACY" ]; then
+  count="$("$PYTHON" -c '
+import plistlib, sys
+try:
+    d = plistlib.loads(open(sys.argv[1], "rb").read())
+except Exception:
+    print(-1); raise SystemExit(0)
+print(len(d.get("NSPrivacyAccessedAPITypes", [])))
+' "$PRIVACY" 2>/dev/null || echo -1)"
+  if [ "${count:--1}" -gt 0 ] 2>/dev/null; then
+    pass "PrivacyInfo.xcprivacy 在包里，申报了 ${count} 类 required reason API"
+  else
+    fail "PrivacyInfo.xcprivacy 在包里，但 NSPrivacyAccessedAPITypes 为空/读不出"
+  fi
+else
+  fail "包内没有 PrivacyInfo.xcprivacy —— 用到 required reason API 的包**不接受上传**（ITMS-91053 一类）"
 fi
 
 # ─────────────────────────────────────────────────────────────

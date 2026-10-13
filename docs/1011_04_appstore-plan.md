@@ -95,10 +95,11 @@
 | E2 | `macos/Resources/Helper-MAS.entitlements` | ✅ **已落盘**。`app-sandbox` + `inherit`，并写明两者作用不同：前者是**审核要求**，后者才是继承机制，而**功能上子进程本来就继承** ⇒ 漏了 `inherit` 本地测不出来 |
 | E3 | `macos/project.yml` 加一个 **`Release-MAS`** 配置 | ✅ **已完成并实测构建通过**。配置类型显式写成 `release`（XcodeGen 按名字推断类型，不然会掉进 Debug 预设拿到 `-Onone`），生成结果核对过：`-O` + `wholemodule` ✅。目标级换 `Apple Distribution` + E1，`PROVISIONING_PROFILE_SPECIFIER` **刻意不写**（部署期数据，从命令行注入） |
 | E4 | `scripts/sign-embedded-tools-mas.sh` | ✅ **已完成并实测通过**。由内向外签（helper 带 E2 → app 带 E1），并**数清 `Contents/MacOS` 下恰好 3 个可执行文件**（多一个就会被静默按「无 entitlements」留在包里）。没有 Apple Distribution 证书时会退到 ad-hoc 并**大声说明**。实测：两个 helper 各 2 条、app 7 条。**2026-10-13 起由 `project.yml` 的 `postBuildScripts` 自动调用**（`--helpers-only`）—— 原因见 §4.7：不挂进构建链，Xcode 归档上传就收不到这两个 entitlements |
-| E5 | `scripts/package-mas.sh` | ⬜ 待做。会用到 `Mac Installer Distribution` 证书（还没有） |
-| E6 | `scripts/check-mas-readiness.sh` | ✅ **已完成并实测通过**。三档结论（PASS / FAIL / 人工项），实测 **PASS 23 · FAIL 1 · 人工项 6**，退出码 1 —— **唯一那条 FAIL 正是缺 `embedded.provisionprofile`**，也就是必须有 App Store Connect 记录才能生成的东西。它自己也在第一次跑就抓出一个缺陷（见 §4.2） |
-| E7 | 启动时的**授权引导流程**（代码改动） | ⬜ 待做。**先看 §4.1 的实测数据** —— `places()` 不只是「要授权」，现在这个形态会**骗人** |
+| E5 | `scripts/package-mas.sh`（自打 `.pkg`） | 🔶 **不必做** —— 走 Xcode Organizer 的「Distribute App → Upload」**不需要**自打 pkg，那条路只要 `Apple Distribution` ✅。只有当你想把发布也脚本化时才需要 `Mac Installer Distribution`（本机没有） |
+| E6 | `scripts/check-mas-readiness.sh` | ✅ **已完成**。三档结论（PASS / FAIL / 人工项），当前 **PASS 26 · FAIL 0 · 人工项 6**。⚠️ 它的**判据被修正过两次**，每次都是「持续误报」的形态：① `has_runtime` 用**子串**匹配位标志（`0x10002` 里不含 `10000`）；② profile 只查老的 `~/Library/MobileDevice/…`，而那个目录在本机**根本不存在**（Xcode 现在写 `~/Library/Developer/Xcode/UserData/…`） |
+| E7 | 启动时的**授权引导流程**（代码改动） | ✅ **已完成并实测（2026-10-12）** —— `LocalAccess` 四态 + `rememberFolder` / `forgetBookmarkedFolders` / `useDownloadsAsStartFolder` / `updateSecurityScope` + 两个空态 + 弹窗书签段。实测：状态 ① 的 UI 树文案全中、**跨启动恢复成功**。形态见 §4.6，验收记录见 `docs/1012_01` |
 | E8 | 退出时收掉 adb server（代码改动） | ✅ **已完成并实测（2026-10-13）** —— `Support/ADBServerOwnership.swift`（归属判据）+ `ADBRecovery.shutdownServerIfOurs()`（执行）+ 4 个调用点（GUI 的 `applicationWillTerminate`、两个 CLI 入口、`restartServer` 后夺回归属）。第 8 道守卫 `check-adb-server-ownership`。**关键是「只收自己起的」** —— 见下方 §4.8 |
+| E9 | **合规件**：出口合规 + 隐私清单 | ✅ **已完成（2026-10-13）** —— `Info.plist` 加 `ITSAppUsesNonExemptEncryption = false`；新增 `macos/Resources/PrivacyInfo.xcprivacy`（申报 3 类 required reason API）。起因是**归档上传被拦**，报「缺少合规证明」—— 见 §4.9 |
 
 ### 4.1 实测：容器里的固定位置长什么样（2026-10-12，`places()` 的直接依据）
 
@@ -432,6 +433,44 @@ server 换掉（他跑一次 `adb kill-server` 再让 Android Studio 起一个�
 守卫：**第 8 道** `check-adb-server-ownership`。它把状态迁移与判据直接喂进去，并且
 **端口探测的两个方向都验**（自己起一个监听 socket）—— `isListening` 若恒为 true 就永远不收、
 恒为 false 就永远乱收，**两种都静默**。
+
+### 4.9 合规件：出口合规 + 隐私清单（2026-10-13，归档上传被拦后补上）
+
+**症状**：从 Xcode 归档导出后，App Store Connect 提示**缺少合规证明**。
+
+查下来是**两件独立的事**，而当时两件都没做：
+
+| 件 | 缺什么 | 缺了的后果 |
+| --- | --- | --- |
+| **出口合规**（Export Compliance） | `Info.plist` 里没有 `ITSAppUsesNonExemptEncryption` | ASC 给每个构建版本标「缺少合规证明」，要求人工回答 —— 而且**每次上传都要重答**，不是一次性的 |
+| **隐私清单**（Privacy Manifest） | 包里没有 `PrivacyInfo.xcprivacy` | Apple **2024-05-01** 起：用到 required reason API 却没申报理由的包**不接受上传** |
+
+**出口合规的值为什么是 `false`**：它表示**不使用非豁免加密**。本 app 的通信只有
+USB / 局域网 TCP 上的 adb 协议（**明文**），而且**没有 HTTP 客户端**（`URLSession` /
+`CFURLConnection` / `CFNetwork` 全无）⇒ 连「标准 HTTPS」那一类豁免加密都没碰到。
+
+**隐私清单申报的是代码里真的用了的三类**。判据是**搜源码**（不是扫二进制，原因见下），
+每条 code 都对应得到具体文件：
+
+| 类别 | reason code | 对应哪段代码 |
+| --- | --- | --- |
+| `NSPrivacyAccessedAPICategoryUserDefaults` | `CA92.1` | `App/AppSettings.swift` —— 只读写 **app 自身**的设置（**不是** `1C8F.1`：本项目没有 app group） |
+| `NSPrivacyAccessedAPICategoryFileTimestamp` | `DDA9.1` | `Local/LocalFileSystem.swift` —— 把修改时间**显示在列表里**给用户 |
+| 同上 | `C617.1` | `Support/CrashSentinel.swift` / `Support/AppLog.swift` —— 读**自家容器内**日志与崩溃报告的时间戳 |
+| 同上 | `3B52.1` | 沙盒版里用户经 `NSOpenPanel` **明确授权**的素材目录（E7 的 bookmark） |
+| `NSPrivacyAccessedAPICategoryDiskSpace` | `85F4.1` | `Support/DiagnosticsExporter.swift` —— 诊断报告里**展示**可用空间 |
+
+另外声明了 `NSPrivacyTracking = false`（无广告/分析 SDK）、`NSPrivacyCollectedDataTypes` 为空
+（传的是用户自己两台设备之间的文件；诊断日志只在他主动导出时落成 zip，**不自动上传**）。
+
+⚠️ **一条判据的教训**：本来想用「扫二进制符号」核对申报有没有漏项（Apple 的检查据说是对
+编译产物做的），**在这个项目上不可靠** —— `strings -a` 扫 `contentModificationDate` /
+`volumeAvailableCapacity` 都是 **0 处**（Swift 把 `URLResourceKey` 这类编译成了别的东西，
+不是明文 selector），只有 `creationDate` / `UserDefaults` 扫得到。
+⇒ **申报以源码为准**；扫二进制只作辅助，而且**它的「没扫到」不能当成「没用」**。
+
+两项都进了 `check-mas-readiness.sh` 第 4 组（出口合规那个 key 在不在、包内有没有隐私清单
+且 `NSPrivacyAccessedAPITypes` 非空）。
 
 ## 5. App Store Connect 侧要准备的材料
 

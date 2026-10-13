@@ -28,6 +28,13 @@
 	<string>NSApplication</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 zhenzhi Tang</string>
+	<!-- 出口合规（Export Compliance）。`false` = **不使用非豁免加密**。
+	     本 app 的通信只有 USB / 局域网 TCP 上的 adb 协议（明文），且**没有** HTTP 客户端
+	     ⇒ 连「标准 HTTPS」这一类豁免加密都不涉及，所以只有这一条。
+	     ⚠️ 缺了它，App Store Connect 会在每个上传的构建版本上标「缺少合规证明」并要求人工回答，
+	     而且**每次上传都要重答一遍**（2026-10-13 实测遇到）。 -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>DroidBerth 需要读取照片与视频的原始文件，才能把它们推送到你的 Android 设备。</string>
 	<key>NSDesktopFolderUsageDescription</key>
